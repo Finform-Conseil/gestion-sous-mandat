@@ -1364,6 +1364,7 @@ const IMPACT_COMITE = [
 const NAV = [
   { id: 'accueil', label: 'Accueil', icon: Home },
   { id: 'portefeuilles', label: 'Portefeuilles', icon: Briefcase },
+  { id: 'money-management', label: 'Money Management', icon: Droplets },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'marches', label: 'Marchés (Actions & Obligations)', icon: Building2 },
@@ -1539,6 +1540,7 @@ const BREADCRUMB_ROUTES = {
   Accueil: 'accueil',
   'Portefeuilles gérés': 'portefeuilles',
   Portefeuilles: 'portefeuilles',
+  'Money Management': 'money-management',
   "Carnet d'ordres": 'carnet',
   "Avis d'opéré": 'avis',
   'Marchés (Actions & Obligations)': 'marches',
@@ -6341,6 +6343,614 @@ function Reequilibrage({ initial, devise = 'XOF' }) {
   );
 }
 
+
+function MoneyManagement({ go, devise = 'XOF' }) {
+  const [filtreClient, setFiltreClient] = useState('');
+  const [filtreMarche, setFiltreMarche] = useState('Tous');
+  const [filtreType, setFiltreType] = useState('Tous');
+  const [filtreProfil, setFiltreProfil] = useState('Tous');
+  const [filtreStatut, setFiltreStatut] = useState('Tous');
+  const [dimensionLiquidite, setDimensionLiquidite] = useState('Devise');
+
+  const SEUIL_ECART_LIQUIDITE = 3;
+  const dateReference = new Date(2026, 7, 7);
+  const finHorizon = new Date(dateReference);
+  finHorizon.setDate(finHorizon.getDate() + 30);
+
+  const formatDateFR = (date) =>
+    new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+
+  const fluxDividendesCoupons = UPCOMING_CASHFLOWS.flatMap((flux) => {
+    const dateFlux = parseFR(flux.echeance);
+    if (dateFlux < dateReference || dateFlux > finHorizon) return [];
+
+    const noms = flux.portefeuilles
+      .split(',')
+      .map((nom) => nom.trim())
+      .filter(Boolean);
+    const montantParPortefeuille = noms.length > 0 ? flux.montant / noms.length : 0;
+
+    return noms
+      .map((nom) => CLIENTS.find((client) => client.nom === nom))
+      .filter(Boolean)
+      .map((client) => ({
+        id: `cashflow-${flux.titre}-${client.id}-${flux.echeance}`,
+        clientId: client.id,
+        client: client.nom,
+        date: flux.echeance,
+        dateObj: dateFlux,
+        nature: flux.type,
+        libelle: flux.titre,
+        sens: 'Entrée',
+        montant: montantParPortefeuille,
+        devise: flux.devise,
+        statut: 'Prévu',
+      }));
+  });
+
+  const fluxOrdresOuverts = ORDERS.filter((ordre) =>
+    ['En cours', 'En attente'].includes(ordre.statut)
+  ).map((ordre, index) => {
+    const client = CLIENTS.find((item) => item.nom === ordre.pf);
+    const dateFlux = new Date(dateReference);
+    dateFlux.setDate(dateFlux.getDate() + 2 + index);
+
+    return {
+      id: `ordre-${ordre.id}`,
+      clientId: client?.id || null,
+      client: ordre.pf,
+      date: formatDateFR(dateFlux),
+      dateObj: dateFlux,
+      nature: "Règlement d'ordre",
+      libelle: `${ordre.sens} ${ordre.titre}`,
+      sens: ordre.sens === 'Achat' ? 'Sortie' : 'Entrée',
+      montant: ordre.qte * ordre.prix,
+      devise: ordre.devise,
+      statut: ordre.statut,
+    };
+  });
+
+  const flux30J = [...fluxDividendesCoupons, ...fluxOrdresOuverts].sort(
+    (a, b) => a.dateObj - b.dateObj
+  );
+
+  const synthesePortefeuilles = CLIENTS.map((client) => {
+    const liquiditeActuelle =
+      (client.encours * Number(client.alloc.Liquidité || 0)) / 100;
+    const liquiditeCible =
+      (client.encours * Number(client.cible.Liquidité || 0)) / 100;
+    const fluxClient = flux30J.filter((flux) => flux.clientId === client.id);
+    const encaissements30J = fluxClient
+      .filter((flux) => flux.sens === 'Entrée')
+      .reduce(
+        (somme, flux) =>
+          somme + convertCurrency(flux.montant, flux.devise, client.devise),
+        0
+      );
+    const decaissements30J = fluxClient
+      .filter((flux) => flux.sens === 'Sortie')
+      .reduce(
+        (somme, flux) =>
+          somme + convertCurrency(flux.montant, flux.devise, client.devise),
+        0
+      );
+    const liquiditePrevisionnelle =
+      liquiditeActuelle + encaissements30J - decaissements30J;
+    const ratioActuel = (liquiditeActuelle / client.encours) * 100;
+    const ratioCible = Number(client.cible.Liquidité || 0);
+    const ratioPrevisionnel = (liquiditePrevisionnelle / client.encours) * 100;
+    const ecartPts = ratioPrevisionnel - ratioCible;
+
+    let statut = 'Conforme';
+    if (ecartPts < -SEUIL_ECART_LIQUIDITE) statut = 'Critique';
+    else if (ecartPts < 0) statut = 'Sous cible';
+    else if (ecartPts > SEUIL_ECART_LIQUIDITE) statut = 'Surplus';
+
+    const montantVersCible = Math.abs(liquiditePrevisionnelle - liquiditeCible);
+    const action =
+      statut === 'Critique'
+        ? 'Reconstituer rapidement la poche de liquidité'
+        : statut === 'Sous cible'
+        ? 'Sécuriser les prochains flux et réduire les décaissements non prioritaires'
+        : statut === 'Surplus'
+        ? "Réinvestir l'excédent selon l'allocation cible et les opportunités validées"
+        : 'Maintenir la position et surveiller les échéances à 30 jours';
+
+    return {
+      client,
+      liquiditeActuelle,
+      liquiditeCible,
+      liquiditePrevisionnelle,
+      encaissements30J,
+      decaissements30J,
+      ratioActuel,
+      ratioCible,
+      ratioPrevisionnel,
+      ecartPts,
+      montantVersCible,
+      statut,
+      action,
+    };
+  });
+
+  const marches = ['Tous', ...new Set(CLIENTS.map((client) => client.marche))];
+  const types = [
+    'Tous',
+    ...new Set(CLIENTS.map((client) => PROFILE_TYPE_LABEL[client.type] || client.type)),
+  ];
+  const profils = ['Tous', ...new Set(CLIENTS.map((client) => client.profilRisque))];
+  const statuts = ['Tous', 'Critique', 'Sous cible', 'Conforme', 'Surplus'];
+
+  const lignesFiltrees = synthesePortefeuilles.filter(({ client, statut }) => {
+    const typeClient = PROFILE_TYPE_LABEL[client.type] || client.type;
+    return (
+      client.nom.toLowerCase().includes(filtreClient.trim().toLowerCase()) &&
+      (filtreMarche === 'Tous' || client.marche === filtreMarche) &&
+      (filtreType === 'Tous' || typeClient === filtreType) &&
+      (filtreProfil === 'Tous' || client.profilRisque === filtreProfil) &&
+      (filtreStatut === 'Tous' || statut === filtreStatut)
+    );
+  });
+
+  const clientsFiltresIds = new Set(lignesFiltrees.map(({ client }) => client.id));
+  const fluxFiltres = flux30J.filter((flux) => clientsFiltresIds.has(flux.clientId));
+
+  const totalEncours = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme + convertCurrency(ligne.client.encours, ligne.client.devise, devise),
+    0
+  );
+  const totalLiquiditeActuelle = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(
+        ligne.liquiditeActuelle,
+        ligne.client.devise,
+        devise
+      ),
+    0
+  );
+  const totalLiquiditePrevisionnelle = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(
+        ligne.liquiditePrevisionnelle,
+        ligne.client.devise,
+        devise
+      ),
+    0
+  );
+  const totalEntrees30J = fluxFiltres
+    .filter((flux) => flux.sens === 'Entrée')
+    .reduce(
+      (somme, flux) =>
+        somme + convertCurrency(flux.montant, flux.devise, devise),
+      0
+    );
+  const totalSorties30J = fluxFiltres
+    .filter((flux) => flux.sens === 'Sortie')
+    .reduce(
+      (somme, flux) =>
+        somme + convertCurrency(flux.montant, flux.devise, devise),
+      0
+    );
+  const ratioLiquiditeGlobal =
+    totalEncours > 0 ? (totalLiquiditeActuelle / totalEncours) * 100 : 0;
+  const ratioLiquiditePrevisionnel =
+    totalEncours > 0 ? (totalLiquiditePrevisionnelle / totalEncours) * 100 : 0;
+  const portefeuillesSousCible = lignesFiltrees.filter((ligne) =>
+    ['Critique', 'Sous cible'].includes(ligne.statut)
+  ).length;
+
+  const filtresActifs =
+    Number(Boolean(filtreClient.trim())) +
+    Number(filtreMarche !== 'Tous') +
+    Number(filtreType !== 'Tous') +
+    Number(filtreProfil !== 'Tous') +
+    Number(filtreStatut !== 'Tous');
+
+  const reinitialiserFiltres = () => {
+    setFiltreClient('');
+    setFiltreMarche('Tous');
+    setFiltreType('Tous');
+    setFiltreProfil('Tous');
+    setFiltreStatut('Tous');
+  };
+
+  const toneStatut = (statut) => {
+    if (statut === 'Critique') return 'coral';
+    if (statut === 'Sous cible') return 'gold';
+    if (statut === 'Surplus') return 'navy';
+    return 'teal';
+  };
+
+  const regroupementLiquidite = (() => {
+    const map = {};
+    lignesFiltrees.forEach((ligne) => {
+      const client = ligne.client;
+      const cle =
+        dimensionLiquidite === 'Devise'
+          ? client.devise
+          : dimensionLiquidite === 'Marché'
+          ? client.marche
+          : dimensionLiquidite === 'Profil de risque'
+          ? client.profilRisque
+          : PROFILE_TYPE_LABEL[client.type] || client.type;
+      const montant = convertCurrency(
+        ligne.liquiditeActuelle,
+        client.devise,
+        devise
+      );
+      map[cle] = (map[cle] || 0) + montant;
+    });
+    const total = Object.values(map).reduce((somme, montant) => somme + montant, 0);
+    return Object.entries(map)
+      .map(([name, montant]) => ({
+        name,
+        montant,
+        devise,
+        value: total > 0 ? Math.round((montant / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.montant - a.montant);
+  })();
+
+  const actionsLiquidite = lignesFiltrees
+    .filter((ligne) => ligne.statut !== 'Conforme')
+    .sort((a, b) => {
+      const ordre = { Critique: 0, 'Sous cible': 1, Surplus: 2 };
+      return (ordre[a.statut] ?? 9) - (ordre[b.statut] ?? 9);
+    });
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb items={['Accueil', 'Money Management']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
+            Money Management — gestion consolidée de la liquidité
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub, ...F_BODY }}>
+            Pilotage des disponibilités de tous les portefeuilles, suivi des écarts
+            à la cible, anticipation des encaissements et règlements, et identification
+            des excédents ou besoins de trésorerie. Les montants consolidés sont
+            convertis dans la devise principale choisie sur l'accueil.
+          </div>
+        </div>
+        <Badge tone="navy">Devise principale : {devise}</Badge>
+      </div>
+
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="grid grid-cols-5 gap-3">
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              Client
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border" style={{ borderColor: C.line }}>
+              <Search size={14} color={C.sub} />
+              <input
+                value={filtreClient}
+                onChange={(e) => setFiltreClient(e.target.value)}
+                placeholder="Rechercher…"
+                className="w-full text-xs outline-none"
+                style={F_BODY}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              Marché
+            </label>
+            <select value={filtreMarche} onChange={(e) => setFiltreMarche(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
+              {marches.map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              Type de portefeuille
+            </label>
+            <select value={filtreType} onChange={(e) => setFiltreType(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
+              {types.map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              Profil de risque
+            </label>
+            <select value={filtreProfil} onChange={(e) => setFiltreProfil(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
+              {profils.map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              Statut liquidité
+            </label>
+            <select value={filtreStatut} onChange={(e) => setFiltreStatut(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
+              {statuts.map((value) => <option key={value}>{value}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+          <div className="text-[11px]" style={{ color: C.sub }}>
+            Les mêmes filtres pilotent les positions, les flux, les répartitions et les actions de liquidité.
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>{filtresActifs} filtre(s) actif(s)</Badge>
+            <Badge tone="gold">{lignesFiltrees.length} portefeuille(s)</Badge>
+            {filtresActifs > 0 && (
+              <button type="button" onClick={reinitialiserFiltres} className="px-3 py-1.5 rounded-xl border text-xs font-semibold" style={{ borderColor: C.line, color: C.navy }}>
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Eyebrow>1. Synthèse consolidée de la liquidité</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Vue immédiate de la capacité de trésorerie actuelle et prévisionnelle des portefeuilles filtrés.
+            </div>
+          </div>
+          <Badge tone={portefeuillesSousCible > 0 ? 'coral' : 'teal'}>
+            {portefeuillesSousCible} sous cible
+          </Badge>
+        </div>
+        <div className="grid grid-cols-5 gap-3">
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>Liquidité disponible</div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>{fmt(Math.round(totalLiquiditeActuelle))} {devise}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>{ratioLiquiditeGlobal.toFixed(1)}% de l'encours</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>Encaissements à 30 j</div>
+            <div className="text-xl font-bold mt-1" style={{ ...F_DISPLAY, color: C.teal }}>+{fmt(Math.round(totalEntrees30J))} {devise}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Dividendes, coupons et flux entrants</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>Décaissements à 30 j</div>
+            <div className="text-xl font-bold mt-1" style={{ ...F_DISPLAY, color: C.coral }}>-{fmt(Math.round(totalSorties30J))} {devise}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Ordres ouverts et règlements attendus</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>Liquidité prévisionnelle</div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>{fmt(Math.round(totalLiquiditePrevisionnelle))} {devise}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>{ratioLiquiditePrevisionnel.toFixed(1)}% de l'encours</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>Portefeuilles à surveiller</div>
+            <div className="text-2xl font-bold mt-1" style={{ ...F_DISPLAY, color: portefeuillesSousCible > 0 ? C.coral : C.teal }}>{portefeuillesSousCible}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Sous la cible après flux à 30 jours</div>
+          </Card>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <Eyebrow>2. Position de liquidité par portefeuille</Eyebrow>
+          <div className="text-xs" style={{ color: C.sub }}>
+            Contrôle de la poche espèces actuelle, de la cible et de la position prévisionnelle après les flux connus.
+          </div>
+        </div>
+        <Card className="p-0 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full" style={{ minWidth: 1580 }}>
+              <thead style={{ background: '#FAFAFC' }}>
+                <tr>
+                  <Th>Client</Th>
+                  <Th>Marché</Th>
+                  <Th>Type / Profil</Th>
+                  <Th>Encours</Th>
+                  <Th>Liquidité actuelle</Th>
+                  <Th>Cible</Th>
+                  <Th>Entrées 30 j</Th>
+                  <Th>Sorties 30 j</Th>
+                  <Th>Prévisionnel</Th>
+                  <Th>Écart vs cible</Th>
+                  <Th>Statut</Th>
+                  <Th></Th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignesFiltrees.length === 0 && (
+                  <tr><td colSpan={12} className="text-center py-8 text-sm" style={{ color: C.sub }}>Aucun portefeuille ne correspond aux critères sélectionnés.</td></tr>
+                )}
+                {lignesFiltrees.map((ligne, index) => {
+                  const client = ligne.client;
+                  return (
+                    <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+                      <Td className="font-semibold whitespace-nowrap">{client.nom}</Td>
+                      <Td><Badge tone="navy">{client.marche} · {client.devise}</Badge></Td>
+                      <Td>
+                        <div className="text-xs font-semibold">{PROFILE_TYPE_LABEL[client.type] || client.type}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>{client.profilRisque}</div>
+                      </Td>
+                      <Td mono className="whitespace-nowrap">{fmt(client.encours)} {client.devise}</Td>
+                      <Td mono className="whitespace-nowrap">
+                        <div>{fmt(Math.round(ligne.liquiditeActuelle))} {client.devise}</div>
+                        <div className="text-[10px]" style={{ color: C.sub }}>{ligne.ratioActuel.toFixed(1)}%</div>
+                      </Td>
+                      <Td mono>{ligne.ratioCible.toFixed(1)}%</Td>
+                      <Td mono className="whitespace-nowrap"><span style={{ color: C.teal }}>+{fmt(Math.round(ligne.encaissements30J))} {client.devise}</span></Td>
+                      <Td mono className="whitespace-nowrap"><span style={{ color: C.coral }}>-{fmt(Math.round(ligne.decaissements30J))} {client.devise}</span></Td>
+                      <Td mono className="whitespace-nowrap">
+                        <div className="font-semibold">{fmt(Math.round(ligne.liquiditePrevisionnelle))} {client.devise}</div>
+                        <div className="text-[10px]" style={{ color: C.sub }}>{ligne.ratioPrevisionnel.toFixed(1)}%</div>
+                      </Td>
+                      <Td mono>
+                        <span style={{ color: ligne.ecartPts < 0 ? C.coral : C.teal, fontWeight: 700 }}>
+                          {ligne.ecartPts > 0 ? '+' : ''}{ligne.ecartPts.toFixed(1)} pts
+                        </span>
+                      </Td>
+                      <Td><Badge tone={toneStatut(ligne.statut)}>{ligne.statut}</Badge></Td>
+                      <Td>
+                        <button type="button" onClick={() => go('client', { clientId: client.id })} className="text-xs font-semibold whitespace-nowrap" style={{ color: C.navy }}>
+                          Ouvrir →
+                        </button>
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>3. Échéancier des flux de trésorerie — 30 jours</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Anticipation des dividendes, coupons et règlements d'ordres susceptibles de modifier la liquidité disponible.
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone="teal">Entrées : {fmt(Math.round(totalEntrees30J))} {devise}</Badge>
+            <Badge tone="coral">Sorties : {fmt(Math.round(totalSorties30J))} {devise}</Badge>
+          </div>
+        </div>
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full">
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Date</Th>
+                <Th>Client</Th>
+                <Th>Nature</Th>
+                <Th>Détail</Th>
+                <Th>Sens</Th>
+                <Th>Montant d'origine</Th>
+                <Th>Éq. {devise}</Th>
+                <Th>Statut</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {fluxFiltres.length === 0 && (
+                <tr><td colSpan={8} className="text-center py-7 text-sm" style={{ color: C.sub }}>Aucun flux connu sur les 30 prochains jours pour cette sélection.</td></tr>
+              )}
+              {fluxFiltres.map((flux, index) => (
+                <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+                  <Td mono>{flux.date}</Td>
+                  <Td className="font-semibold whitespace-nowrap">{flux.client}</Td>
+                  <Td>{flux.nature}</Td>
+                  <Td className="whitespace-nowrap">{flux.libelle}</Td>
+                  <Td><Badge tone={flux.sens === 'Entrée' ? 'teal' : 'coral'}>{flux.sens}</Badge></Td>
+                  <Td mono className="whitespace-nowrap">{fmt(Math.round(flux.montant))} {flux.devise}</Td>
+                  <Td mono className="whitespace-nowrap">{fmt(Math.round(convertCurrency(flux.montant, flux.devise, devise)))} {devise}</Td>
+                  <Td><Badge tone={flux.statut === 'Prévu' ? 'slate' : 'gold'}>{flux.statut}</Badge></Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>4. Répartition et concentration de la liquidité</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Analyse de la liquidité disponible selon les principales dimensions déjà utilisées dans la plateforme.
+            </div>
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {['Devise', 'Marché', 'Profil de risque', 'Type de portefeuille'].map((dimension) => (
+              <button
+                key={dimension}
+                type="button"
+                onClick={() => setDimensionLiquidite(dimension)}
+                className="px-3 py-1 rounded-full text-xs font-semibold"
+                style={{ background: dimensionLiquidite === dimension ? C.navy : '#F0F1F5', color: dimensionLiquidite === dimension ? '#fff' : C.sub }}
+              >
+                {dimension}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Card className="p-5">
+          <div className="grid grid-cols-2 gap-6 items-center">
+            <div><Donut data={regroupementLiquidite} size={210} /></div>
+            <div>
+              <div className="text-xs mb-3" style={{ color: C.sub }}>Liquidité actuelle ventilée par {dimensionLiquidite.toLowerCase()}.</div>
+              <Legende data={regroupementLiquidite} />
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>5. Actions de gestion de liquidité</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liste priorisée des portefeuilles nécessitant une reconstitution de cash ou un réinvestissement de l'excédent.
+            </div>
+          </div>
+          <Badge tone={actionsLiquidite.some((ligne) => ligne.statut === 'Critique') ? 'coral' : 'gold'}>
+            {actionsLiquidite.length} action(s)
+          </Badge>
+        </div>
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full">
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Client</Th>
+                <Th>Statut</Th>
+                <Th>Liquidité prév.</Th>
+                <Th>Cible</Th>
+                <Th>Montant à ajuster ({devise})</Th>
+                <Th>Action suggérée</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {actionsLiquidite.length === 0 && (
+                <tr><td colSpan={7} className="text-center py-7 text-sm" style={{ color: C.sub }}>Aucune action de liquidité n'est requise pour les portefeuilles filtrés.</td></tr>
+              )}
+              {actionsLiquidite.map((ligne, index) => {
+                const client = ligne.client;
+                const ecartAllocationLiquidite = Math.abs(
+                  Number(client.alloc.Liquidité || 0) - Number(client.cible.Liquidité || 0)
+                );
+                return (
+                  <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+                    <Td className="font-semibold whitespace-nowrap">{client.nom}</Td>
+                    <Td><Badge tone={toneStatut(ligne.statut)}>{ligne.statut}</Badge></Td>
+                    <Td mono>{ligne.ratioPrevisionnel.toFixed(1)}%</Td>
+                    <Td mono>{ligne.ratioCible.toFixed(1)}%</Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmt(Math.round(convertCurrency(ligne.montantVersCible, client.devise, devise)))} {devise}
+                    </Td>
+                    <Td><span className="text-xs" style={{ color: C.sub }}>{ligne.action}</span></Td>
+                    <Td>
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        {ecartAllocationLiquidite > SEUIL_REEQUILIBRAGE && (
+                          <button type="button" onClick={() => go('reequilibrage', { client: client.id, actif: 'Liquidité' })} className="text-xs font-semibold" style={{ color: C.coral }}>
+                            Rééquilibrer →
+                          </button>
+                        )}
+                        <button type="button" onClick={() => go('client', { clientId: client.id })} className="text-xs font-semibold" style={{ color: C.navy }}>
+                          Portefeuille →
+                        </button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      </section>
+    </div>
+  );
+}
+
 function AnalysePortefeuille({ devise = 'XOF' }) {
   const [tab, setTab] = useState('Devises');
   const totalRef = CLIENTS.reduce(
@@ -8660,6 +9270,9 @@ export default function App() {
               />
             )}
             {screen === 'alertes' && <Alertes go={go} />}
+            {screen === 'money-management' && (
+              <MoneyManagement go={go} devise={siteDevise} />
+            )}
             {screen === 'reequilibrage' && (
               <Reequilibrage initial={ctx} devise={siteDevise} />
             )}
