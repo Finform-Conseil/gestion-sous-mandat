@@ -85,9 +85,11 @@ const VOLUME_JOUR = [
   { marche: 'GSE', type: 'Obligation', volume: 2_100_000, devise: 'GHS' },
 ];
 
-const CLIENTS = [
+const CLIENTS_ORIGINAUX = [
   {
     id: 'c1',
+    pays: "Côte d'Ivoire",
+    dateEntree: '2024-06-15',
     nom: 'Aïcha Koné',
     type: 'Privé',
     marche: 'BRVM',
@@ -113,6 +115,8 @@ const CLIENTS = [
   },
   {
     id: 'c2',
+    pays: "Côte d'Ivoire",
+    dateEntree: '2024-03-01',
     nom: 'Fonds Prévoyance CI',
     type: 'Institutionnel',
     marche: 'BRVM',
@@ -138,6 +142,8 @@ const CLIENTS = [
   },
   {
     id: 'c3',
+    pays: 'Nigeria',
+    dateEntree: '2024-07-10',
     nom: 'Emeka Okafor',
     type: 'Privé',
     marche: 'NGX',
@@ -163,6 +169,8 @@ const CLIENTS = [
   },
   {
     id: 'c4',
+    pays: 'Sénégal',
+    dateEntree: '2024-05-20',
     nom: 'Groupe Assurance Sahel',
     type: 'Institutionnel',
     marche: 'BRVM',
@@ -188,6 +196,8 @@ const CLIENTS = [
   },
   {
     id: 'c5',
+    pays: 'Ghana',
+    dateEntree: '2024-08-05',
     nom: 'Ama Boateng',
     type: 'Privé',
     marche: 'GSE',
@@ -213,6 +223,8 @@ const CLIENTS = [
   },
   {
     id: 'c6',
+    pays: 'Nigeria',
+    dateEntree: '2024-02-12',
     nom: 'Caisse Retraite Littoral',
     type: 'Institutionnel',
     marche: 'NGX',
@@ -238,11 +250,361 @@ const CLIENTS = [
   },
 ];
 
+const PROFILS_PORTEFEUILLES_MODELES = {
+  Équilibré: {
+    risque: 'Modéré',
+    perf: 2.7,
+    rentabilite: 2.5,
+    cible: {
+      Actions: 40,
+      'Obl. souveraines': 28,
+      'Obl. privées': 20,
+      Liquidité: 12,
+    },
+  },
+  Prudence: {
+    risque: 'Faible',
+    perf: 1.5,
+    rentabilite: 1.6,
+    cible: {
+      Actions: 25,
+      'Obl. souveraines': 45,
+      'Obl. privées': 20,
+      Liquidité: 10,
+    },
+  },
+  Performance: {
+    risque: 'Élevé',
+    perf: 4.4,
+    rentabilite: 4.0,
+    cible: {
+      Actions: 55,
+      'Obl. souveraines': 15,
+      'Obl. privées': 20,
+      Liquidité: 10,
+    },
+  },
+  Croissance: {
+    risque: 'Modéré',
+    perf: 3.7,
+    rentabilite: 3.5,
+    cible: {
+      Actions: 50,
+      'Obl. souveraines': 20,
+      'Obl. privées': 20,
+      Liquidité: 10,
+    },
+  },
+  Sérénité: {
+    risque: 'Faible',
+    perf: 1.0,
+    rentabilite: 1.1,
+    cible: {
+      Actions: 20,
+      'Obl. souveraines': 50,
+      'Obl. privées': 22,
+      Liquidité: 8,
+    },
+  },
+};
+
+const DEVISE_PAR_MARCHE = { BRVM: 'XOF', NGX: 'NGN', GSE: 'GHS' };
+
+const PORTEFEUILLES_GENERES_SPECS = [
+  // T4 2024
+  {
+    id: 'c7',
+    nom: 'Mariam Traoré',
+    profilRisque: 'Équilibré',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 310_000_000,
+    dateEntree: '2024-10-15',
+  },
+  {
+    id: 'c8',
+    nom: 'Tunde Adebayo',
+    profilRisque: 'Performance',
+    type: 'Privé',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 620_000_000,
+    dateEntree: '2024-11-12',
+  },
+  {
+    id: 'c9',
+    nom: 'Adwoa Kwarteng',
+    profilRisque: 'Croissance',
+    type: 'Privé',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 2_200_000,
+    dateEntree: '2024-12-05',
+  },
+  // T1 2025
+  {
+    id: 'c10',
+    nom: 'Fonds Retraite UEMOA',
+    profilRisque: 'Sérénité',
+    type: 'Institutionnel',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 2_100_000_000,
+    dateEntree: '2025-01-20',
+  },
+  {
+    id: 'c11',
+    nom: 'Mutuelle Horizon CI',
+    profilRisque: 'Prudence',
+    type: 'Institutionnel',
+    marche: 'BRVM',
+    pays: "Côte d'Ivoire",
+    encours: 1_350_000_000,
+    dateEntree: '2025-02-14',
+  },
+  {
+    id: 'c12',
+    nom: "Koffi N'Dri",
+    profilRisque: 'Équilibré',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: "Côte d'Ivoire",
+    encours: 420_000_000,
+    dateEntree: '2025-03-07',
+  },
+  // T2 2025
+  {
+    id: 'c13',
+    nom: 'Nneka Obi',
+    profilRisque: 'Performance',
+    type: 'Privé',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 540_000_000,
+    dateEntree: '2025-04-18',
+  },
+  {
+    id: 'c14',
+    nom: 'Kwame Asare',
+    profilRisque: 'Croissance',
+    type: 'Privé',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 1_800_000,
+    dateEntree: '2025-05-10',
+  },
+  {
+    id: 'c15',
+    nom: 'Pension Fund Lagos',
+    profilRisque: 'Sérénité',
+    type: 'Institutionnel',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 3_100_000_000,
+    dateEntree: '2025-06-21',
+  },
+  // T3 2025
+  {
+    id: 'c16',
+    nom: 'Pension Trust Accra',
+    profilRisque: 'Prudence',
+    type: 'Institutionnel',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 18_000_000,
+    dateEntree: '2025-07-11',
+  },
+  {
+    id: 'c17',
+    nom: 'Adjoa Mensah',
+    profilRisque: 'Équilibré',
+    type: 'Privé',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 2_600_000,
+    dateEntree: '2025-08-08',
+  },
+  {
+    id: 'c18',
+    nom: 'Ibrahim Diallo',
+    profilRisque: 'Performance',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: "Côte d'Ivoire",
+    encours: 360_000_000,
+    dateEntree: '2025-09-16',
+  },
+  // T4 2025
+  {
+    id: 'c19',
+    nom: 'Binta Sow',
+    profilRisque: 'Croissance',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 275_000_000,
+    dateEntree: '2025-10-06',
+  },
+  {
+    id: 'c20',
+    nom: 'Assurance Vie Atlantique',
+    profilRisque: 'Sérénité',
+    type: 'Institutionnel',
+    marche: 'BRVM',
+    pays: "Côte d'Ivoire",
+    encours: 1_700_000_000,
+    dateEntree: '2025-11-13',
+  },
+  {
+    id: 'c21',
+    nom: 'Caisse Sociale Atlantique',
+    profilRisque: 'Prudence',
+    type: 'Institutionnel',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 2_800_000_000,
+    dateEntree: '2025-12-09',
+  },
+  // T1 2026
+  {
+    id: 'c22',
+    nom: 'Chinedu Eze',
+    profilRisque: 'Équilibré',
+    type: 'Privé',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 710_000_000,
+    dateEntree: '2026-01-17',
+  },
+  {
+    id: 'c23',
+    nom: 'Yao Kouassi',
+    profilRisque: 'Performance',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: "Côte d'Ivoire",
+    encours: 295_000_000,
+    dateEntree: '2026-02-06',
+  },
+  {
+    id: 'c24',
+    nom: 'Segun Balogun',
+    profilRisque: 'Croissance',
+    type: 'Privé',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 810_000_000,
+    dateEntree: '2026-03-22',
+  },
+  // T2 2026
+  {
+    id: 'c25',
+    nom: 'Caisse Patrimoine Ghana',
+    profilRisque: 'Sérénité',
+    type: 'Institutionnel',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 22_000_000,
+    dateEntree: '2026-04-09',
+  },
+  {
+    id: 'c26',
+    nom: 'Fondation Patrimoine Afrique',
+    profilRisque: 'Prudence',
+    type: 'Institutionnel',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 1_150_000_000,
+    dateEntree: '2026-05-18',
+  },
+  {
+    id: 'c27',
+    nom: 'Fatou Ndiaye',
+    profilRisque: 'Équilibré',
+    type: 'Privé',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 260_000_000,
+    dateEntree: '2026-06-25',
+  },
+  // T3 2026
+  {
+    id: 'c28',
+    nom: 'Akosua Owusu',
+    profilRisque: 'Performance',
+    type: 'Privé',
+    marche: 'GSE',
+    pays: 'Ghana',
+    encours: 3_000_000,
+    dateEntree: '2026-07-08',
+  },
+  {
+    id: 'c29',
+    nom: 'Chiamaka Nwosu',
+    profilRisque: 'Croissance',
+    type: 'Privé',
+    marche: 'NGX',
+    pays: 'Nigeria',
+    encours: 690_000_000,
+    dateEntree: '2026-07-23',
+  },
+  {
+    id: 'c30',
+    nom: 'Fondation Épargne Sahel',
+    profilRisque: 'Sérénité',
+    type: 'Institutionnel',
+    marche: 'BRVM',
+    pays: 'Sénégal',
+    encours: 980_000_000,
+    dateEntree: '2026-08-03',
+  },
+];
+
+const construirePortefeuilleGenere = (spec, index) => {
+  const modele = PROFILS_PORTEFEUILLES_MODELES[spec.profilRisque];
+  const deltaActions = [-4, -2, 0, 2, 4][index % 5];
+  const deltaLiquidite = [-2, 0, 2, 0, -1][index % 5];
+  const actions = modele.cible.Actions + deltaActions;
+  const souveraines =
+    modele.cible['Obl. souveraines'] - Math.round(deltaActions / 2);
+  const liquidite = modele.cible.Liquidité + deltaLiquidite;
+  const privees = 100 - actions - souveraines - liquidite;
+  const decalagePerformance = [-0.8, -0.4, 0, 0.4, 0.8][index % 5];
+  const decalageRendement = [-0.6, -0.3, 0, 0.3, 0.6][index % 5];
+
+  return {
+    ...spec,
+    devise: DEVISE_PAR_MARCHE[spec.marche],
+    perf: Number((modele.perf + decalagePerformance).toFixed(1)),
+    risque: modele.risque,
+    alertes: 0,
+    rentabilite: Number((modele.rentabilite + decalageRendement).toFixed(1)),
+    alloc: {
+      Actions: actions,
+      'Obl. souveraines': souveraines,
+      'Obl. privées': privees,
+      Liquidité: liquidite,
+    },
+    cible: { ...modele.cible },
+  };
+};
+
+const CLIENTS_GENERES = PORTEFEUILLES_GENERES_SPECS.map(
+  construirePortefeuilleGenere
+);
+const CLIENTS = [...CLIENTS_ORIGINAUX, ...CLIENTS_GENERES];
+
 const PROFILE_TYPE_LABEL = {
   Privé: 'Particulier',
   Institutionnel: 'Institutionnel',
 };
-const PAYS_MARCHE = { "Côte d'Ivoire": 'BRVM', Nigeria: 'NGX', Ghana: 'GSE' };
+const PAYS_MARCHE = {
+  "Côte d'Ivoire": 'BRVM',
+  Sénégal: 'BRVM',
+  Nigeria: 'NGX',
+  Ghana: 'GSE',
+};
 const TITRE_SECTEUR = {
   SONATEL: 'Télécoms',
   'ECOBANK CI': 'Banques',
@@ -490,6 +852,428 @@ const MARKETS_DATA = [
   },
 ];
 
+/* ---------------------- ESPACE CLIENT — GESTION LIBRE ---------------------- */
+/*
+ * Données de démonstration : un même investisseur consolide ici plusieurs
+ * portefeuilles détenus auprès de SGI différentes et sur plusieurs marchés.
+ * En production, ces données proviendront des connexions/API ou imports des SGI.
+ */
+const CLIENT_GESTION_LIBRE = {
+  id: 'investisseur-demo-01',
+  nom: 'Koffi Mensah',
+  deviseReference: 'XOF',
+  portefeuilles: [
+    {
+      id: 'cl-pf-brvm',
+      nom: 'Portefeuille BRVM Côte d’Ivoire',
+      sgi: 'Atlantic Bourse',
+      pays: "Côte d'Ivoire",
+      marche: 'BRVM',
+      devise: 'XOF',
+      compteEspeces: 15_000_000,
+      perfYtd: 6.4,
+      lignes: [
+        { instrument: 'SONATEL', qte: 4_200, pru: 13_250 },
+        { instrument: 'ECOBANK CI', qte: 3_000, pru: 6_920 },
+        {
+          instrument: 'Obligation Trésor CI 6.5% 2029',
+          qte: 3_500,
+          pru: 10_010,
+        },
+      ],
+    },
+    {
+      id: 'cl-pf-brvm-2',
+      nom: 'Portefeuille BRVM Sénégal',
+      sgi: 'Sahel Capital Markets',
+      pays: 'Sénégal',
+      marche: 'BRVM',
+      devise: 'XOF',
+      compteEspeces: 8_500_000,
+      perfYtd: 5.2,
+      lignes: [
+        { instrument: 'SONATEL', qte: 1_600, pru: 13_480 },
+        { instrument: 'PALMCI', qte: 900, pru: 7_950 },
+        {
+          instrument: 'Obligation Trésor CI 6.5% 2029',
+          qte: 1_200,
+          pru: 10_020,
+        },
+      ],
+    },
+    {
+      id: 'cl-pf-ngx',
+      nom: 'Portefeuille Nigeria Lagos',
+      sgi: 'Lagos Securities',
+      pays: 'Nigeria',
+      marche: 'NGX',
+      devise: 'NGN',
+      compteEspeces: 9_000_000,
+      perfYtd: 4.1,
+      lignes: [
+        { instrument: 'MTN NIGERIA', qte: 120_000, pru: 205.4 },
+        { instrument: 'ZENITH BANK', qte: 500_000, pru: 38.6 },
+        { instrument: 'Obligation Trésor NGN 2028', qte: 180_000, pru: 99.2 },
+      ],
+    },
+    {
+      id: 'cl-pf-ngx-2',
+      nom: 'Portefeuille Nigeria Abuja',
+      sgi: 'Abuja Capital Securities',
+      pays: 'Nigeria',
+      marche: 'NGX',
+      devise: 'NGN',
+      compteEspeces: 5_000_000,
+      perfYtd: 6.0,
+      lignes: [
+        { instrument: 'MTN NIGERIA', qte: 55_000, pru: 209.8 },
+        { instrument: 'ZENITH BANK', qte: 180_000, pru: 39.1 },
+        { instrument: 'Obligation Trésor NGN 2028', qte: 90_000, pru: 98.9 },
+      ],
+    },
+    {
+      id: 'cl-pf-gse',
+      nom: 'Portefeuille Ghana Accra',
+      sgi: 'Accra Capital',
+      pays: 'Ghana',
+      marche: 'GSE',
+      devise: 'GHS',
+      compteEspeces: 450_000,
+      perfYtd: 8.2,
+      lignes: [
+        { instrument: 'GCB BANK', qte: 220_000, pru: 4.85 },
+        {
+          instrument: 'Obligation Corporate GSE 2027',
+          qte: 13_000,
+          pru: 100.2,
+        },
+      ],
+    },
+    {
+      id: 'cl-pf-gse-2',
+      nom: 'Portefeuille Ghana secondaire',
+      sgi: 'Gold Coast Securities',
+      pays: 'Ghana',
+      marche: 'GSE',
+      devise: 'GHS',
+      compteEspeces: 280_000,
+      perfYtd: 5.7,
+      lignes: [
+        { instrument: 'GCB BANK', qte: 95_000, pru: 5.02 },
+        {
+          instrument: 'Obligation Corporate GSE 2027',
+          qte: 7_000,
+          pru: 100.7,
+        },
+      ],
+    },
+  ],
+};
+
+const CLIENT_CASHFLOWS = [
+  {
+    id: 'CF-CL-01',
+    portefeuilleId: 'cl-pf-brvm',
+    date: '15/08/2026',
+    type: 'Dividende',
+    instrument: 'SONATEL',
+    montant: 1_680_000,
+    devise: 'XOF',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-02',
+    portefeuilleId: 'cl-pf-brvm',
+    date: '12/08/2026',
+    type: 'Coupon',
+    instrument: 'Obligation Trésor CI 6.5% 2029',
+    montant: 2_275_000,
+    devise: 'XOF',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-03',
+    portefeuilleId: 'cl-pf-ngx',
+    date: '20/08/2026',
+    type: 'Dividende',
+    instrument: 'MTN NIGERIA',
+    montant: 1_260_000,
+    devise: 'NGN',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-04',
+    portefeuilleId: 'cl-pf-ngx',
+    date: '28/08/2026',
+    type: 'Dividende',
+    instrument: 'ZENITH BANK',
+    montant: 925_000,
+    devise: 'NGN',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-05',
+    portefeuilleId: 'cl-pf-gse',
+    date: '05/09/2026',
+    type: 'Dividende',
+    instrument: 'GCB BANK',
+    montant: 88_000,
+    devise: 'GHS',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-06',
+    portefeuilleId: 'cl-pf-brvm-2',
+    date: '18/08/2026',
+    type: 'Dividende',
+    instrument: 'SONATEL',
+    montant: 640_000,
+    devise: 'XOF',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-07',
+    portefeuilleId: 'cl-pf-ngx-2',
+    date: '26/08/2026',
+    type: 'Coupon',
+    instrument: 'Obligation Trésor NGN 2028',
+    montant: 410_000,
+    devise: 'NGN',
+    statut: 'À recevoir',
+  },
+  {
+    id: 'CF-CL-08',
+    portefeuilleId: 'cl-pf-gse-2',
+    date: '07/09/2026',
+    type: 'Coupon',
+    instrument: 'Obligation Corporate GSE 2027',
+    montant: 46_000,
+    devise: 'GHS',
+    statut: 'À recevoir',
+  },
+];
+
+const INITIAL_CLIENT_ORDERS = [
+  {
+    id: 'CL-ORD-001',
+    date: '08/08/2026',
+    portefeuilleId: 'cl-pf-brvm',
+    instrument: 'SONATEL',
+    marche: 'BRVM',
+    devise: 'XOF',
+    sens: 'Achat',
+    qte: 200,
+    typeOrdre: 'Ordre limite',
+    prix: 14_050,
+    statut: 'Exécuté',
+  },
+  {
+    id: 'CL-ORD-002',
+    date: '09/08/2026',
+    portefeuilleId: 'cl-pf-ngx',
+    instrument: 'ZENITH BANK',
+    marche: 'NGX',
+    devise: 'NGN',
+    sens: 'Vente',
+    qte: 25_000,
+    typeOrdre: 'Ordre limite',
+    prix: 41.5,
+    statut: 'En attente',
+  },
+  {
+    id: 'CL-ORD-003',
+    date: '10/08/2026',
+    portefeuilleId: 'cl-pf-brvm',
+    instrument: 'SONATEL',
+    marche: 'BRVM',
+    devise: 'XOF',
+    sens: 'Achat',
+    qte: 150,
+    typeOrdre: 'Ordre limite',
+    prix: 14_100,
+    statut: 'En attente',
+  },
+  {
+    id: 'CL-ORD-004',
+    date: '10/08/2026',
+    portefeuilleId: 'cl-pf-ngx',
+    instrument: 'MTN NIGERIA',
+    marche: 'NGX',
+    devise: 'NGN',
+    sens: 'Achat',
+    qte: 10_000,
+    typeOrdre: 'Ordre limite',
+    prix: 216,
+    statut: 'En cours',
+  },
+  {
+    id: 'CL-ORD-005',
+    date: '10/08/2026',
+    portefeuilleId: 'cl-pf-gse',
+    instrument: 'GCB BANK',
+    marche: 'GSE',
+    devise: 'GHS',
+    sens: 'Achat',
+    qte: 10_000,
+    typeOrdre: 'Ordre limite',
+    prix: 5.35,
+    statut: 'En attente',
+  },
+  {
+    id: 'CL-ORD-006',
+    date: '11/08/2026',
+    portefeuilleId: 'cl-pf-brvm-2',
+    instrument: 'PALMCI',
+    marche: 'BRVM',
+    devise: 'XOF',
+    sens: 'Achat',
+    qte: 200,
+    typeOrdre: 'Ordre limite',
+    prix: 8_050,
+    statut: 'En attente',
+  },
+  {
+    id: 'CL-ORD-007',
+    date: '11/08/2026',
+    portefeuilleId: 'cl-pf-ngx-2',
+    instrument: 'ZENITH BANK',
+    marche: 'NGX',
+    devise: 'NGN',
+    sens: 'Achat',
+    qte: 50_000,
+    typeOrdre: 'Ordre limite',
+    prix: 40.9,
+    statut: 'En cours',
+  },
+  {
+    id: 'CL-ORD-008',
+    date: '11/08/2026',
+    portefeuilleId: 'cl-pf-gse-2',
+    instrument: 'GCB BANK',
+    marche: 'GSE',
+    devise: 'GHS',
+    sens: 'Achat',
+    qte: 5_000,
+    typeOrdre: 'Ordre limite',
+    prix: 5.3,
+    statut: 'En attente',
+  },
+];
+
+const CLIENT_NAV = [
+  { id: 'client-dashboard', label: 'Vue consolidée', icon: Home },
+  {
+    id: 'client-portfolios',
+    label: 'Mes portefeuilles & SGI',
+    icon: Briefcase,
+  },
+  { id: 'client-invest', label: 'Marchés & investir', icon: TrendingUp },
+  { id: 'client-orders', label: 'Mes ordres', icon: ListOrdered },
+  { id: 'client-cashflows', label: 'Liquidité & revenus', icon: Droplets },
+  { id: 'client-analysis', label: 'Performance & risque', icon: Activity },
+];
+
+const clientMarket = (instrument) =>
+  MARKETS_DATA.find((item) => item.nom === instrument);
+
+const clientPortfolioValue = (portefeuille) =>
+  portefeuille.compteEspeces +
+  portefeuille.lignes.reduce((somme, ligne) => {
+    const marche = clientMarket(ligne.instrument);
+    return somme + ligne.qte * Number(marche?.cours || ligne.pru || 0);
+  }, 0);
+
+const clientLineValue = (ligne) => {
+  const marche = clientMarket(ligne.instrument);
+  return ligne.qte * Number(marche?.cours || ligne.pru || 0);
+};
+
+const clientPortfolioValueIn = (portefeuille, devise) =>
+  convertCurrency(
+    clientPortfolioValue(portefeuille),
+    portefeuille.devise,
+    devise
+  );
+
+const clientCashIn = (portefeuille, devise) =>
+  convertCurrency(portefeuille.compteEspeces, portefeuille.devise, devise);
+
+const CLIENT_OPEN_ORDER_STATUSES = ['En attente', 'En cours'];
+
+const clientReservedCash = (portefeuille, orders = []) => {
+  const montantReserve = orders
+    .filter(
+      (ordre) =>
+        ordre.portefeuilleId === portefeuille.id &&
+        ordre.sens === 'Achat' &&
+        CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut)
+    )
+    .reduce(
+      (somme, ordre) =>
+        somme + Number(ordre.qte || 0) * Number(ordre.prix || 0),
+      0
+    );
+
+  return Math.min(
+    Number(portefeuille.compteEspeces || 0),
+    Math.max(0, montantReserve)
+  );
+};
+
+const clientAvailableCash = (portefeuille, orders = []) =>
+  Math.max(
+    0,
+    Number(portefeuille.compteEspeces || 0) -
+      clientReservedCash(portefeuille, orders)
+  );
+
+const clientAvailableCashIn = (portefeuille, orders, devise) =>
+  convertCurrency(
+    clientAvailableCash(portefeuille, orders),
+    portefeuille.devise,
+    devise
+  );
+
+const clientReservedCashIn = (portefeuille, orders, devise) =>
+  convertCurrency(
+    clientReservedCash(portefeuille, orders),
+    portefeuille.devise,
+    devise
+  );
+
+const clientAssetClass = (instrument) =>
+  clientMarket(instrument)?.type === 'Obligation' ? 'Obligations' : 'Actions';
+
+const CLIENT_SECTEUR_INSTRUMENT = {
+  SONATEL: 'Télécoms',
+  'ECOBANK CI': 'Banques',
+  PALMCI: 'Agro-industrie',
+  'MTN NIGERIA': 'Télécoms',
+  'ZENITH BANK': 'Banques',
+  'GCB BANK': 'Banques',
+  'Obligation Trésor CI 6.5% 2029': 'Souverain',
+  'Obligation Trésor NGN 2028': 'Souverain',
+  'Obligation Corporate GSE 2027': 'Corporate',
+};
+
+const clientSector = (instrument) =>
+  CLIENT_SECTEUR_INSTRUMENT[instrument] || 'Autres';
+
+const CLIENT_HISTORY = [
+  { mois: 'Sept 25', valeur: 100 },
+  { mois: 'Oct', valeur: 101.8 },
+  { mois: 'Nov', valeur: 103.1 },
+  { mois: 'Déc', valeur: 102.4 },
+  { mois: 'Jan 26', valeur: 104.6 },
+  { mois: 'Fév', valeur: 105.2 },
+  { mois: 'Mar', valeur: 106.9 },
+  { mois: 'Avr', valeur: 108.1 },
+  { mois: 'Mai', valeur: 109.4 },
+  { mois: 'Juin', valeur: 108.8 },
+  { mois: 'Juil', valeur: 111.7 },
+  { mois: 'Août', valeur: 113.2 },
+];
+
 const orderBookDemo = (m) => {
   const step = Math.max(m.cours * 0.002, 0.01);
   const asks = [4, 3, 2, 1].map((i) => ({
@@ -532,23 +1316,33 @@ const executionsDemo = (m) => {
   });
 };
 
-const ASSET_MIX = [
-  { name: 'Actions', value: 42 },
-  { name: 'Obl. souveraines', value: 28 },
-  { name: 'Obl. privées', value: 18 },
-  { name: 'Liquidité', value: 12 },
-];
-const MARKET_MIX = [
-  { name: 'BRVM (XOF)', value: 54 },
-  { name: 'NGX (NGN)', value: 31 },
-  { name: 'GSE (GHS)', value: 15 },
-];
-const COUNTRY_MIX = [
-  { name: "Côte d'Ivoire", value: 39 },
-  { name: 'Nigeria', value: 31 },
-  { name: 'Sénégal', value: 15 },
-  { name: 'Ghana', value: 15 },
-];
+const ASSET_KEYS = ['Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité'];
+const totalEncoursReference = CLIENTS.reduce(
+  (somme, client) => somme + toRef(client.encours, client.devise),
+  0
+);
+const ASSET_MIX = ASSET_KEYS.map((name) => {
+  const valeur = CLIENTS.reduce(
+    (somme, client) =>
+      somme +
+      toRef(
+        (client.encours * Number(client.alloc[name] || 0)) / 100,
+        client.devise
+      ),
+    0
+  );
+  return {
+    name,
+    value:
+      totalEncoursReference > 0
+        ? Math.round((valeur / totalEncoursReference) * 100)
+        : 0,
+  };
+});
+const MARKET_MIX = aggregateEncoursBy(
+  (client) => `${client.marche} (${client.devise})`
+);
+const COUNTRY_MIX = aggregateEncoursBy((client) => client.pays);
 const SECTOR_MIX = [
   { name: 'Banques', value: 34 },
   { name: 'Télécoms', value: 20 },
@@ -584,6 +1378,17 @@ const HISTORY = Array.from({ length: 12 }).map((_, i) => ({
   brvm: 100 + i * 1.1 + Math.cos(i) * 2.5,
   ngxAsi: 100 + i * 0.6 + Math.sin(i * 1.3) * 3,
 }));
+const HISTORIQUE_TRIMESTRIEL_PORTEFEUILLES = [
+  { trimestre: 'T4 2024', fin: '2024-12-31' },
+  { trimestre: 'T1 2025', fin: '2025-03-31' },
+  { trimestre: 'T2 2025', fin: '2025-06-30' },
+  { trimestre: 'T3 2025', fin: '2025-09-30' },
+  { trimestre: 'T4 2025', fin: '2025-12-31' },
+  { trimestre: 'T1 2026', fin: '2026-03-31' },
+  { trimestre: 'T2 2026', fin: '2026-06-30' },
+  { trimestre: 'T3 2026', fin: '2026-09-30' },
+];
+
 const ORDERS = [
   {
     id: 'OR-2201',
@@ -1110,8 +1915,41 @@ const EXPOSURE = {
   c5: { 'GCB BANK': 11 },
   c6: { 'ZENITH BANK': 6, 'MTN NIGERIA': 9 },
 };
-const exposureOf = (clientId, instrument) =>
-  EXPOSURE[clientId]?.[instrument] ?? 0;
+const exposureOf = (clientId, instrument) => {
+  const expositionExplicite = EXPOSURE[clientId]?.[instrument];
+  if (expositionExplicite != null) return expositionExplicite;
+
+  const client = CLIENTS.find((c) => c.id === clientId);
+  const instrumentMarche = MARKETS_DATA.find((m) => m.nom === instrument);
+  if (
+    !client ||
+    !instrumentMarche ||
+    client.marche !== instrumentMarche.marche
+  ) {
+    return 0;
+  }
+
+  if (instrumentMarche.type === 'Action') {
+    const actionsMarche = MARKETS_DATA.filter(
+      (m) => m.type === 'Action' && m.marche === client.marche
+    );
+    const rang = actionsMarche.findIndex((m) => m.nom === instrument);
+    const poids =
+      actionsMarche.length === 1
+        ? [1]
+        : actionsMarche.length === 2
+        ? [0.58, 0.42]
+        : [0.45, 0.33, 0.22];
+    return rang >= 0
+      ? Number((Number(client.alloc.Actions || 0) * poids[rang]).toFixed(1))
+      : 0;
+  }
+
+  const expositionObligataire =
+    Number(client.alloc['Obl. souveraines'] || 0) +
+    Number(client.alloc['Obl. privées'] || 0);
+  return Number((expositionObligataire * 0.65).toFixed(1));
+};
 const ACTIONS_LIST = [
   'SONATEL',
   'ECOBANK CI',
@@ -1223,14 +2061,18 @@ const rentabiliteComment = (client) => {
   if (r < 0)
     return `La rentabilité nette de la période est négative (${r.toFixed(
       1
-    )}%) ; un point avec le client sur son horizon d'investissement est recommandé avant tout arbitrage supplémentaire.`;
+    )}%) ; un point avec le client sur son horizon d'investissement est recommandé avant tout arbitrage supplémentaire. Une plus ou moins value de (...${
+      client.devise
+    }) est noté sur la période`;
   if (r >= 3)
     return `La rentabilité nette de la période est solide (+${r.toFixed(
       1
     )}%) ; une prise partielle de plus-value vers des actifs moins volatils (obligations, liquidité) peut être envisagée pour sécuriser le gain.`;
   return `La rentabilité nette de la période est modérée (+${r.toFixed(
     1
-  )}%), en ligne avec le profil du portefeuille ; aucun arbitrage urgent lié au rendement n'est nécessaire à ce stade.`;
+  )}%), en ligne avec le profil du portefeuille ; aucun arbitrage urgent lié au rendement n'est nécessaire à ce stade. Une plus ou moins value de (...${
+    client.devise
+  }) est noté sur la période`;
 };
 const compareOp = (value, op, seuil) => {
   if (op === '<') return value < seuil;
@@ -1416,7 +2258,7 @@ function Pct({ v }) {
     </span>
   );
 }
-function Donut({ data, size = 150 }) {
+function Donut({ data, size = 150, onSliceClick }) {
   return (
     <ResponsiveContainer width="100%" height={size}>
       <PieChart>
@@ -1427,9 +2269,16 @@ function Donut({ data, size = 150 }) {
           innerRadius={size * 0.28}
           outerRadius={size * 0.46}
           paddingAngle={2}
+          onClick={(_, index) => onSliceClick?.(data[index])}
+          style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
         >
           {data.map((_, i) => (
-            <Cell key={i} fill={PALETTE[i % PALETTE.length]} stroke="none" />
+            <Cell
+              key={i}
+              fill={PALETTE[i % PALETTE.length]}
+              stroke="none"
+              style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
+            />
           ))}
         </Pie>
         <Tooltip
@@ -1453,7 +2302,10 @@ function Legende({ data }) {
           className="flex items-center justify-between gap-3 text-xs"
           style={F_BODY}
         >
-          <span className="flex items-center gap-2 min-w-0" style={{ color: C.ink }}>
+          <span
+            className="flex items-center gap-2 min-w-0"
+            style={{ color: C.ink }}
+          >
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
               style={{ background: PALETTE[i % PALETTE.length] }}
@@ -1658,6 +2510,59 @@ function HistoryLegend({ visibility, onToggle }) {
   );
 }
 
+function MarketTicker({ onInstrumentClick, onViewAll }) {
+  const tickerMarches = [...MARKETS_DATA].sort(
+    (a, b) => b.variation - a.variation
+  );
+
+  return (
+    <Card className="p-0 overflow-hidden">
+      <div className="flex items-center justify-between px-4 pt-3">
+        <Eyebrow>Vue des Marchés</Eyebrow>
+        <button
+          type="button"
+          onClick={onViewAll}
+          className="text-xs font-semibold"
+          style={{ color: C.navy }}
+        >
+          Voir tous les marchés →
+        </button>
+      </div>
+      <div
+        className="relative overflow-hidden py-3"
+        style={{ borderTop: `1px solid ${C.line}`, marginTop: 8 }}
+      >
+        <div
+          className="flex gap-3 w-max"
+          style={{ animation: 'ticker-scroll 28s linear infinite' }}
+        >
+          {[...tickerMarches, ...tickerMarches].map((m, i) => (
+            <button
+              key={`${m.nom}-${i}`}
+              type="button"
+              onClick={() => onInstrumentClick?.(m)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border shrink-0"
+              style={{ borderColor: C.line }}
+              title={`Ouvrir ${m.nom} · ${m.marche}`}
+            >
+              <span
+                className="text-sm font-semibold"
+                style={{ color: C.ink, ...F_BODY }}
+              >
+                {m.nom}
+              </span>
+              <span className="text-xs" style={{ ...F_MONO, color: C.sub }}>
+                {fmtPrice(m.cours)} {m.devise} · {m.marche}
+              </span>
+              <Pct v={m.variation} />
+            </button>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 /* -------------------------------- SCREENS -------------------------------- */
 function Accueil({
   go,
@@ -1667,7 +2572,7 @@ function Accueil({
   dark,
   onToggleDark,
 }) {
-  const [dim, setDim] = useState("Profil de risque");
+  const [dim, setDim] = useState('Profil de risque');
   const [genClient, setGenClient] = useState(CLIENTS[0].id);
   const [allReports, setAllReports] = useState(false);
   const [devBourse, setDevBourse] = useState({
@@ -1678,6 +2583,8 @@ function Accueil({
   const [selection, setSelection] = useState(null);
   const [seuilExpo, setSeuilExpo] = useState(0);
   const [rechercheClient, setRechercheClient] = useState('');
+  const [profilHistoriquePortefeuilles, setProfilHistoriquePortefeuilles] =
+    useState('Global');
   const [historyVisibility, setHistoryVisibility] = useState({
     encours: true,
     brvm: true,
@@ -1722,6 +2629,16 @@ function Accueil({
       (s, c) => s + convertCurrency(c.encours, c.devise, devise),
       0
     );
+    const variationEncoursPonderee =
+      encoursProfil > 0
+        ? portefeuilles.reduce(
+            (s, c) =>
+              s +
+              convertCurrency(c.encours, c.devise, devise) *
+                Number(c.perf || 0),
+            0
+          ) / encoursProfil
+        : 0;
     const rendementPondere =
       encoursProfil > 0
         ? portefeuilles.reduce(
@@ -1736,9 +2653,49 @@ function Accueil({
     return {
       profil,
       nombre: portefeuilles.length,
+      encoursProfil,
+      variationEncoursPonderee,
       rendementPondere,
     };
   });
+
+  const historiqueNombrePortefeuilles =
+    HISTORIQUE_TRIMESTRIEL_PORTEFEUILLES.map(({ trimestre, fin }) => {
+      const portefeuillesActifs = CLIENTS.filter(
+        (client) => !client.dateEntree || client.dateEntree <= fin
+      );
+      const ligne = { trimestre, Global: portefeuillesActifs.length };
+      profilsRisqueAccueil.forEach((profil) => {
+        ligne[profil] = portefeuillesActifs.filter(
+          (client) => client.profilRisque === profil
+        ).length;
+      });
+      return ligne;
+    });
+
+  const serieHistoriquePortefeuilles = historiqueNombrePortefeuilles.map(
+    (ligne) => ({
+      trimestre: ligne.trimestre,
+      nombre: ligne[profilHistoriquePortefeuilles] || 0,
+    })
+  );
+  const premierPointHistoriquePortefeuilles =
+    serieHistoriquePortefeuilles[0]?.nombre || 0;
+  const dernierPointHistoriquePortefeuilles =
+    serieHistoriquePortefeuilles[serieHistoriquePortefeuilles.length - 1]
+      ?.nombre || 0;
+  const croissanceHistoriquePortefeuilles =
+    dernierPointHistoriquePortefeuilles - premierPointHistoriquePortefeuilles;
+
+  const variationEncoursPondereeGlobale =
+    totalRef > 0
+      ? CLIENTS.reduce(
+          (s, c) =>
+            s +
+            convertCurrency(c.encours, c.devise, devise) * Number(c.perf || 0),
+          0
+        ) / totalRef
+      : 0;
 
   const rendementMoyenPondereGlobal =
     totalRef > 0
@@ -1760,60 +2717,17 @@ function Accueil({
     (somme, stat) => somme + stat.nombre,
     0
   );
-  const topMarches = [...MARKETS_DATA]
-    .sort((a, b) => Math.abs(b.variation) - Math.abs(a.variation))
-    .slice(0, 3);
-  const tickerMarches = [...MARKETS_DATA].sort(
-    (a, b) => b.variation - a.variation
-  );
 
   return (
     <div className="space-y-6">
       <Breadcrumb items={['Accueil']} />
 
-      <Card className="p-0 overflow-hidden">
-        <div className="flex items-center justify-between px-4 pt-3">
-          <Eyebrow>Vue des Marchés</Eyebrow>
-          <button
-            onClick={() => go('marches')}
-            className="text-xs font-semibold"
-            style={{ color: C.navy }}
-          >
-            Voir tous les marchés →
-          </button>
-        </div>
-        <div
-          className="relative overflow-hidden py-3"
-          style={{ borderTop: `1px solid ${C.line}`, marginTop: 8 }}
-        >
-          <div
-            className="flex gap-3 w-max"
-            style={{ animation: 'ticker-scroll 28s linear infinite' }}
-          >
-            {[...tickerMarches, ...tickerMarches].map((m, i) => (
-              <button
-                key={i}
-                onClick={() =>
-                  go('profondeur', { marche: m.marche, instrument: m.nom })
-                }
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border shrink-0"
-                style={{ borderColor: C.line }}
-              >
-                <span
-                  className="text-sm font-semibold"
-                  style={{ color: C.ink, ...F_BODY }}
-                >
-                  {m.nom}
-                </span>
-                <span className="text-xs" style={{ ...F_MONO, color: C.sub }}>
-                  {m.cours} {m.devise} · {m.marche}
-                </span>
-                <Pct v={m.variation} />
-              </button>
-            ))}
-          </div>
-        </div>
-      </Card>
+      <MarketTicker
+        onViewAll={() => go('marches')}
+        onInstrumentClick={(m) =>
+          go('profondeur', { marche: m.marche, instrument: m.nom })
+        }
+      />
 
       <div className="flex items-center justify-end gap-3 flex-wrap">
         <div className="flex items-center gap-2">
@@ -1843,18 +2757,51 @@ function Accueil({
       <div className="grid grid-cols-4 gap-4 items-stretch">
         <Card className="p-4">
           <div
-            className="text-xs font-medium mb-1"
+            className="text-xs font-medium"
             style={{ color: C.sub, ...F_BODY }}
           >
             Encours total (éq. {devise})
           </div>
-          <div
-            className="text-2xl font-bold mb-1"
-            style={{ ...F_DISPLAY, color: C.ink }}
-          >
-            {fmt(Math.round(totalRef))} {devise}
+
+          <div className="flex items-end justify-between gap-2 mt-1">
+            <div
+              className="text-2xl font-bold"
+              style={{ ...F_DISPLAY, color: C.ink }}
+            >
+              {fmt(Math.round(totalRef))} {devise}
+            </div>
+            <span className="text-[11px]" style={{ color: C.sub, ...F_BODY }}>
+              Global
+            </span>
           </div>
-          <Pct v={2.1} />
+
+          <div className="mt-1">
+            <Pct v={variationEncoursPondereeGlobale} />
+          </div>
+
+          <div
+            className="mt-3 pt-3 space-y-1.5"
+            style={{ borderTop: `1px solid ${C.line}` }}
+          >
+            {statistiquesProfilsAccueil.map((stat) => (
+              <div
+                key={stat.profil}
+                className="flex items-start justify-between gap-2 text-xs"
+                style={F_BODY}
+              >
+                <span style={{ color: C.sub }}>{stat.profil}</span>
+                <span className="flex flex-col items-end min-w-0">
+                  <span
+                    className="text-[10px] font-semibold whitespace-nowrap"
+                    style={{ color: C.ink, ...F_MONO }}
+                  >
+                    {fmt(Math.round(stat.encoursProfil))} {devise}
+                  </span>
+                  <Pct v={stat.variationEncoursPonderee} />
+                </span>
+              </div>
+            ))}
+          </div>
         </Card>
 
         <Card className="p-4">
@@ -1897,8 +2844,84 @@ function Accueil({
             ))}
           </div>
 
+          <div
+            className="mt-3 pt-3"
+            style={{ borderTop: `1px solid ${C.line}` }}
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span
+                className="text-[10px] font-semibold"
+                style={{ color: C.sub, ...F_BODY }}
+              >
+                Historique trimestriel · 2 ans
+              </span>
+              <select
+                value={profilHistoriquePortefeuilles}
+                onChange={(e) =>
+                  setProfilHistoriquePortefeuilles(e.target.value)
+                }
+                className="max-w-[110px] px-1.5 py-1 rounded-lg border text-[9px]"
+                style={{ borderColor: C.line, color: C.ink, ...F_BODY }}
+                aria-label="Profil affiché dans l'historique des portefeuilles"
+              >
+                <option>Global</option>
+                {profilsRisqueAccueil.map((profil) => (
+                  <option key={profil}>{profil}</option>
+                ))}
+              </select>
+            </div>
+
+            <ResponsiveContainer width="100%" height={86}>
+              <LineChart
+                data={serieHistoriquePortefeuilles}
+                margin={{ top: 5, right: 4, left: 4, bottom: 0 }}
+              >
+                <XAxis
+                  dataKey="trimestre"
+                  axisLine={false}
+                  tickLine={false}
+                  interval={1}
+                  tick={{ fontSize: 8, fill: C.sub }}
+                />
+                <YAxis hide domain={[0, 'dataMax + 1']} />
+                <Tooltip
+                  formatter={(value) => [
+                    `${value} portefeuille(s)`,
+                    profilHistoriquePortefeuilles,
+                  ]}
+                  contentStyle={{
+                    borderRadius: 9,
+                    border: `1px solid ${C.line}`,
+                    fontSize: 10,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="nombre"
+                  stroke={C.indigo}
+                  strokeWidth={2.2}
+                  dot={{ r: 1.8 }}
+                  activeDot={{ r: 3 }}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+
+            <div
+              className="flex items-center justify-between text-[9px] mt-0.5"
+              style={{ color: C.sub, ...F_BODY }}
+            >
+              <span>{profilHistoriquePortefeuilles}</span>
+              <span style={F_MONO}>
+                {dernierPointHistoriquePortefeuilles} actuellement ·{' '}
+                {croissanceHistoriquePortefeuilles >= 0 ? '+' : ''}
+                {croissanceHistoriquePortefeuilles} sur 2 ans
+              </span>
+            </div>
+          </div>
+
           <div className="text-[10px] mt-2" style={{ color: C.sub, ...F_BODY }}>
-            3 marchés · 3 devises
+            3 marchés · 3 devises · 5 profils de risque
           </div>
         </Card>
 
@@ -2230,7 +3253,8 @@ function Accueil({
                                   className="text-center text-xs py-4"
                                   style={{ color: C.sub }}
                                 >
-                                  Aucun portefeuille ne correspond à ces critères.
+                                  Aucun portefeuille ne correspond à ces
+                                  critères.
                                 </td>
                               </tr>
                             )}
@@ -2667,16 +3691,16 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             className="text-xs mt-3 p-3 rounded-xl"
             style={{ background: '#FBF7EE', color: C.ink }}
           >
-            Commentaire : la performance de la période reflète principalement le
-            renforcement de la ligne Télécoms et l'encaissement d'un coupon
-            obligataire ; l'écart d'allocation Actions reste au-dessus de la
-            cible et justifie un arbitrage.
+            Commentaire de Gestion: la performance de la période reflète
+            principalement le renforcement de la ligne Télécoms et
+            l'encaissement d'un coupon obligataire ; l'écart d'allocation
+            Actions reste au-dessus de la cible et justifie un arbitrage.
           </div>
           <div
             className="text-xs mt-2 p-3 rounded-xl"
             style={{ background: '#EFF3FB', color: C.ink }}
           >
-            <b>Proposition (rentabilité) :</b> {rentabiliteComment(client)}
+            <b>Commentaire (rentabilité) :</b> {rentabiliteComment(client)}
           </div>
         </Card>
       )}
@@ -4113,15 +5137,29 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
   );
 }
 
-function ProfondeurMarche({ ctx, go }) {
+function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
   const m =
     MARKETS_DATA.find((x) => x.nom === ctx?.instrument) || MARKETS_DATA[0];
   const { asks, bids } = orderBookDemo(m);
   const execs = executionsDemo(m);
+  const espaceClient = mode === 'client';
+  const portefeuillesCompatibles = espaceClient
+    ? CLIENT_GESTION_LIBRE.portefeuilles.filter(
+        (portefeuille) => portefeuille.marche === m.marche
+      )
+    : [];
+
   return (
     <div className="space-y-4">
-      <Breadcrumb items={['Accueil', 'Marchés', m.nom]} />
-      <div className="flex items-center justify-between">
+      {espaceClient ? (
+        <ClientBreadcrumb
+          items={['Espace Client', 'Marchés & investir', 'Profondeur', m.nom]}
+        />
+      ) : (
+        <Breadcrumb items={['Accueil', 'Marchés', m.nom]} />
+      )}
+
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2
             className="text-xl font-bold"
@@ -4129,21 +5167,105 @@ function ProfondeurMarche({ ctx, go }) {
           >
             {m.nom}
           </h2>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge tone="navy">{m.marche}</Badge>
             <span className="text-sm" style={F_MONO}>
-              {m.cours} {m.devise}
+              {fmtPrice(m.cours)} {m.devise}
             </span>
             <Pct v={m.variation} />
+            {espaceClient && portefeuillesCompatibles.length > 0 && (
+              <Badge tone="gold">
+                {portefeuillesCompatibles.length} SGI compatibles
+              </Badge>
+            )}
           </div>
         </div>
-        <Btn
-          tone="ghost"
-          onClick={() => go('carnet', { marche: m.marche, instrument: m.nom })}
-        >
-          Voir le carnet d'ordres interne
-        </Btn>
+
+        {espaceClient ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <Btn tone="ghost" onClick={() => goClient?.('client-invest')}>
+              Retour aux marchés
+            </Btn>
+            <Btn
+              onClick={() =>
+                goClient?.('client-invest', {
+                  instrument: m.nom,
+                  marche: m.marche,
+                })
+              }
+            >
+              Préparer un ordre
+            </Btn>
+          </div>
+        ) : (
+          <Btn
+            tone="ghost"
+            onClick={() =>
+              go('carnet', { marche: m.marche, instrument: m.nom })
+            }
+          >
+            Voir le carnet d'ordres interne
+          </Btn>
+        )}
       </div>
+
+      {espaceClient && (
+        <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Marché
+              </div>
+              <div className="text-sm font-semibold mt-1">{m.marche}</div>
+            </div>
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                SGI compatible
+              </div>
+              <div className="text-sm font-semibold mt-1">
+                {portefeuillesCompatibles.length > 0
+                  ? portefeuillesCompatibles.map((pf) => pf.sgi).join(' · ')
+                  : 'Aucune SGI compatible'}
+              </div>
+            </div>
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Portefeuille
+              </div>
+              <div className="text-sm font-semibold mt-1">
+                {portefeuillesCompatibles.length > 0
+                  ? portefeuillesCompatibles.map((pf) => pf.nom).join(' · ')
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Devise de négociation
+              </div>
+              <div className="text-sm font-semibold mt-1" style={F_MONO}>
+                {m.devise}
+              </div>
+            </div>
+          </div>
+          <div className="text-[10px] mt-3" style={{ color: C.sub }}>
+            La profondeur ci-dessous est informative. Le passage d'ordre reste
+            soumis à la liquidité disponible, aux titres disponibles à la vente
+            et aux contrôles de la SGI sélectionnée.
+          </div>
+        </Card>
+      )}
 
       <Card className="p-5">
         <Eyebrow>Profondeur du marché — ordres d'achat et de vente</Eyebrow>
@@ -5139,6 +6261,7 @@ function AllocCriteres({ initialSens, initialInstrument }) {
   const [seuil, setSeuil] = useState(10);
   const [ordreType, setOrdreType] = useState('Ordre au marché');
   const [montantOrdre, setMontantOrdre] = useState(1_000_000);
+  const [pourcentageOrdre, setPourcentageOrdre] = useState(10);
   const [applique, setApplique] = useState(false);
 
   const results = CLIENTS.filter((c) => {
@@ -5410,14 +6533,15 @@ function AllocCriteres({ initialSens, initialInstrument }) {
               className="text-xs font-semibold block mb-1"
               style={{ color: C.sub }}
             >
-              Montant de l'ordre par portefeuille
+              Pourcentage de liquidité de l'ordre par portefeuille
             </label>
             <input
               type="number"
               min="0"
-              step="10000"
-              value={montantOrdre}
-              onChange={(e) => setMontantOrdre(Number(e.target.value))}
+              step="1"
+              max="100"
+              value={pourcentageOrdre}
+              onChange={(e) => setPourcentageOrdre(Number(e.target.value))}
               className="px-3 py-2 rounded-xl border text-sm"
               style={{ borderColor: C.line, ...F_MONO }}
             />
@@ -6343,7 +7467,6 @@ function Reequilibrage({ initial, devise = 'XOF' }) {
   );
 }
 
-
 function MoneyManagement({ go, devise = 'XOF' }) {
   const [filtreClient, setFiltreClient] = useState('');
   const [filtreMarche, setFiltreMarche] = useState('Tous');
@@ -6351,6 +7474,7 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   const [filtreProfil, setFiltreProfil] = useState('Tous');
   const [filtreStatut, setFiltreStatut] = useState('Tous');
   const [dimensionLiquidite, setDimensionLiquidite] = useState('Devise');
+  const [triFluxRevenus, setTriFluxRevenus] = useState('desc');
 
   const SEUIL_ECART_LIQUIDITE = 3;
   const dateReference = new Date(2026, 7, 7);
@@ -6372,7 +7496,8 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       .split(',')
       .map((nom) => nom.trim())
       .filter(Boolean);
-    const montantParPortefeuille = noms.length > 0 ? flux.montant / noms.length : 0;
+    const montantParPortefeuille =
+      noms.length > 0 ? flux.montant / noms.length : 0;
 
     return noms
       .map((nom) => CLIENTS.find((client) => client.nom === nom))
@@ -6480,9 +7605,14 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   const marches = ['Tous', ...new Set(CLIENTS.map((client) => client.marche))];
   const types = [
     'Tous',
-    ...new Set(CLIENTS.map((client) => PROFILE_TYPE_LABEL[client.type] || client.type)),
+    ...new Set(
+      CLIENTS.map((client) => PROFILE_TYPE_LABEL[client.type] || client.type)
+    ),
   ];
-  const profils = ['Tous', ...new Set(CLIENTS.map((client) => client.profilRisque))];
+  const profils = [
+    'Tous',
+    ...new Set(CLIENTS.map((client) => client.profilRisque)),
+  ];
   const statuts = ['Tous', 'Critique', 'Sous cible', 'Conforme', 'Surplus'];
 
   const lignesFiltrees = synthesePortefeuilles.filter(({ client, statut }) => {
@@ -6496,22 +7626,83 @@ function MoneyManagement({ go, devise = 'XOF' }) {
     );
   });
 
-  const clientsFiltresIds = new Set(lignesFiltrees.map(({ client }) => client.id));
-  const fluxFiltres = flux30J.filter((flux) => clientsFiltresIds.has(flux.clientId));
+  const clientsFiltresIds = new Set(
+    lignesFiltrees.map(({ client }) => client.id)
+  );
+  const fluxFiltres = flux30J.filter((flux) =>
+    clientsFiltresIds.has(flux.clientId)
+  );
+
+  const fluxRevenusFiltres = fluxFiltres.filter((flux) =>
+    ['Dividende', 'Coupon'].includes(flux.nature)
+  );
+
+  const pointsRevenusPortefeuilles = fluxRevenusFiltres.map((flux) => ({
+    x: Math.max(0, Math.round((flux.dateObj - dateReference) / 86_400_000)),
+    y: flux.client,
+    titre: flux.libelle,
+    type: flux.nature,
+    montant: flux.montant,
+    devise: flux.devise,
+    echeance: flux.date,
+  }));
+
+  const revenusGenerauxParEvenement = {};
+  fluxRevenusFiltres.forEach((flux) => {
+    const cle = `${flux.nature}-${flux.libelle}-${flux.date}`;
+    if (!revenusGenerauxParEvenement[cle]) {
+      revenusGenerauxParEvenement[cle] = {
+        x: Math.max(0, Math.round((flux.dateObj - dateReference) / 86_400_000)),
+        y: 'Général',
+        titre: flux.libelle,
+        type: flux.nature,
+        montant: 0,
+        devise,
+        echeance: flux.date,
+      };
+    }
+    revenusGenerauxParEvenement[cle].montant += convertCurrency(
+      flux.montant,
+      flux.devise,
+      devise
+    );
+  });
+
+  const pointsRevenus = [
+    ...pointsRevenusPortefeuilles,
+    ...Object.values(revenusGenerauxParEvenement),
+  ];
+  const dividendePointsMoney = pointsRevenus.filter(
+    (point) => point.type === 'Dividende'
+  );
+  const couponPointsMoney = pointsRevenus.filter(
+    (point) => point.type === 'Coupon'
+  );
+
+  const totalRevenus30J = fluxRevenusFiltres.reduce(
+    (somme, flux) => somme + convertCurrency(flux.montant, flux.devise, devise),
+    0
+  );
+  const revenusParPortefeuille = fluxRevenusFiltres.reduce((acc, flux) => {
+    acc[flux.client] =
+      (acc[flux.client] || 0) +
+      convertCurrency(flux.montant, flux.devise, devise);
+    return acc;
+  }, {});
+  const lignesRevenusTriees = Object.entries(revenusParPortefeuille).sort(
+    (a, b) => (triFluxRevenus === 'desc' ? b[1] - a[1] : a[1] - b[1])
+  );
 
   const totalEncours = lignesFiltrees.reduce(
     (somme, ligne) =>
-      somme + convertCurrency(ligne.client.encours, ligne.client.devise, devise),
+      somme +
+      convertCurrency(ligne.client.encours, ligne.client.devise, devise),
     0
   );
   const totalLiquiditeActuelle = lignesFiltrees.reduce(
     (somme, ligne) =>
       somme +
-      convertCurrency(
-        ligne.liquiditeActuelle,
-        ligne.client.devise,
-        devise
-      ),
+      convertCurrency(ligne.liquiditeActuelle, ligne.client.devise, devise),
     0
   );
   const totalLiquiditePrevisionnelle = lignesFiltrees.reduce(
@@ -6587,7 +7778,10 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       );
       map[cle] = (map[cle] || 0) + montant;
     });
-    const total = Object.values(map).reduce((somme, montant) => somme + montant, 0);
+    const total = Object.values(map).reduce(
+      (somme, montant) => somme + montant,
+      0
+    );
     return Object.entries(map)
       .map(([name, montant]) => ({
         name,
@@ -6611,14 +7805,21 @@ function MoneyManagement({ go, devise = 'XOF' }) {
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
             Money Management — gestion consolidée de la liquidité
           </h2>
-          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub, ...F_BODY }}>
-            Pilotage des disponibilités de tous les portefeuilles, suivi des écarts
-            à la cible, anticipation des encaissements et règlements, et identification
-            des excédents ou besoins de trésorerie. Les montants consolidés sont
-            convertis dans la devise principale choisie sur l'accueil.
+          <div
+            className="text-xs mt-1 max-w-4xl"
+            style={{ color: C.sub, ...F_BODY }}
+          >
+            Pilotage des disponibilités de tous les portefeuilles, suivi des
+            écarts à la cible, anticipation des encaissements et règlements, et
+            identification des excédents ou besoins de trésorerie. Les montants
+            consolidés sont convertis dans la devise principale choisie sur
+            l'accueil.
           </div>
         </div>
         <Badge tone="navy">Devise principale : {devise}</Badge>
@@ -6627,10 +7828,16 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       <Card className="p-4" style={{ borderColor: C.navy }}>
         <div className="grid grid-cols-5 gap-3">
           <div>
-            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
               Client
             </label>
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border" style={{ borderColor: C.line }}>
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
               <Search size={14} color={C.sub} />
               <input
                 value={filtreClient}
@@ -6642,47 +7849,95 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             </div>
           </div>
           <div>
-            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
               Marché
             </label>
-            <select value={filtreMarche} onChange={(e) => setFiltreMarche(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
-              {marches.map((value) => <option key={value}>{value}</option>)}
+            <select
+              value={filtreMarche}
+              onChange={(e) => setFiltreMarche(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {marches.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
               Type de portefeuille
             </label>
-            <select value={filtreType} onChange={(e) => setFiltreType(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
-              {types.map((value) => <option key={value}>{value}</option>)}
+            <select
+              value={filtreType}
+              onChange={(e) => setFiltreType(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {types.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
               Profil de risque
             </label>
-            <select value={filtreProfil} onChange={(e) => setFiltreProfil(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
-              {profils.map((value) => <option key={value}>{value}</option>)}
+            <select
+              value={filtreProfil}
+              onChange={(e) => setFiltreProfil(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {profils.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
               Statut liquidité
             </label>
-            <select value={filtreStatut} onChange={(e) => setFiltreStatut(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line }}>
-              {statuts.map((value) => <option key={value}>{value}</option>)}
+            <select
+              value={filtreStatut}
+              onChange={(e) => setFiltreStatut(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {statuts.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
             </select>
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
           <div className="text-[11px]" style={{ color: C.sub }}>
-            Les mêmes filtres pilotent les positions, les flux, les répartitions et les actions de liquidité.
+            Les mêmes filtres pilotent les positions, les flux, les répartitions
+            et les actions de liquidité.
           </div>
           <div className="flex items-center gap-2">
-            <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>{filtresActifs} filtre(s) actif(s)</Badge>
+            <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>
+              {filtresActifs} filtre(s) actif(s)
+            </Badge>
             <Badge tone="gold">{lignesFiltrees.length} portefeuille(s)</Badge>
             {filtresActifs > 0 && (
-              <button type="button" onClick={reinitialiserFiltres} className="px-3 py-1.5 rounded-xl border text-xs font-semibold" style={{ borderColor: C.line, color: C.navy }}>
+              <button
+                type="button"
+                onClick={reinitialiserFiltres}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                style={{ borderColor: C.line, color: C.navy }}
+              >
                 Réinitialiser
               </button>
             )}
@@ -6695,7 +7950,8 @@ function MoneyManagement({ go, devise = 'XOF' }) {
           <div>
             <Eyebrow>1. Synthèse consolidée de la liquidité</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
-              Vue immédiate de la capacité de trésorerie actuelle et prévisionnelle des portefeuilles filtrés.
+              Vue immédiate de la capacité de trésorerie actuelle et
+              prévisionnelle des portefeuilles filtrés.
             </div>
           </div>
           <Badge tone={portefeuillesSousCible > 0 ? 'coral' : 'teal'}>
@@ -6704,29 +7960,71 @@ function MoneyManagement({ go, devise = 'XOF' }) {
         </div>
         <div className="grid grid-cols-5 gap-3">
           <Card className="p-4">
-            <div className="text-xs" style={{ color: C.sub }}>Liquidité disponible</div>
-            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>{fmt(Math.round(totalLiquiditeActuelle))} {devise}</div>
-            <div className="text-[11px] mt-1" style={{ color: C.sub }}>{ratioLiquiditeGlobal.toFixed(1)}% de l'encours</div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité disponible
+            </div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+              {fmt(Math.round(totalLiquiditeActuelle))} {devise}
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              {ratioLiquiditeGlobal.toFixed(1)}% de l'encours
+            </div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs" style={{ color: C.sub }}>Encaissements à 30 j</div>
-            <div className="text-xl font-bold mt-1" style={{ ...F_DISPLAY, color: C.teal }}>+{fmt(Math.round(totalEntrees30J))} {devise}</div>
-            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Dividendes, coupons et flux entrants</div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Encaissements à 30 j
+            </div>
+            <div
+              className="text-xl font-bold mt-1"
+              style={{ ...F_DISPLAY, color: C.teal }}
+            >
+              +{fmt(Math.round(totalEntrees30J))} {devise}
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Dividendes, coupons et flux entrants
+            </div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs" style={{ color: C.sub }}>Décaissements à 30 j</div>
-            <div className="text-xl font-bold mt-1" style={{ ...F_DISPLAY, color: C.coral }}>-{fmt(Math.round(totalSorties30J))} {devise}</div>
-            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Ordres ouverts et règlements attendus</div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Décaissements à 30 j
+            </div>
+            <div
+              className="text-xl font-bold mt-1"
+              style={{ ...F_DISPLAY, color: C.coral }}
+            >
+              -{fmt(Math.round(totalSorties30J))} {devise}
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Ordres ouverts et règlements attendus
+            </div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs" style={{ color: C.sub }}>Liquidité prévisionnelle</div>
-            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>{fmt(Math.round(totalLiquiditePrevisionnelle))} {devise}</div>
-            <div className="text-[11px] mt-1" style={{ color: C.sub }}>{ratioLiquiditePrevisionnel.toFixed(1)}% de l'encours</div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité prévisionnelle
+            </div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+              {fmt(Math.round(totalLiquiditePrevisionnelle))} {devise}
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              {ratioLiquiditePrevisionnel.toFixed(1)}% de l'encours
+            </div>
           </Card>
           <Card className="p-4">
-            <div className="text-xs" style={{ color: C.sub }}>Portefeuilles à surveiller</div>
-            <div className="text-2xl font-bold mt-1" style={{ ...F_DISPLAY, color: portefeuillesSousCible > 0 ? C.coral : C.teal }}>{portefeuillesSousCible}</div>
-            <div className="text-[11px] mt-1" style={{ color: C.sub }}>Sous la cible après flux à 30 jours</div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Portefeuilles à surveiller
+            </div>
+            <div
+              className="text-2xl font-bold mt-1"
+              style={{
+                ...F_DISPLAY,
+                color: portefeuillesSousCible > 0 ? C.coral : C.teal,
+              }}
+            >
+              {portefeuillesSousCible}
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Sous la cible après flux à 30 jours
+            </div>
           </Card>
         </div>
       </section>
@@ -6735,7 +8033,8 @@ function MoneyManagement({ go, devise = 'XOF' }) {
         <div>
           <Eyebrow>2. Position de liquidité par portefeuille</Eyebrow>
           <div className="text-xs" style={{ color: C.sub }}>
-            Contrôle de la poche espèces actuelle, de la cible et de la position prévisionnelle après les flux connus.
+            Contrôle de la poche espèces actuelle, de la cible et de la position
+            prévisionnelle après les flux connus.
           </div>
         </div>
         <Card className="p-0 overflow-hidden">
@@ -6759,38 +8058,103 @@ function MoneyManagement({ go, devise = 'XOF' }) {
               </thead>
               <tbody>
                 {lignesFiltrees.length === 0 && (
-                  <tr><td colSpan={12} className="text-center py-8 text-sm" style={{ color: C.sub }}>Aucun portefeuille ne correspond aux critères sélectionnés.</td></tr>
+                  <tr>
+                    <td
+                      colSpan={12}
+                      className="text-center py-8 text-sm"
+                      style={{ color: C.sub }}
+                    >
+                      Aucun portefeuille ne correspond aux critères
+                      sélectionnés.
+                    </td>
+                  </tr>
                 )}
                 {lignesFiltrees.map((ligne, index) => {
                   const client = ligne.client;
                   return (
-                    <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
-                      <Td className="font-semibold whitespace-nowrap">{client.nom}</Td>
-                      <Td><Badge tone="navy">{client.marche} · {client.devise}</Badge></Td>
-                      <Td>
-                        <div className="text-xs font-semibold">{PROFILE_TYPE_LABEL[client.type] || client.type}</div>
-                        <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>{client.profilRisque}</div>
+                    <tr
+                      key={client.id}
+                      style={{
+                        borderTop: `1px solid ${C.line}`,
+                        background: index % 2 ? '#FCFCFD' : '#fff',
+                      }}
+                    >
+                      <Td className="font-semibold whitespace-nowrap">
+                        {client.nom}
                       </Td>
-                      <Td mono className="whitespace-nowrap">{fmt(client.encours)} {client.devise}</Td>
+                      <Td>
+                        <Badge tone="navy">
+                          {client.marche} · {client.devise}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <div className="text-xs font-semibold">
+                          {PROFILE_TYPE_LABEL[client.type] || client.type}
+                        </div>
+                        <div
+                          className="text-[10px] mt-0.5"
+                          style={{ color: C.sub }}
+                        >
+                          {client.profilRisque}
+                        </div>
+                      </Td>
                       <Td mono className="whitespace-nowrap">
-                        <div>{fmt(Math.round(ligne.liquiditeActuelle))} {client.devise}</div>
-                        <div className="text-[10px]" style={{ color: C.sub }}>{ligne.ratioActuel.toFixed(1)}%</div>
+                        {fmt(client.encours)} {client.devise}
+                      </Td>
+                      <Td mono className="whitespace-nowrap">
+                        <div>
+                          {fmt(Math.round(ligne.liquiditeActuelle))}{' '}
+                          {client.devise}
+                        </div>
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          {ligne.ratioActuel.toFixed(1)}%
+                        </div>
                       </Td>
                       <Td mono>{ligne.ratioCible.toFixed(1)}%</Td>
-                      <Td mono className="whitespace-nowrap"><span style={{ color: C.teal }}>+{fmt(Math.round(ligne.encaissements30J))} {client.devise}</span></Td>
-                      <Td mono className="whitespace-nowrap"><span style={{ color: C.coral }}>-{fmt(Math.round(ligne.decaissements30J))} {client.devise}</span></Td>
                       <Td mono className="whitespace-nowrap">
-                        <div className="font-semibold">{fmt(Math.round(ligne.liquiditePrevisionnelle))} {client.devise}</div>
-                        <div className="text-[10px]" style={{ color: C.sub }}>{ligne.ratioPrevisionnel.toFixed(1)}%</div>
-                      </Td>
-                      <Td mono>
-                        <span style={{ color: ligne.ecartPts < 0 ? C.coral : C.teal, fontWeight: 700 }}>
-                          {ligne.ecartPts > 0 ? '+' : ''}{ligne.ecartPts.toFixed(1)} pts
+                        <span style={{ color: C.teal }}>
+                          +{fmt(Math.round(ligne.encaissements30J))}{' '}
+                          {client.devise}
                         </span>
                       </Td>
-                      <Td><Badge tone={toneStatut(ligne.statut)}>{ligne.statut}</Badge></Td>
+                      <Td mono className="whitespace-nowrap">
+                        <span style={{ color: C.coral }}>
+                          -{fmt(Math.round(ligne.decaissements30J))}{' '}
+                          {client.devise}
+                        </span>
+                      </Td>
+                      <Td mono className="whitespace-nowrap">
+                        <div className="font-semibold">
+                          {fmt(Math.round(ligne.liquiditePrevisionnelle))}{' '}
+                          {client.devise}
+                        </div>
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          {ligne.ratioPrevisionnel.toFixed(1)}%
+                        </div>
+                      </Td>
+                      <Td mono>
+                        <span
+                          style={{
+                            color: ligne.ecartPts < 0 ? C.coral : C.teal,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {ligne.ecartPts > 0 ? '+' : ''}
+                          {ligne.ecartPts.toFixed(1)} pts
+                        </span>
+                      </Td>
                       <Td>
-                        <button type="button" onClick={() => go('client', { clientId: client.id })} className="text-xs font-semibold whitespace-nowrap" style={{ color: C.navy }}>
+                        <Badge tone={toneStatut(ligne.statut)}>
+                          {ligne.statut}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <button
+                          type="button"
+                          onClick={() => go('client', { clientId: client.id })}
+                          className="text-xs font-semibold whitespace-nowrap"
+                          style={{ color: C.navy }}
+                        >
                           Ouvrir →
                         </button>
                       </Td>
@@ -6808,12 +8172,17 @@ function MoneyManagement({ go, devise = 'XOF' }) {
           <div>
             <Eyebrow>3. Échéancier des flux de trésorerie — 30 jours</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
-              Anticipation des dividendes, coupons et règlements d'ordres susceptibles de modifier la liquidité disponible.
+              Anticipation des dividendes, coupons et règlements d'ordres
+              susceptibles de modifier la liquidité disponible.
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge tone="teal">Entrées : {fmt(Math.round(totalEntrees30J))} {devise}</Badge>
-            <Badge tone="coral">Sorties : {fmt(Math.round(totalSorties30J))} {devise}</Badge>
+            <Badge tone="teal">
+              Entrées : {fmt(Math.round(totalEntrees30J))} {devise}
+            </Badge>
+            <Badge tone="coral">
+              Sorties : {fmt(Math.round(totalSorties30J))} {devise}
+            </Badge>
           </div>
         </div>
         <Card className="p-0 overflow-hidden">
@@ -6832,23 +8201,232 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             </thead>
             <tbody>
               {fluxFiltres.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-7 text-sm" style={{ color: C.sub }}>Aucun flux connu sur les 30 prochains jours pour cette sélection.</td></tr>
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="text-center py-7 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucun flux connu sur les 30 prochains jours pour cette
+                    sélection.
+                  </td>
+                </tr>
               )}
               {fluxFiltres.map((flux, index) => (
-                <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+                <tr
+                  key={flux.id}
+                  style={{
+                    borderTop: `1px solid ${C.line}`,
+                    background: index % 2 ? '#FCFCFD' : '#fff',
+                  }}
+                >
                   <Td mono>{flux.date}</Td>
-                  <Td className="font-semibold whitespace-nowrap">{flux.client}</Td>
+                  <Td className="font-semibold whitespace-nowrap">
+                    {flux.client}
+                  </Td>
                   <Td>{flux.nature}</Td>
                   <Td className="whitespace-nowrap">{flux.libelle}</Td>
-                  <Td><Badge tone={flux.sens === 'Entrée' ? 'teal' : 'coral'}>{flux.sens}</Badge></Td>
-                  <Td mono className="whitespace-nowrap">{fmt(Math.round(flux.montant))} {flux.devise}</Td>
-                  <Td mono className="whitespace-nowrap">{fmt(Math.round(convertCurrency(flux.montant, flux.devise, devise)))} {devise}</Td>
-                  <Td><Badge tone={flux.statut === 'Prévu' ? 'slate' : 'gold'}>{flux.statut}</Badge></Td>
+                  <Td>
+                    <Badge tone={flux.sens === 'Entrée' ? 'teal' : 'coral'}>
+                      {flux.sens}
+                    </Badge>
+                  </Td>
+                  <Td mono className="whitespace-nowrap">
+                    {fmt(Math.round(flux.montant))} {flux.devise}
+                  </Td>
+                  <Td mono className="whitespace-nowrap">
+                    {fmt(
+                      Math.round(
+                        convertCurrency(flux.montant, flux.devise, devise)
+                      )
+                    )}{' '}
+                    {devise}
+                  </Td>
+                  <Td>
+                    <Badge tone={flux.statut === 'Prévu' ? 'slate' : 'gold'}>
+                      {flux.statut}
+                    </Badge>
+                  </Td>
                 </tr>
               ))}
             </tbody>
           </table>
         </Card>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="p-5">
+            <Eyebrow>
+              Tombées de revenus financiers — coupons &amp; dividendes
+            </Eyebrow>
+            <div
+              className="flex items-center gap-4 text-xs mb-2 flex-wrap"
+              style={{ color: C.sub }}
+            >
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ background: C.teal }}
+                />
+                Dividende
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ background: C.gold }}
+                />
+                Coupon
+              </span>
+              <span>Jours à venir dans l'horizon de 30 jours</span>
+            </div>
+
+            {pointsRevenus.length === 0 ? (
+              <div
+                className="h-[280px] flex items-center justify-center text-sm"
+                style={{ color: C.sub }}
+              >
+                Aucune tombée de coupon ou dividende pour cette sélection.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <ScatterChart
+                  margin={{ top: 10, right: 20, bottom: 10, left: 10 }}
+                >
+                  <CartesianGrid stroke={C.line} />
+                  <XAxis
+                    type="number"
+                    dataKey="x"
+                    name="Échéance"
+                    unit=" j"
+                    domain={[0, 30]}
+                    tick={{ fontSize: 11, fill: C.sub }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="y"
+                    name="Portefeuille"
+                    tick={{ fontSize: 11, fill: C.sub }}
+                    width={140}
+                  />
+                  <ZAxis range={[90, 90]} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload || !payload.length) return null;
+                      const point = payload[0].payload;
+                      return (
+                        <div
+                          style={{
+                            background: '#fff',
+                            border: `1px solid ${C.line}`,
+                            borderRadius: 10,
+                            padding: 8,
+                            fontSize: 12,
+                          }}
+                        >
+                          <div className="font-semibold">{point.titre}</div>
+                          <div>
+                            {point.type} · {fmt(Math.round(point.montant))}{' '}
+                            {point.devise}
+                          </div>
+                          <div style={{ color: C.sub }}>{point.echeance}</div>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter data={dividendePointsMoney} fill={C.teal} />
+                  <Scatter data={couponPointsMoney} fill={C.gold} />
+                </ScatterChart>
+              </ResponsiveContainer>
+            )}
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <Eyebrow>
+                  Revenus financiers attendus — synthèse 30 jours
+                </Eyebrow>
+                <div className="text-xs" style={{ color: C.sub }}>
+                  Agrégation des coupons et dividendes déjà présents dans
+                  l'échéancier ci-dessus, sans double comptabilisation.
+                </div>
+              </div>
+              <div
+                className="p-3 rounded-xl border text-right shrink-0"
+                style={{ borderColor: C.gold }}
+              >
+                <div className="text-xs" style={{ color: C.sub }}>
+                  Total coupons + dividendes
+                </div>
+                <div className="text-lg font-bold" style={F_DISPLAY}>
+                  {fmt(Math.round(totalRevenus30J))} {devise}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <span className="text-xs font-semibold" style={{ color: C.sub }}>
+                Trier :
+              </span>
+              <button
+                type="button"
+                onClick={() => setTriFluxRevenus('desc')}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                style={{
+                  background: triFluxRevenus === 'desc' ? C.navy : '#fff',
+                  color: triFluxRevenus === 'desc' ? '#fff' : C.ink,
+                  borderColor: C.line,
+                }}
+              >
+                Décroissant
+              </button>
+              <button
+                type="button"
+                onClick={() => setTriFluxRevenus('asc')}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                style={{
+                  background: triFluxRevenus === 'asc' ? C.navy : '#fff',
+                  color: triFluxRevenus === 'asc' ? '#fff' : C.ink,
+                  borderColor: C.line,
+                }}
+              >
+                Croissant
+              </button>
+            </div>
+
+            <div className="max-h-[280px] overflow-auto">
+              <table className="w-full">
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Portefeuille</Th>
+                    <Th>Coupons + dividendes à 30 j</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lignesRevenusTriees.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={2}
+                        className="text-center text-xs py-4"
+                        style={{ color: C.sub }}
+                      >
+                        Aucun revenu financier attendu sur les 30 prochains
+                        jours.
+                      </td>
+                    </tr>
+                  )}
+                  {lignesRevenusTriees.map(([nom, montant]) => (
+                    <tr key={nom} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td className="font-semibold">{nom}</Td>
+                      <Td mono>
+                        {fmt(Math.round(montant))} {devise}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -6856,17 +8434,27 @@ function MoneyManagement({ go, devise = 'XOF' }) {
           <div>
             <Eyebrow>4. Répartition et concentration de la liquidité</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
-              Analyse de la liquidité disponible selon les principales dimensions déjà utilisées dans la plateforme.
+              Analyse de la liquidité disponible selon les principales
+              dimensions déjà utilisées dans la plateforme.
             </div>
           </div>
           <div className="flex gap-1.5 flex-wrap">
-            {['Devise', 'Marché', 'Profil de risque', 'Type de portefeuille'].map((dimension) => (
+            {[
+              'Devise',
+              'Marché',
+              'Profil de risque',
+              'Type de portefeuille',
+            ].map((dimension) => (
               <button
                 key={dimension}
                 type="button"
                 onClick={() => setDimensionLiquidite(dimension)}
                 className="px-3 py-1 rounded-full text-xs font-semibold"
-                style={{ background: dimensionLiquidite === dimension ? C.navy : '#F0F1F5', color: dimensionLiquidite === dimension ? '#fff' : C.sub }}
+                style={{
+                  background:
+                    dimensionLiquidite === dimension ? C.navy : '#F0F1F5',
+                  color: dimensionLiquidite === dimension ? '#fff' : C.sub,
+                }}
               >
                 {dimension}
               </button>
@@ -6875,9 +8463,14 @@ function MoneyManagement({ go, devise = 'XOF' }) {
         </div>
         <Card className="p-5">
           <div className="grid grid-cols-2 gap-6 items-center">
-            <div><Donut data={regroupementLiquidite} size={210} /></div>
             <div>
-              <div className="text-xs mb-3" style={{ color: C.sub }}>Liquidité actuelle ventilée par {dimensionLiquidite.toLowerCase()}.</div>
+              <Donut data={regroupementLiquidite} size={210} />
+            </div>
+            <div>
+              <div className="text-xs mb-3" style={{ color: C.sub }}>
+                Liquidité actuelle ventilée par{' '}
+                {dimensionLiquidite.toLowerCase()}.
+              </div>
               <Legende data={regroupementLiquidite} />
             </div>
           </div>
@@ -6889,10 +8482,17 @@ function MoneyManagement({ go, devise = 'XOF' }) {
           <div>
             <Eyebrow>5. Actions de gestion de liquidité</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
-              Liste priorisée des portefeuilles nécessitant une reconstitution de cash ou un réinvestissement de l'excédent.
+              Liste priorisée des portefeuilles nécessitant une reconstitution
+              de cash ou un réinvestissement de l'excédent.
             </div>
           </div>
-          <Badge tone={actionsLiquidite.some((ligne) => ligne.statut === 'Critique') ? 'coral' : 'gold'}>
+          <Badge
+            tone={
+              actionsLiquidite.some((ligne) => ligne.statut === 'Critique')
+                ? 'coral'
+                : 'gold'
+            }
+          >
             {actionsLiquidite.length} action(s)
           </Badge>
         </div>
@@ -6911,31 +8511,81 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             </thead>
             <tbody>
               {actionsLiquidite.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-7 text-sm" style={{ color: C.sub }}>Aucune action de liquidité n'est requise pour les portefeuilles filtrés.</td></tr>
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="text-center py-7 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucune action de liquidité n'est requise pour les
+                    portefeuilles filtrés.
+                  </td>
+                </tr>
               )}
               {actionsLiquidite.map((ligne, index) => {
                 const client = ligne.client;
                 const ecartAllocationLiquidite = Math.abs(
-                  Number(client.alloc.Liquidité || 0) - Number(client.cible.Liquidité || 0)
+                  Number(client.alloc.Liquidité || 0) -
+                    Number(client.cible.Liquidité || 0)
                 );
                 return (
-                  <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
-                    <Td className="font-semibold whitespace-nowrap">{client.nom}</Td>
-                    <Td><Badge tone={toneStatut(ligne.statut)}>{ligne.statut}</Badge></Td>
+                  <tr
+                    key={client.id}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: index % 2 ? '#FCFCFD' : '#fff',
+                    }}
+                  >
+                    <Td className="font-semibold whitespace-nowrap">
+                      {client.nom}
+                    </Td>
+                    <Td>
+                      <Badge tone={toneStatut(ligne.statut)}>
+                        {ligne.statut}
+                      </Badge>
+                    </Td>
                     <Td mono>{ligne.ratioPrevisionnel.toFixed(1)}%</Td>
                     <Td mono>{ligne.ratioCible.toFixed(1)}%</Td>
                     <Td mono className="whitespace-nowrap">
-                      {fmt(Math.round(convertCurrency(ligne.montantVersCible, client.devise, devise)))} {devise}
+                      {fmt(
+                        Math.round(
+                          convertCurrency(
+                            ligne.montantVersCible,
+                            client.devise,
+                            devise
+                          )
+                        )
+                      )}{' '}
+                      {devise}
                     </Td>
-                    <Td><span className="text-xs" style={{ color: C.sub }}>{ligne.action}</span></Td>
+                    <Td>
+                      <span className="text-xs" style={{ color: C.sub }}>
+                        {ligne.action}
+                      </span>
+                    </Td>
                     <Td>
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         {ecartAllocationLiquidite > SEUIL_REEQUILIBRAGE && (
-                          <button type="button" onClick={() => go('reequilibrage', { client: client.id, actif: 'Liquidité' })} className="text-xs font-semibold" style={{ color: C.coral }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              go('reequilibrage', {
+                                client: client.id,
+                                actif: 'Liquidité',
+                              })
+                            }
+                            className="text-xs font-semibold"
+                            style={{ color: C.coral }}
+                          >
                             Rééquilibrer →
                           </button>
                         )}
-                        <button type="button" onClick={() => go('client', { clientId: client.id })} className="text-xs font-semibold" style={{ color: C.navy }}>
+                        <button
+                          type="button"
+                          onClick={() => go('client', { clientId: client.id })}
+                          className="text-xs font-semibold"
+                          style={{ color: C.navy }}
+                        >
                           Portefeuille →
                         </button>
                       </div>
@@ -7021,39 +8671,6 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
   const decoteTotale = Math.min(decoteAge + decoteVolume + decoteTaille, 25);
   const impactDecote = Math.round(tailleM * 1_000_000 * (decoteTotale / 100));
 
-  const cashPoints = [];
-  UPCOMING_CASHFLOWS.forEach((c) => {
-    const x = joursDepuisAujourdhui(c.echeance);
-    c.portefeuilles
-      .split(', ')
-      .forEach((p) => cashPoints.push({ x, y: p, ...c }));
-    cashPoints.push({ x, y: 'Général', ...c });
-  });
-  const dividendePoints = cashPoints.filter((p) => p.type === 'Dividende');
-  const couponPoints = cashPoints.filter((p) => p.type === 'Coupon');
-
-  const [horizonJours, setHorizonJours] = useState(30);
-  const [triOrdre, setTriOrdre] = useState('desc');
-  const flowsDansHorizon = UPCOMING_CASHFLOWS.filter((c) => {
-    const j = joursDepuisAujourdhui(c.echeance);
-    return j >= 0 && j <= horizonJours;
-  });
-  const totalGeneralHorizon = flowsDansHorizon.reduce(
-    (s, c) => s + convertCurrency(c.montant, c.devise, devise),
-    0
-  );
-  const totalParPortefeuille = {};
-  flowsDansHorizon.forEach((c) => {
-    c.portefeuilles.split(', ').forEach((p) => {
-      totalParPortefeuille[p] =
-        (totalParPortefeuille[p] || 0) +
-        convertCurrency(c.montant, c.devise, devise);
-    });
-  });
-  const lignesTriees = Object.entries(totalParPortefeuille).sort((a, b) =>
-    triOrdre === 'desc' ? b[1] - a[1] : a[1] - b[1]
-  );
-
   return (
     <div className="space-y-4">
       <Breadcrumb items={['Accueil', 'Analyse portefeuille']} />
@@ -7061,7 +8678,7 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
         Analyse portefeuille
       </h2>
       <div className="flex gap-1.5">
-        {['Devises', 'Corrélations', 'Stress test', 'Liquidité'].map((t) => (
+        {['Devises', 'Corrélations', 'Stress test'].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -7555,182 +9172,6 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
                 </div>
               </div>
             </div>
-          </Card>
-        </>
-      )}
-
-      {tab === 'Liquidité' && (
-        <>
-          <Card className="p-5">
-            <Eyebrow>
-              Gestion de liquidité — points de coupons et dividendes par
-              portefeuille &amp; en général
-            </Eyebrow>
-            <div
-              className="flex items-center gap-4 text-xs mb-2"
-              style={{ color: C.sub }}
-            >
-              <span className="flex items-center gap-1.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: C.teal }}
-                />
-                Dividende
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ background: C.gold }}
-                />
-                Coupon
-              </span>
-              <span>Axe horizontal : jours à venir depuis aujourd'hui</span>
-            </div>
-            <ResponsiveContainer width="100%" height={280}>
-              <ScatterChart
-                margin={{ top: 10, right: 20, bottom: 10, left: 10 }}
-              >
-                <CartesianGrid stroke={C.line} />
-                <XAxis
-                  type="number"
-                  dataKey="x"
-                  name="Échéance"
-                  unit=" j"
-                  tick={{ fontSize: 11, fill: C.sub }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="y"
-                  name="Portefeuille"
-                  tick={{ fontSize: 11, fill: C.sub }}
-                  width={140}
-                />
-                <ZAxis range={[90, 90]} />
-                <Tooltip
-                  formatter={(v, n, p) =>
-                    n === 'x' ? [`${v} j`, 'Échéance'] : [v, n]
-                  }
-                  content={({ active, payload }) => {
-                    if (!active || !payload || !payload.length) return null;
-                    const p = payload[0].payload;
-                    return (
-                      <div
-                        style={{
-                          background: '#fff',
-                          border: `1px solid ${C.line}`,
-                          borderRadius: 10,
-                          padding: 8,
-                          fontSize: 12,
-                        }}
-                      >
-                        <div className="font-semibold">{p.titre}</div>
-                        <div>
-                          {p.type} · {fmt(p.montant)} {p.devise}
-                        </div>
-                        <div style={{ color: C.sub }}>{p.echeance}</div>
-                      </div>
-                    );
-                  }}
-                />
-                <Scatter data={dividendePoints} fill={C.teal} />
-                <Scatter data={couponPoints} fill={C.gold} />
-              </ScatterChart>
-            </ResponsiveContainer>
-          </Card>
-
-          <Card className="p-5">
-            <Eyebrow>
-              Somme totale attendue (coupons + dividendes) sur une période de
-              prévision
-            </Eyebrow>
-            <div className="flex items-end gap-4 mt-2 mb-3 flex-wrap">
-              <div>
-                <label
-                  className="text-xs font-semibold block mb-1"
-                  style={{ color: C.sub }}
-                >
-                  Horizon de prévision (jours)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={horizonJours}
-                  onChange={(e) => setHorizonJours(Number(e.target.value))}
-                  className="w-28 px-3 py-2 rounded-xl border text-sm"
-                  style={{ borderColor: C.line, ...F_MONO }}
-                />
-              </div>
-              <div
-                className="p-3 rounded-xl border"
-                style={{ borderColor: C.gold }}
-              >
-                <div className="text-xs" style={{ color: C.sub }}>
-                  Total général attendu sous {horizonJours} j
-                </div>
-                <div className="text-lg font-bold" style={F_DISPLAY}>
-                  {fmt(Math.round(totalGeneralHorizon))} {devise}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 ml-auto">
-                <span
-                  className="text-xs font-semibold"
-                  style={{ color: C.sub }}
-                >
-                  Trier :
-                </span>
-                <button
-                  onClick={() => setTriOrdre('desc')}
-                  className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
-                  style={{
-                    background: triOrdre === 'desc' ? C.navy : '#fff',
-                    color: triOrdre === 'desc' ? '#fff' : C.ink,
-                    borderColor: C.line,
-                  }}
-                >
-                  Décroissant
-                </button>
-                <button
-                  onClick={() => setTriOrdre('asc')}
-                  className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
-                  style={{
-                    background: triOrdre === 'asc' ? C.navy : '#fff',
-                    color: triOrdre === 'asc' ? '#fff' : C.ink,
-                    borderColor: C.line,
-                  }}
-                >
-                  Croissant
-                </button>
-              </div>
-            </div>
-            <table className="w-full">
-              <thead style={{ background: '#FAFAFC' }}>
-                <tr>
-                  <Th>Portefeuille</Th>
-                  <Th>Somme attendue sous {horizonJours} j</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {lignesTriees.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={2}
-                      className="text-center text-xs py-4"
-                      style={{ color: C.sub }}
-                    >
-                      Aucune tombée sur cet horizon.
-                    </td>
-                  </tr>
-                )}
-                {lignesTriees.map(([nom, montant]) => (
-                  <tr key={nom} style={{ borderTop: `1px solid ${C.line}` }}>
-                    <Td className="font-semibold">{nom}</Td>
-                    <Td mono>
-                      {fmt(Math.round(montant))} {devise}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </Card>
         </>
       )}
@@ -8435,9 +9876,6 @@ function PriseDecisions({ go }) {
           >
             Décisions enregistrées pour utilisation ultérieure
           </h3>
-          <div className="text-xs mt-1" style={{ color: C.sub }}>
-            Les décisions sont conservées dans le stockage local du navigateur.
-          </div>
         </div>
         <Badge tone="gold">{decisionsEnregistrees.length} décision(s)</Badge>
       </div>
@@ -9074,13 +10512,1558 @@ function Comite({ devise = 'XOF', go }) {
   );
 }
 
+/* --------------------------- ESPACE CLIENT LIBRE --------------------------- */
+function ClientBreadcrumb({ items }) {
+  return (
+    <div
+      className="flex items-center gap-1.5 text-sm mb-4 flex-wrap"
+      style={{ color: C.sub, ...F_BODY }}
+    >
+      <Home size={13} />
+      {items.map((item, index) => (
+        <span key={`${item}-${index}`} className="flex items-center gap-1.5">
+          {index > 0 && <ChevronRight size={13} />}
+          <span
+            style={{
+              color: index === items.length - 1 ? C.ink : C.sub,
+              fontWeight: index === items.length - 1 ? 600 : 500,
+            }}
+          >
+            {item}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
+  const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const nombreSgi = new Set(
+    portefeuilles.map((portefeuille) => portefeuille.sgi)
+  ).size;
+  const nombrePays = new Set(
+    portefeuilles.map((portefeuille) => portefeuille.pays)
+  ).size;
+  const [allocationActifSelectionne, setAllocationActifSelectionne] =
+    useState(null);
+  const [allocationPaysSelectionne, setAllocationPaysSelectionne] =
+    useState(null);
+  const patrimoine = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientPortfolioValueIn(portefeuille, devise),
+    0
+  );
+  const liquiditeTotale = portefeuilles.reduce(
+    (somme, portefeuille) => somme + clientCashIn(portefeuille, devise),
+    0
+  );
+  const liquiditeReservee = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientReservedCashIn(portefeuille, orders, devise),
+    0
+  );
+  const liquiditeDisponible = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientAvailableCashIn(portefeuille, orders, devise),
+    0
+  );
+  const perfPonderee =
+    patrimoine > 0
+      ? portefeuilles.reduce(
+          (somme, portefeuille) =>
+            somme +
+            clientPortfolioValueIn(portefeuille, devise) *
+              Number(portefeuille.perfYtd || 0),
+          0
+        ) / patrimoine
+      : 0;
+
+  const allocationMap = {
+    Actions: 0,
+    Obligations: 0,
+    Liquidité: liquiditeTotale,
+  };
+  portefeuilles.forEach((portefeuille) => {
+    portefeuille.lignes.forEach((ligne) => {
+      const classe = clientAssetClass(ligne.instrument);
+      allocationMap[classe] += convertCurrency(
+        clientLineValue(ligne),
+        portefeuille.devise,
+        devise
+      );
+    });
+  });
+  const allocation = Object.entries(allocationMap).map(([name, montant]) => ({
+    name,
+    montant,
+    value:
+      patrimoine > 0 ? Number(((montant / patrimoine) * 100).toFixed(1)) : 0,
+    devise,
+  }));
+
+  const montantActifDansPortefeuille = (portefeuille, classeActif) => {
+    if (classeActif === 'Liquidité') {
+      return convertCurrency(
+        portefeuille.compteEspeces,
+        portefeuille.devise,
+        devise
+      );
+    }
+
+    return portefeuille.lignes
+      .filter((ligne) => clientAssetClass(ligne.instrument) === classeActif)
+      .reduce(
+        (somme, ligne) =>
+          somme +
+          convertCurrency(clientLineValue(ligne), portefeuille.devise, devise),
+        0
+      );
+  };
+
+  const construireRepartitionAllocation = (
+    keyFn,
+    classeActif,
+    filtre = () => true
+  ) => {
+    const map = {};
+    portefeuilles.filter(filtre).forEach((portefeuille) => {
+      const montant = montantActifDansPortefeuille(portefeuille, classeActif);
+      if (montant <= 0) return;
+      const key = keyFn(portefeuille);
+      map[key] = (map[key] || 0) + montant;
+    });
+    const total = Object.values(map).reduce(
+      (somme, montant) => somme + montant,
+      0
+    );
+    return Object.entries(map)
+      .map(([name, montant]) => ({
+        name,
+        montant,
+        value: total > 0 ? Number(((montant / total) * 100).toFixed(1)) : 0,
+        devise,
+      }))
+      .sort((a, b) => b.montant - a.montant);
+  };
+
+  const allocationParPays = allocationActifSelectionne
+    ? construireRepartitionAllocation(
+        (portefeuille) => portefeuille.pays,
+        allocationActifSelectionne
+      )
+    : [];
+
+  const allocationParSgi =
+    allocationActifSelectionne && allocationPaysSelectionne
+      ? construireRepartitionAllocation(
+          (portefeuille) => portefeuille.sgi,
+          allocationActifSelectionne,
+          (portefeuille) => portefeuille.pays === allocationPaysSelectionne
+        )
+      : [];
+
+  const choisirActifAllocation = (part) => {
+    setAllocationActifSelectionne(part.name);
+    setAllocationPaysSelectionne(null);
+  };
+
+  const niveauAllocation = allocationPaysSelectionne
+    ? 'sgi'
+    : allocationActifSelectionne
+    ? 'pays'
+    : 'actif';
+
+  const allocationAffichee =
+    niveauAllocation === 'sgi'
+      ? allocationParSgi
+      : niveauAllocation === 'pays'
+      ? allocationParPays
+      : allocation;
+
+  const titreAllocation =
+    niveauAllocation === 'sgi'
+      ? `Allocation par SGI — ${allocationPaysSelectionne}`
+      : niveauAllocation === 'pays'
+      ? `Allocation par pays — ${allocationActifSelectionne}`
+      : "Allocation par type d'actif";
+
+  const montantTotalAllocation = allocationAffichee.reduce(
+    (somme, part) => somme + Number(part.montant || 0),
+    0
+  );
+
+  const libelleMontantTotalAllocation =
+    niveauAllocation === 'sgi'
+      ? `Total ${allocationActifSelectionne} · ${allocationPaysSelectionne}`
+      : niveauAllocation === 'pays'
+      ? `Total ${allocationActifSelectionne}`
+      : 'Patrimoine consolidé';
+
+  const sousTitreAllocation =
+    niveauAllocation === 'sgi'
+      ? `${allocationActifSelectionne} · ${allocationPaysSelectionne}`
+      : niveauAllocation === 'pays'
+      ? `Répartition de ${allocationActifSelectionne} par pays`
+      : "Cliquez sur un type d'actif pour afficher sa répartition par pays.";
+
+  const gererClicAllocation =
+    niveauAllocation === 'actif'
+      ? choisirActifAllocation
+      : niveauAllocation === 'pays'
+      ? (part) => setAllocationPaysSelectionne(part.name)
+      : undefined;
+
+  const revenirAllocation = () => {
+    if (allocationPaysSelectionne) {
+      setAllocationPaysSelectionne(null);
+      return;
+    }
+    if (allocationActifSelectionne) {
+      setAllocationActifSelectionne(null);
+    }
+  };
+
+  const ordresOuverts = orders.filter((ordre) =>
+    ['En attente', 'En cours'].includes(ordre.statut)
+  ).length;
+  const revenus30j = CLIENT_CASHFLOWS.reduce(
+    (somme, flux) => somme + convertCurrency(flux.montant, flux.devise, devise),
+    0
+  );
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Vue consolidée']} />
+
+      <MarketTicker
+        onViewAll={() => goClient('client-invest')}
+        onInstrumentClick={(m) =>
+          goClient('client-market-depth', {
+            instrument: m.nom,
+            marche: m.marche,
+          })
+        }
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion libre multi-SGI</Eyebrow>
+          <h2
+            className="text-2xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Bonjour {CLIENT_GESTION_LIBRE.nom}
+          </h2>
+          <div className="text-sm mt-1" style={{ color: C.sub }}>
+            Une vue unique de vos portefeuilles détenus auprès de plusieurs SGI
+            sur les marchés financier africains.
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold" style={{ color: C.sub }}>
+            Devise consolidée
+          </span>
+          <select
+            value={devise}
+            onChange={(e) => onDeviseChange(e.target.value)}
+            className="px-3 py-2 rounded-xl border text-sm"
+            style={{ borderColor: C.line, background: '#fff' }}
+          >
+            {Object.keys(FX).map((code) => (
+              <option key={code}>{code}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Patrimoine consolidé
+          </div>
+          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(patrimoine))} {devise}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            {portefeuilles.length} portefeuilles · {nombreSgi} SGI ·{' '}
+            {nombrePays} pays
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Performance YTD pondérée
+          </div>
+          <div className="mt-1">
+            <Pct v={perfPonderee} />
+          </div>
+          <div className="text-[10px] mt-2" style={{ color: C.sub }}>
+            Pondération par la valeur de chaque portefeuille
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Liquidité disponible
+          </div>
+          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(liquiditeDisponible))} {devise}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            {patrimoine > 0
+              ? ((liquiditeDisponible / patrimoine) * 100).toFixed(1)
+              : '0.0'}
+            % du patrimoine · {fmt(Math.round(liquiditeReservee))} {devise}{' '}
+            réservé(s)
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Revenus & ordres à suivre
+          </div>
+          <div className="flex items-end justify-between gap-2 mt-1">
+            <div className="text-lg font-bold" style={F_DISPLAY}>
+              {fmt(Math.round(revenus30j))} {devise}
+            </div>
+            <Badge tone={ordresOuverts > 0 ? 'gold' : 'teal'}>
+              {ordresOuverts} ordre(s)
+            </Badge>
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Revenus financiers attendus dans les prochaines échéances
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="col-span-2 p-0 overflow-hidden">
+          <div className="p-4 flex items-center justify-between">
+            <div>
+              <Eyebrow>Mes portefeuilles par SGI</Eyebrow>
+              <div className="text-xs" style={{ color: C.sub }}>
+                Valeur, performance et liquidité consolidées par intermédiaire.
+              </div>
+            </div>
+            <button
+              onClick={() => goClient('client-portfolios')}
+              className="text-xs font-semibold"
+              style={{ color: C.navy }}
+            >
+              Voir le détail →
+            </button>
+          </div>
+          <table className="w-full">
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>SGI / pays</Th>
+                <Th>Marché</Th>
+                <Th>Valeur</Th>
+                <Th>Perf. YTD</Th>
+                <Th>Liquidité</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {portefeuilles.map((portefeuille) => (
+                <tr
+                  key={portefeuille.id}
+                  style={{ borderTop: `1px solid ${C.line}` }}
+                >
+                  <Td>
+                    <div className="font-semibold">{portefeuille.sgi}</div>
+                    <div className="text-xs" style={{ color: C.sub }}>
+                      {portefeuille.pays}
+                    </div>
+                  </Td>
+                  <Td>
+                    <Badge tone="navy">
+                      {portefeuille.marche} · {portefeuille.devise}
+                    </Badge>
+                  </Td>
+                  <Td mono>
+                    {fmt(
+                      Math.round(clientPortfolioValueIn(portefeuille, devise))
+                    )}{' '}
+                    {devise}
+                  </Td>
+                  <Td>
+                    <Pct v={portefeuille.perfYtd} />
+                  </Td>
+                  <Td mono>
+                    {fmt(Math.round(clientCashIn(portefeuille, devise)))}{' '}
+                    {devise}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Eyebrow>Allocation consolidée</Eyebrow>
+              <div className="text-xs font-semibold" style={{ color: C.ink }}>
+                {titreAllocation}
+              </div>
+              <div
+                className="text-[10px] mt-0.5"
+                style={{ color: C.sub, ...F_BODY }}
+              >
+                {sousTitreAllocation}
+              </div>
+            </div>
+            {niveauAllocation !== 'actif' && (
+              <button
+                type="button"
+                onClick={revenirAllocation}
+                className="text-[10px] font-semibold whitespace-nowrap px-2.5 py-1.5 rounded-lg border"
+                style={{
+                  color: C.navy,
+                  borderColor: C.line,
+                  background: '#fff',
+                }}
+              >
+                ← Retour
+              </button>
+            )}
+          </div>
+
+          <div
+            className="mt-3 px-3 py-2.5 rounded-xl border flex items-end justify-between gap-3"
+            style={{ borderColor: C.line, background: '#FAFAFC' }}
+          >
+            <div>
+              <div
+                className="text-[10px] font-semibold uppercase tracking-wide"
+                style={{ color: C.sub, ...F_BODY }}
+              >
+                {libelleMontantTotalAllocation}
+              </div>
+              <div
+                className="text-lg font-bold mt-0.5"
+                style={{ color: C.ink, ...F_DISPLAY }}
+              >
+                {fmt(Math.round(montantTotalAllocation))} {devise}
+              </div>
+            </div>
+            <Badge tone="navy">100% du niveau</Badge>
+          </div>
+
+          <div className="mt-3">
+            {allocationAffichee.length > 0 ? (
+              <>
+                <Donut
+                  data={allocationAffichee}
+                  size={150}
+                  onSliceClick={gererClicAllocation}
+                />
+                <Legende data={allocationAffichee} />
+              </>
+            ) : (
+              <div
+                className="text-xs py-6 text-center"
+                style={{ color: C.sub }}
+              >
+                Aucune exposition disponible pour cette sélection.
+              </div>
+            )}
+          </div>
+
+          <div
+            className="mt-3 pt-3 flex items-center justify-between gap-2 text-[10px]"
+            style={{
+              borderTop: `1px solid ${C.line}`,
+              color: C.sub,
+              ...F_BODY,
+            }}
+          >
+            <span>
+              {niveauAllocation === 'actif'
+                ? "Niveau 1/3 · Type d'actif"
+                : niveauAllocation === 'pays'
+                ? 'Niveau 2/3 · Pays'
+                : 'Niveau 3/3 · SGI'}
+            </span>
+            {niveauAllocation !== 'sgi' && (
+              <span>Cliquez sur une part pour approfondir</span>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4">
+          <Eyebrow>Acheter / vendre</Eyebrow>
+          <div className="text-xs mb-3" style={{ color: C.sub }}>
+            Le portefeuille et la SGI sont proposés automatiquement selon le
+            marché de l'actif choisi.
+          </div>
+          <Btn onClick={() => goClient('client-invest')}>Passer un ordre</Btn>
+        </Card>
+        <Card className="p-4">
+          <Eyebrow>Liquidité & revenus</Eyebrow>
+          <div className="text-xs mb-3" style={{ color: C.sub }}>
+            Suivez vos comptes espèces, dividendes et coupons à venir.
+          </div>
+          <Btn tone="ghost" onClick={() => goClient('client-cashflows')}>
+            Consulter
+          </Btn>
+        </Card>
+        <Card className="p-4">
+          <Eyebrow>Performance & risque</Eyebrow>
+          <div className="text-xs mb-3" style={{ color: C.sub }}>
+            Mesurez la performance consolidée, les concentrations et le risque
+            de change.
+          </div>
+          <Btn tone="ghost" onClick={() => goClient('client-analysis')}>
+            Analyser
+          </Btn>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function ClientPortfolios({ devise, orders }) {
+  const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Mes portefeuilles & SGI']} />
+      <div>
+        <h2
+          className="text-xl font-bold"
+          style={{ ...F_DISPLAY, color: C.ink }}
+        >
+          Mes portefeuilles & SGI
+        </h2>
+        <div className="text-xs mt-1" style={{ color: C.sub }}>
+          Une fiche par compte-titres afin de conserver la vision de
+          l'intermédiaire, de la devise et du marché d'origine, avec distinction
+          entre espèces disponibles et espèces déjà mobilisées par des achats
+          non exécutés.
+        </div>
+      </div>
+
+      {portefeuilles.map((portefeuille) => {
+        const total = clientPortfolioValue(portefeuille);
+        const liquiditeTotale = Number(portefeuille.compteEspeces || 0);
+        const liquiditeReservee = clientReservedCash(portefeuille, orders);
+        const liquiditeDisponible = clientAvailableCash(portefeuille, orders);
+        const ordresAchatOuverts = orders.filter(
+          (ordre) =>
+            ordre.portefeuilleId === portefeuille.id &&
+            ordre.sens === 'Achat' &&
+            CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut)
+        ).length;
+        const ordresVenteOuverts = orders.filter(
+          (ordre) =>
+            ordre.portefeuilleId === portefeuille.id &&
+            ordre.sens === 'Vente' &&
+            CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut)
+        ).length;
+
+        return (
+          <Card
+            key={portefeuille.id}
+            className="p-0 overflow-hidden"
+            style={{ borderColor: C.gold }}
+          >
+            <div
+              className="p-4 flex items-start justify-between gap-4"
+              style={{ background: '#FBF7EE' }}
+            >
+              <div>
+                <div className="text-base font-bold" style={F_DISPLAY}>
+                  {portefeuille.nom}
+                </div>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  <Badge tone="navy">{portefeuille.sgi}</Badge>
+                  <Badge tone="slate">{portefeuille.pays}</Badge>
+                  <Badge tone="slate">
+                    {portefeuille.marche} · {portefeuille.devise}
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs" style={{ color: C.sub }}>
+                  Valeur du portefeuille
+                </div>
+                <div className="text-lg font-bold" style={F_DISPLAY}>
+                  {fmt(Math.round(total))} {portefeuille.devise}
+                </div>
+                {portefeuille.devise !== devise && (
+                  <div className="text-[10px]" style={{ color: C.sub }}>
+                    ≈{' '}
+                    {fmt(
+                      Math.round(clientPortfolioValueIn(portefeuille, devise))
+                    )}{' '}
+                    {devise}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Instrument</Th>
+                    <Th>Classe</Th>
+                    <Th>Quantité</Th>
+                    <Th>PRU</Th>
+                    <Th>Cours</Th>
+                    <Th>Valeur</Th>
+                    <Th>Plus/Moins-value</Th>
+                    <Th>Poids</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {portefeuille.lignes.map((ligne) => {
+                    const marche = clientMarket(ligne.instrument);
+                    const cours = Number(marche?.cours || ligne.pru);
+                    const valeur = clientLineValue(ligne);
+                    const perf =
+                      ligne.pru > 0
+                        ? ((cours - ligne.pru) / ligne.pru) * 100
+                        : 0;
+                    return (
+                      <tr
+                        key={ligne.instrument}
+                        style={{ borderTop: `1px solid ${C.line}` }}
+                      >
+                        <Td className="font-semibold">{ligne.instrument}</Td>
+                        <Td>
+                          <Badge tone="slate">
+                            {clientAssetClass(ligne.instrument)}
+                          </Badge>
+                        </Td>
+                        <Td mono>{fmt(ligne.qte)}</Td>
+                        <Td mono>
+                          {fmtPrice(ligne.pru)} {portefeuille.devise}
+                        </Td>
+                        <Td mono>
+                          {fmtPrice(cours)} {portefeuille.devise}
+                        </Td>
+                        <Td mono>
+                          {fmt(Math.round(valeur))} {portefeuille.devise}
+                        </Td>
+                        <Td>
+                          <Pct v={perf} />
+                        </Td>
+                        <Td mono>
+                          {total > 0
+                            ? ((valeur / total) * 100).toFixed(1)
+                            : '0.0'}
+                          %
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              className="p-4"
+              style={{
+                borderTop: `1px solid ${C.line}`,
+                background: '#FCFCFD',
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <Eyebrow>Compte espèces</Eyebrow>
+                  <div className="text-[11px]" style={{ color: C.sub }}>
+                    La liquidité disponible est immédiatement investissable. La
+                    liquidité réservée correspond aux ordres d'achat ouverts
+                    mais pas encore exécutés.
+                  </div>
+                </div>
+                <Badge tone="navy">
+                  {total > 0
+                    ? ((liquiditeTotale / total) * 100).toFixed(1)
+                    : '0.0'}
+                  % du portefeuille
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div
+                  className="p-3 rounded-xl border"
+                  style={{ borderColor: '#CFE9DF', background: '#F3FBF8' }}
+                >
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: C.teal }}
+                  >
+                    Liquidité disponible
+                  </div>
+                  <div
+                    className="text-lg font-bold mt-1"
+                    style={{ ...F_DISPLAY, color: C.ink }}
+                  >
+                    {fmt(Math.round(liquiditeDisponible))} {portefeuille.devise}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                    Montant utilisable pour de nouveaux investissements
+                  </div>
+                </div>
+
+                <div
+                  className="p-3 rounded-xl border"
+                  style={{ borderColor: '#EAD9AD', background: '#FFFBF1' }}
+                >
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: '#8A6A16' }}
+                  >
+                    Liquidité réservée
+                  </div>
+                  <div
+                    className="text-lg font-bold mt-1"
+                    style={{ ...F_DISPLAY, color: C.ink }}
+                  >
+                    {fmt(Math.round(liquiditeReservee))} {portefeuille.devise}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                    {ordresAchatOuverts} ordre(s) d'achat ouvert(s)
+                  </div>
+                </div>
+
+                <div
+                  className="p-3 rounded-xl border"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: C.navy }}
+                  >
+                    Liquidité totale
+                  </div>
+                  <div
+                    className="text-lg font-bold mt-1"
+                    style={{ ...F_DISPLAY, color: C.ink }}
+                  >
+                    {fmt(Math.round(liquiditeTotale))} {portefeuille.devise}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                    Disponible + réservée
+                  </div>
+                </div>
+              </div>
+
+              {ordresVenteOuverts > 0 && (
+                <div
+                  className="text-[10px] mt-3 p-2.5 rounded-xl"
+                  style={{ background: '#EFF3FB', color: C.sub }}
+                >
+                  {ordresVenteOuverts} ordre(s) de vente ouvert(s) : les titres
+                  concernés sont réservés, mais ils ne diminuent pas le compte
+                  espèces tant que la vente n'est pas exécutée.
+                </div>
+              )}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
+  const instrumentInitial = clientMarket(initialInstrument) || MARKETS_DATA[0];
+  const [instrument, setInstrument] = useState(instrumentInitial.nom);
+  const marche = clientMarket(instrument) || MARKETS_DATA[0];
+  const portefeuillesEligibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
+    (portefeuille) => portefeuille.marche === marche.marche
+  );
+  const [portefeuilleId, setPortefeuilleId] = useState(
+    portefeuillesEligibles[0]?.id || ''
+  );
+  const [sens, setSens] = useState('Achat');
+  const [qte, setQte] = useState(100);
+  const [typeOrdre, setTypeOrdre] = useState('Ordre limite');
+  const [prixLimite, setPrixLimite] = useState(marche.cours);
+  const [message, setMessage] = useState('');
+
+  const portefeuilleCourant =
+    portefeuillesEligibles.find((p) => p.id === portefeuilleId) ||
+    portefeuillesEligibles[0];
+
+  const changerInstrument = (nom) => {
+    const nouveauMarche = clientMarket(nom);
+    setInstrument(nom);
+    setPrixLimite(Number(nouveauMarche?.cours || 0));
+    const premier = CLIENT_GESTION_LIBRE.portefeuilles.find(
+      (portefeuille) => portefeuille.marche === nouveauMarche?.marche
+    );
+    setPortefeuilleId(premier?.id || '');
+    setMessage('');
+  };
+
+  const prixEstime =
+    typeOrdre === 'Ordre au marché' ? marche.cours : Number(prixLimite || 0);
+  const montantEstime = Number(qte || 0) * prixEstime;
+  const position =
+    portefeuilleCourant?.lignes.find((ligne) => ligne.instrument === instrument)
+      ?.qte || 0;
+  const cashTotal = portefeuilleCourant?.compteEspeces || 0;
+  const cashReserve = portefeuilleCourant
+    ? clientReservedCash(portefeuilleCourant, orders)
+    : 0;
+  const cash = portefeuilleCourant
+    ? clientAvailableCash(portefeuilleCourant, orders)
+    : 0;
+  const achatPossible = sens !== 'Achat' || montantEstime <= cash;
+  const ventePossible = sens !== 'Vente' || Number(qte || 0) <= position;
+  const ordreValide =
+    Boolean(portefeuilleCourant) &&
+    Number(qte) > 0 &&
+    prixEstime > 0 &&
+    achatPossible &&
+    ventePossible;
+
+  const envoyerOrdre = () => {
+    if (!ordreValide) {
+      setMessage(
+        sens === 'Achat' && !achatPossible
+          ? 'Liquidité insuffisante sur le compte espèces de cette SGI.'
+          : sens === 'Vente' && !ventePossible
+          ? 'Quantité à vendre supérieure à la position disponible.'
+          : "Vérifiez les paramètres de l'ordre."
+      );
+      return;
+    }
+    onCreateOrder({
+      portefeuilleId: portefeuilleCourant.id,
+      instrument,
+      marche: marche.marche,
+      devise: marche.devise,
+      sens,
+      qte: Number(qte),
+      typeOrdre,
+      prix: prixEstime,
+      statut: 'En attente',
+    });
+    goClient('client-orders');
+  };
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Marchés & investir']} />
+      <div>
+        <h2
+          className="text-xl font-bold"
+          style={{ ...F_DISPLAY, color: C.ink }}
+        >
+          Marchés & investir
+        </h2>
+        <div className="text-xs mt-1" style={{ color: C.sub }}>
+          Sélectionnez un actif : la plateforme rattache automatiquement l'ordre
+          à votre portefeuille et à votre SGI du marché concerné.
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="col-span-2 p-0 overflow-hidden">
+          <div className="p-4">
+            <Eyebrow>Instruments accessibles via vos SGI</Eyebrow>
+          </div>
+          <table className="w-full">
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Instrument</Th>
+                <Th>Marché</Th>
+                <Th>Cours</Th>
+                <Th>Variation</Th>
+                <Th>Portefeuille / SGI</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {MARKETS_DATA.map((item) => {
+                const pfsCompatibles =
+                  CLIENT_GESTION_LIBRE.portefeuilles.filter(
+                    (portefeuille) => portefeuille.marche === item.marche
+                  );
+                return (
+                  <tr
+                    key={item.nom}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: item.nom === instrument ? '#FBF7EE' : '#fff',
+                    }}
+                  >
+                    <Td className="font-semibold">{item.nom}</Td>
+                    <Td>
+                      <Badge tone="navy">{item.marche}</Badge>
+                    </Td>
+                    <Td mono>
+                      {fmtPrice(item.cours)} {item.devise}
+                    </Td>
+                    <Td>
+                      <Pct v={item.variation} />
+                    </Td>
+                    <Td>
+                      <div className="text-xs font-semibold">
+                        {pfsCompatibles.length > 0
+                          ? `${pfsCompatibles.length} SGI compatibles`
+                          : '—'}
+                      </div>
+                      <div className="text-[10px]" style={{ color: C.sub }}>
+                        {pfsCompatibles.length > 0
+                          ? pfsCompatibles.map((pf) => pf.sgi).join(' · ')
+                          : 'Aucun compte compatible'}
+                      </div>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            goClient('client-market-depth', {
+                              instrument: item.nom,
+                              marche: item.marche,
+                            })
+                          }
+                          className="text-xs font-semibold whitespace-nowrap"
+                          style={{ color: C.indigo }}
+                        >
+                          Profondeur →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => changerInstrument(item.nom)}
+                          className="text-xs font-semibold whitespace-nowrap"
+                          style={{ color: C.navy }}
+                        >
+                          Préparer un ordre →
+                        </button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+
+        <Card className="p-5" style={{ borderColor: C.gold }}>
+          <Eyebrow>Ticket d'ordre</Eyebrow>
+
+          <label
+            className="text-xs font-semibold block mb-1"
+            style={{ color: C.sub }}
+          >
+            Instrument
+          </label>
+          <select
+            value={instrument}
+            onChange={(e) => changerInstrument(e.target.value)}
+            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
+            style={{ borderColor: C.line }}
+          >
+            {MARKETS_DATA.map((item) => (
+              <option key={item.nom}>{item.nom}</option>
+            ))}
+          </select>
+
+          <label
+            className="text-xs font-semibold block mb-1"
+            style={{ color: C.sub }}
+          >
+            Portefeuille / SGI
+          </label>
+          <select
+            value={portefeuilleCourant?.id || ''}
+            onChange={(e) => setPortefeuilleId(e.target.value)}
+            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
+            style={{ borderColor: C.line }}
+          >
+            {portefeuillesEligibles.map((portefeuille) => (
+              <option key={portefeuille.id} value={portefeuille.id}>
+                {portefeuille.sgi} — {portefeuille.nom}
+              </option>
+            ))}
+          </select>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            {['Achat', 'Vente'].map((value) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setSens(value);
+                  setMessage('');
+                }}
+                className="px-3 py-2 rounded-xl text-xs font-semibold"
+                style={{
+                  background:
+                    sens === value
+                      ? value === 'Achat'
+                        ? C.teal
+                        : C.coral
+                      : '#EEF0F4',
+                  color: sens === value ? '#fff' : C.sub,
+                }}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+
+          <label
+            className="text-xs font-semibold block mb-1"
+            style={{ color: C.sub }}
+          >
+            Type d'ordre
+          </label>
+          <select
+            value={typeOrdre}
+            onChange={(e) => setTypeOrdre(e.target.value)}
+            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
+            style={{ borderColor: C.line }}
+          >
+            <option>Ordre au marché</option>
+            <option>Ordre limite</option>
+          </select>
+
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Quantité
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={qte}
+                onChange={(e) => setQte(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line, ...F_MONO }}
+              />
+            </div>
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Prix limite
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                disabled={typeOrdre === 'Ordre au marché'}
+                value={prixLimite}
+                onChange={(e) => setPrixLimite(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{
+                  borderColor: C.line,
+                  opacity: typeOrdre === 'Ordre au marché' ? 0.55 : 1,
+                  ...F_MONO,
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl text-xs mb-3"
+            style={{ background: '#EFF3FB', color: C.ink }}
+          >
+            <div className="flex justify-between">
+              <span>Montant estimé</span>
+              <b style={F_MONO}>
+                {fmt(Math.round(montantEstime))} {marche.devise}
+              </b>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span>Liquidité disponible</span>
+              <span style={F_MONO}>
+                {fmt(Math.round(cash))}{' '}
+                {portefeuilleCourant?.devise || marche.devise}
+              </span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span>Liquidité réservée</span>
+              <span style={F_MONO}>
+                {fmt(Math.round(cashReserve))}{' '}
+                {portefeuilleCourant?.devise || marche.devise}
+              </span>
+            </div>
+            <div className="flex justify-between mt-1">
+              <span>Liquidité totale</span>
+              <span style={F_MONO}>
+                {fmt(Math.round(cashTotal))}{' '}
+                {portefeuilleCourant?.devise || marche.devise}
+              </span>
+            </div>
+            {sens === 'Vente' && (
+              <div className="flex justify-between mt-1">
+                <span>Position disponible</span>
+                <span style={F_MONO}>{fmt(position)} titre(s)</span>
+              </div>
+            )}
+          </div>
+
+          {message && (
+            <div
+              className="text-xs p-2.5 rounded-xl mb-3"
+              style={{ background: '#FBE9E7', color: C.coral }}
+            >
+              {message}
+            </div>
+          )}
+
+          <Btn onClick={envoyerOrdre}>
+            Envoyer l'ordre à {portefeuilleCourant?.sgi || 'la SGI'}
+          </Btn>
+          <div className="text-[10px] mt-2" style={{ color: C.sub }}>
+            Prototype : l'ordre est enregistré dans l'espace client. En
+            production, l'envoi devra être confirmé par l'API ou le workflow de
+            la SGI concernée.
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function ClientOrders({ orders }) {
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Mes ordres']} />
+      <div className="flex items-end justify-between">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Mes ordres
+          </h2>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            Suivi transversal de vos instructions, quelle que soit la SGI.
+          </div>
+        </div>
+        <Badge tone="gold">{orders.length} ordre(s)</Badge>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <table className="w-full">
+          <thead style={{ background: '#FAFAFC' }}>
+            <tr>
+              <Th>Référence</Th>
+              <Th>Date</Th>
+              <Th>SGI</Th>
+              <Th>Instrument</Th>
+              <Th>Sens</Th>
+              <Th>Quantité</Th>
+              <Th>Prix</Th>
+              <Th>Type</Th>
+              <Th>Statut</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((ordre) => {
+              const pf = CLIENT_GESTION_LIBRE.portefeuilles.find(
+                (portefeuille) => portefeuille.id === ordre.portefeuilleId
+              );
+              return (
+                <tr key={ordre.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <Td mono>{ordre.id}</Td>
+                  <Td>{ordre.date}</Td>
+                  <Td>
+                    <div className="font-semibold">{pf?.sgi || '—'}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      {ordre.marche}
+                    </div>
+                  </Td>
+                  <Td className="font-semibold">{ordre.instrument}</Td>
+                  <Td>
+                    <Badge tone={ordre.sens === 'Achat' ? 'teal' : 'coral'}>
+                      {ordre.sens}
+                    </Badge>
+                  </Td>
+                  <Td mono>{fmt(ordre.qte)}</Td>
+                  <Td mono>
+                    {fmtPrice(ordre.prix)} {ordre.devise}
+                  </Td>
+                  <Td>{ordre.typeOrdre}</Td>
+                  <Td>
+                    <Badge
+                      tone={
+                        ordre.statut === 'Exécuté'
+                          ? 'teal'
+                          : ordre.statut === 'Annulé'
+                          ? 'coral'
+                          : 'gold'
+                      }
+                    >
+                      {ordre.statut}
+                    </Badge>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function ClientCashflows({ devise }) {
+  const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const totalCash = portefeuilles.reduce(
+    (somme, portefeuille) => somme + clientCashIn(portefeuille, devise),
+    0
+  );
+  const totalRevenus = CLIENT_CASHFLOWS.reduce(
+    (somme, flux) => somme + convertCurrency(flux.montant, flux.devise, devise),
+    0
+  );
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Liquidité & revenus']} />
+      <div>
+        <h2
+          className="text-xl font-bold"
+          style={{ ...F_DISPLAY, color: C.ink }}
+        >
+          Liquidité & revenus
+        </h2>
+        <div className="text-xs mt-1" style={{ color: C.sub }}>
+          Centralisez les comptes espèces de vos SGI et les dividendes/coupons
+          attendus avant de décider de nouveaux investissements.
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Liquidité totale
+          </div>
+          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(totalCash))} {devise}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Revenus financiers à venir
+          </div>
+          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(totalRevenus))} {devise}
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4">
+          <Eyebrow>Comptes espèces par SGI</Eyebrow>
+        </div>
+        <table className="w-full">
+          <thead style={{ background: '#FAFAFC' }}>
+            <tr>
+              <Th>SGI</Th>
+              <Th>Pays / marché</Th>
+              <Th>Solde local</Th>
+              <Th>Équivalent {devise}</Th>
+              <Th>Part de la liquidité</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {portefeuilles.map((portefeuille) => {
+              const equivalent = clientCashIn(portefeuille, devise);
+              return (
+                <tr
+                  key={portefeuille.id}
+                  style={{ borderTop: `1px solid ${C.line}` }}
+                >
+                  <Td className="font-semibold">{portefeuille.sgi}</Td>
+                  <Td>
+                    {portefeuille.pays} · {portefeuille.marche}
+                  </Td>
+                  <Td mono>
+                    {fmt(Math.round(portefeuille.compteEspeces))}{' '}
+                    {portefeuille.devise}
+                  </Td>
+                  <Td mono>
+                    {fmt(Math.round(equivalent))} {devise}
+                  </Td>
+                  <Td mono>
+                    {totalCash > 0
+                      ? ((equivalent / totalCash) * 100).toFixed(1)
+                      : '0.0'}
+                    %
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4">
+          <Eyebrow>Dividendes & coupons attendus</Eyebrow>
+        </div>
+        <table className="w-full">
+          <thead style={{ background: '#FAFAFC' }}>
+            <tr>
+              <Th>Date</Th>
+              <Th>SGI</Th>
+              <Th>Instrument</Th>
+              <Th>Nature</Th>
+              <Th>Montant</Th>
+              <Th>Équivalent {devise}</Th>
+              <Th>Statut</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {CLIENT_CASHFLOWS.map((flux) => {
+              const pf = portefeuilles.find(
+                (portefeuille) => portefeuille.id === flux.portefeuilleId
+              );
+              return (
+                <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <Td>{flux.date}</Td>
+                  <Td className="font-semibold">{pf?.sgi}</Td>
+                  <Td>{flux.instrument}</Td>
+                  <Td>
+                    <Badge tone="teal">{flux.type}</Badge>
+                  </Td>
+                  <Td mono>
+                    {fmt(Math.round(flux.montant))} {flux.devise}
+                  </Td>
+                  <Td mono>
+                    {fmt(
+                      Math.round(
+                        convertCurrency(flux.montant, flux.devise, devise)
+                      )
+                    )}{' '}
+                    {devise}
+                  </Td>
+                  <Td>
+                    <Badge tone="gold">{flux.statut}</Badge>
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function ClientAnalysis({ devise }) {
+  const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const patrimoine = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientPortfolioValueIn(portefeuille, devise),
+    0
+  );
+
+  const pays = {};
+  const secteurs = {};
+  const lignes = [];
+  let patrimoineInvesti = 0;
+
+  portefeuilles.forEach((portefeuille) => {
+    const valeurPf = clientPortfolioValueIn(portefeuille, devise);
+    pays[portefeuille.pays] = (pays[portefeuille.pays] || 0) + valeurPf;
+
+    portefeuille.lignes.forEach((ligne) => {
+      const valeur = convertCurrency(
+        clientLineValue(ligne),
+        portefeuille.devise,
+        devise
+      );
+      const secteur = clientSector(ligne.instrument);
+
+      patrimoineInvesti += valeur;
+      secteurs[secteur] = (secteurs[secteur] || 0) + valeur;
+      lignes.push({
+        instrument: ligne.instrument,
+        sgi: portefeuille.sgi,
+        valeur,
+      });
+    });
+  });
+
+  const topLignes = lignes.sort((a, b) => b.valeur - a.valeur).slice(0, 5);
+  const expositionPays = Object.entries(pays).map(([name, montant]) => ({
+    name,
+    montant,
+    value:
+      patrimoine > 0 ? Number(((montant / patrimoine) * 100).toFixed(1)) : 0,
+    devise,
+  }));
+  const expositionSectorielle = Object.entries(secteurs)
+    .map(([name, montant]) => ({
+      name,
+      montant,
+      value:
+        patrimoineInvesti > 0
+          ? Number(((montant / patrimoineInvesti) * 100).toFixed(1))
+          : 0,
+      devise,
+    }))
+    .sort((a, b) => b.montant - a.montant);
+  const concentrationTop3 =
+    patrimoine > 0
+      ? (topLignes.slice(0, 3).reduce((s, ligne) => s + ligne.valeur, 0) /
+          patrimoine) *
+        100
+      : 0;
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Performance & risque']} />
+      <div>
+        <h2
+          className="text-xl font-bold"
+          style={{ ...F_DISPLAY, color: C.ink }}
+        >
+          Performance & risque
+        </h2>
+        <div className="text-xs mt-1" style={{ color: C.sub }}>
+          Analyse consolidée de votre patrimoine, indépendamment de la SGI qui
+          détient chaque position.
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="col-span-2 p-5">
+          <Eyebrow>Évolution du patrimoine — base 100</Eyebrow>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={CLIENT_HISTORY}>
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis
+                dataKey="mois"
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={{ stroke: C.line }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                domain={['dataMin - 2', 'dataMax + 2']}
+              />
+              <Tooltip
+                formatter={(value) => [`${value}`, 'Indice patrimoine']}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: `1px solid ${C.line}`,
+                  fontSize: 11,
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="valeur"
+                stroke={C.navy}
+                strokeWidth={2.4}
+                dot={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        <Card className="p-5">
+          <Eyebrow>Concentration</Eyebrow>
+          <div className="text-xs" style={{ color: C.sub }}>
+            Poids des 3 principales lignes
+          </div>
+          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
+            {concentrationTop3.toFixed(1)}%
+          </div>
+          <div className="mt-4 space-y-2">
+            {topLignes.slice(0, 3).map((ligne) => (
+              <div
+                key={`${ligne.sgi}-${ligne.instrument}`}
+                className="flex justify-between gap-3 text-xs"
+              >
+                <span>{ligne.instrument}</span>
+                <span style={F_MONO}>
+                  {patrimoine > 0
+                    ? ((ligne.valeur / patrimoine) * 100).toFixed(1)
+                    : '0.0'}
+                  %
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="p-5">
+          <Eyebrow>Exposition géographique</Eyebrow>
+          <Donut data={expositionPays} size={170} />
+          <Legende data={expositionPays} />
+        </Card>
+        <Card className="p-5">
+          <Eyebrow>Exposition sectorielle</Eyebrow>
+          <div className="text-[10px] mb-1" style={{ color: C.sub }}>
+            Répartition des actifs investis par secteur · hors liquidité
+          </div>
+          <Donut data={expositionSectorielle} size={170} />
+          <Legende data={expositionSectorielle} />
+        </Card>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4">
+          <Eyebrow>Principales positions consolidées</Eyebrow>
+        </div>
+        <table className="w-full">
+          <thead style={{ background: '#FAFAFC' }}>
+            <tr>
+              <Th>Instrument</Th>
+              <Th>SGI</Th>
+              <Th>Valeur équiv. {devise}</Th>
+              <Th>Poids patrimoine</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {topLignes.map((ligne) => (
+              <tr
+                key={`${ligne.sgi}-${ligne.instrument}`}
+                style={{ borderTop: `1px solid ${C.line}` }}
+              >
+                <Td className="font-semibold">{ligne.instrument}</Td>
+                <Td>{ligne.sgi}</Td>
+                <Td mono>
+                  {fmt(Math.round(ligne.valeur))} {devise}
+                </Td>
+                <Td mono>
+                  {patrimoine > 0
+                    ? ((ligne.valeur / patrimoine) * 100).toFixed(1)
+                    : '0.0'}
+                  %
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 /* --------------------------------- APP --------------------------------- */
 export default function App() {
+  const [workspace, setWorkspace] = useState('gestionnaire');
   const [screen, setScreen] = useState('accueil');
+  const [clientScreen, setClientScreen] = useState('client-dashboard');
+  const [clientCtx, setClientCtx] = useState({});
   const [ctx, setCtx] = useState({});
   const [reportOpen, setReportOpen] = useState({});
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
+  const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
   const [watchlistTitles, setWatchlistTitles] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_STATIC_WATCHLIST_TITLES;
     try {
@@ -9137,6 +12120,32 @@ export default function App() {
   };
   const report = () => setReportOpen({ notice: true });
 
+  const goClient = (id, params = {}) => {
+    setClientScreen(id);
+    setClientCtx(params);
+    remonterEnHaut();
+  };
+
+  const createClientOrder = (ordre) => {
+    const now = new Date();
+    const date = now.toLocaleDateString('fr-FR');
+    setClientOrders((current) => [
+      {
+        ...ordre,
+        id: `CL-ORD-${String(current.length + 1).padStart(3, '0')}`,
+        date,
+      },
+      ...current,
+    ]);
+  };
+
+  const switchWorkspace = () => {
+    setWorkspace((current) =>
+      current === 'gestionnaire' ? 'client' : 'gestionnaire'
+    );
+    remonterEnHaut();
+  };
+
   const activeClient = ctx.clientId
     ? CLIENTS.find((c) => c.id === ctx.clientId)
     : null;
@@ -9176,21 +12185,78 @@ export default function App() {
                   className="text-[11px] tracking-widest uppercase"
                   style={{ color: '#9AA5C4' }}
                 >
-                  Management
+                  {workspace === 'gestionnaire'
+                    ? 'Management'
+                    : 'Gestion libre'}
                 </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={switchWorkspace}
+              className="w-full mb-5 p-3 rounded-2xl text-left transition-transform active:scale-[0.98]"
+              style={{
+                background:
+                  workspace === 'gestionnaire'
+                    ? 'rgba(201,150,47,0.16)'
+                    : 'rgba(30,156,119,0.18)',
+                border: `1px solid ${
+                  workspace === 'gestionnaire'
+                    ? 'rgba(201,150,47,0.42)'
+                    : 'rgba(30,156,119,0.45)'
+                }`,
+              }}
+            >
+              <div
+                className="text-[10px] uppercase tracking-widest font-semibold"
+                style={{ color: '#9AA5C4' }}
+              >
+                Espace actuel
+              </div>
+              <div className="flex items-center justify-between gap-2 mt-1">
+                <span
+                  className="text-sm font-bold"
+                  style={{
+                    color: workspace === 'gestionnaire' ? C.gold : '#7FE0C2',
+                    ...F_DISPLAY,
+                  }}
+                >
+                  {workspace === 'gestionnaire'
+                    ? 'Gestionnaire'
+                    : 'Client · Gestion libre'}
+                </span>
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{ color: '#C7CEE3' }}
+                >
+                  Basculer ↔
+                </span>
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: '#9AA5C4' }}>
+                {workspace === 'gestionnaire'
+                  ? "Passer à l'espace Client"
+                  : "Revenir à l'espace Gestionnaire"}
+              </div>
+            </button>
+
             <nav className="space-y-1">
-              {NAV.map((n) => {
+              {(workspace === 'gestionnaire' ? NAV : CLIENT_NAV).map((n) => {
                 const active =
-                  screen === n.id ||
-                  (n.id === 'portefeuilles' && screen === 'client') ||
-                  (n.id === 'marches' && screen === 'profondeur') ||
-                  (n.id === 'comite' && screen === 'decisions-comite');
+                  workspace === 'gestionnaire'
+                    ? screen === n.id ||
+                      (n.id === 'portefeuilles' && screen === 'client') ||
+                      (n.id === 'marches' && screen === 'profondeur') ||
+                      (n.id === 'comite' && screen === 'decisions-comite')
+                    : clientScreen === n.id ||
+                      (n.id === 'client-invest' &&
+                        clientScreen === 'client-market-depth');
                 return (
                   <button
                     key={n.id}
-                    onClick={() => go(n.id)}
+                    onClick={() =>
+                      workspace === 'gestionnaire' ? go(n.id) : goClient(n.id)
+                    }
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
                     style={{
                       background: active
@@ -9212,75 +12278,142 @@ export default function App() {
                 color: '#7C87A8',
               }}
             >
-              Marchés couverts : BRVM · NGX · GSE
-              <br />
-              Devise de référence : {siteDevise}
+              {workspace === 'gestionnaire' ? (
+                <>
+                  Marchés couverts : BRVM · NGX · GSE
+                  <br />
+                  Devise de référence : {siteDevise}
+                </>
+              ) : (
+                <>
+                  {
+                    new Set(
+                      CLIENT_GESTION_LIBRE.portefeuilles.map((pf) => pf.sgi)
+                    ).size
+                  }{' '}
+                  SGI connectées ·{' '}
+                  {
+                    new Set(
+                      CLIENT_GESTION_LIBRE.portefeuilles.map((pf) => pf.pays)
+                    ).size
+                  }{' '}
+                  pays
+                  <br />
+                  Patrimoine consolidé en {siteDevise}
+                </>
+              )}
             </div>
           </aside>
 
           <main className="flex-1 p-8 min-w-0 overflow-x-hidden">
-            {screen === 'accueil' && (
-              <Accueil
-                go={go}
-                openClient={openClient}
-                devise={siteDevise}
-                onDeviseChange={setSiteDevise}
-                dark={dark}
-                onToggleDark={() => setDark(!dark)}
-              />
+            {workspace === 'gestionnaire' && (
+              <>
+                {screen === 'accueil' && (
+                  <Accueil
+                    go={go}
+                    openClient={openClient}
+                    devise={siteDevise}
+                    onDeviseChange={setSiteDevise}
+                    dark={dark}
+                    onToggleDark={() => setDark(!dark)}
+                  />
+                )}
+                {screen === 'portefeuilles' && (
+                  <Portefeuilles
+                    go={go}
+                    openClient={openClient}
+                    initialFilter={ctx.filtre}
+                  />
+                )}
+                {screen === 'client' && activeClient && (
+                  <PortefeuilleDetail
+                    client={activeClient}
+                    go={go}
+                    reportOpen={reportOpen}
+                    onGenerateReport={report}
+                  />
+                )}
+                {screen === 'carnet' && <Carnet initial={ctx} />}
+                {screen === 'profondeur' && (
+                  <ProfondeurMarche ctx={ctx} go={go} />
+                )}
+                {screen === 'avis' && <Avis />}
+                {screen === 'marches' && (
+                  <Marches
+                    go={go}
+                    watchlistTitles={watchlistTitles}
+                    onAddWatch={addToWatchlist}
+                  />
+                )}
+                {screen === 'watchlist' && (
+                  <Watchlist
+                    go={go}
+                    watchlistTitles={watchlistTitles}
+                    onRemoveWatch={removeFromWatchlist}
+                  />
+                )}
+                {screen === 'recos-actions' && <RecosActions go={go} />}
+                {screen === 'reco-alloc' && <RecoAlloc go={go} />}
+                {screen === 'alloc-criteres' && (
+                  <AllocCriteres
+                    initialSens={ctx.sens}
+                    initialInstrument={ctx.instrument}
+                  />
+                )}
+                {screen === 'alertes' && <Alertes go={go} />}
+                {screen === 'money-management' && (
+                  <MoneyManagement go={go} devise={siteDevise} />
+                )}
+                {screen === 'reequilibrage' && (
+                  <Reequilibrage initial={ctx} devise={siteDevise} />
+                )}
+                {screen === 'analyse' && (
+                  <AnalysePortefeuille devise={siteDevise} />
+                )}
+                {screen === 'comite' && <Comite devise={siteDevise} go={go} />}
+                {screen === 'decisions-comite' && <PriseDecisions go={go} />}
+              </>
             )}
-            {screen === 'portefeuilles' && (
-              <Portefeuilles
-                go={go}
-                openClient={openClient}
-                initialFilter={ctx.filtre}
-              />
+
+            {workspace === 'client' && (
+              <>
+                {clientScreen === 'client-dashboard' && (
+                  <ClientDashboard
+                    goClient={goClient}
+                    devise={siteDevise}
+                    onDeviseChange={setSiteDevise}
+                    orders={clientOrders}
+                  />
+                )}
+                {clientScreen === 'client-portfolios' && (
+                  <ClientPortfolios devise={siteDevise} orders={clientOrders} />
+                )}
+                {clientScreen === 'client-invest' && (
+                  <ClientInvest
+                    goClient={goClient}
+                    onCreateOrder={createClientOrder}
+                    orders={clientOrders}
+                    initialInstrument={clientCtx.instrument}
+                  />
+                )}
+                {clientScreen === 'client-market-depth' && (
+                  <ProfondeurMarche
+                    ctx={clientCtx}
+                    mode="client"
+                    goClient={goClient}
+                  />
+                )}
+                {clientScreen === 'client-orders' && (
+                  <ClientOrders orders={clientOrders} />
+                )}
+                {clientScreen === 'client-cashflows' && (
+                  <ClientCashflows devise={siteDevise} />
+                )}
+                {clientScreen === 'client-analysis' && (
+                  <ClientAnalysis devise={siteDevise} />
+                )}
+              </>
             )}
-            {screen === 'client' && activeClient && (
-              <PortefeuilleDetail
-                client={activeClient}
-                go={go}
-                reportOpen={reportOpen}
-                onGenerateReport={report}
-              />
-            )}
-            {screen === 'carnet' && <Carnet initial={ctx} />}
-            {screen === 'profondeur' && <ProfondeurMarche ctx={ctx} go={go} />}
-            {screen === 'avis' && <Avis />}
-            {screen === 'marches' && (
-              <Marches
-                go={go}
-                watchlistTitles={watchlistTitles}
-                onAddWatch={addToWatchlist}
-              />
-            )}
-            {screen === 'watchlist' && (
-              <Watchlist
-                go={go}
-                watchlistTitles={watchlistTitles}
-                onRemoveWatch={removeFromWatchlist}
-              />
-            )}
-            {screen === 'recos-actions' && <RecosActions go={go} />}
-            {screen === 'reco-alloc' && <RecoAlloc go={go} />}
-            {screen === 'alloc-criteres' && (
-              <AllocCriteres
-                initialSens={ctx.sens}
-                initialInstrument={ctx.instrument}
-              />
-            )}
-            {screen === 'alertes' && <Alertes go={go} />}
-            {screen === 'money-management' && (
-              <MoneyManagement go={go} devise={siteDevise} />
-            )}
-            {screen === 'reequilibrage' && (
-              <Reequilibrage initial={ctx} devise={siteDevise} />
-            )}
-            {screen === 'analyse' && (
-              <AnalysePortefeuille devise={siteDevise} />
-            )}
-            {screen === 'comite' && <Comite devise={siteDevise} go={go} />}
-            {screen === 'decisions-comite' && <PriseDecisions go={go} />}
           </main>
         </div>
       </div>
