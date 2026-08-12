@@ -1260,18 +1260,18 @@ const clientSector = (instrument) =>
   CLIENT_SECTEUR_INSTRUMENT[instrument] || 'Autres';
 
 const CLIENT_HISTORY = [
-  { mois: 'Sept 25', valeur: 100 },
-  { mois: 'Oct', valeur: 101.8 },
-  { mois: 'Nov', valeur: 103.1 },
-  { mois: 'Déc', valeur: 102.4 },
-  { mois: 'Jan 26', valeur: 104.6 },
-  { mois: 'Fév', valeur: 105.2 },
-  { mois: 'Mar', valeur: 106.9 },
-  { mois: 'Avr', valeur: 108.1 },
-  { mois: 'Mai', valeur: 109.4 },
-  { mois: 'Juin', valeur: 108.8 },
-  { mois: 'Juil', valeur: 111.7 },
-  { mois: 'Août', valeur: 113.2 },
+  { date: '2025-09-01', mois: 'Sept 25', valeur: 100 },
+  { date: '2025-10-01', mois: 'Oct', valeur: 101.8 },
+  { date: '2025-11-01', mois: 'Nov', valeur: 103.1 },
+  { date: '2025-12-01', mois: 'Déc', valeur: 102.4 },
+  { date: '2026-01-01', mois: 'Jan 26', valeur: 104.6 },
+  { date: '2026-02-01', mois: 'Fév', valeur: 105.2 },
+  { date: '2026-03-01', mois: 'Mar', valeur: 106.9 },
+  { date: '2026-04-01', mois: 'Avr', valeur: 108.1 },
+  { date: '2026-05-01', mois: 'Mai', valeur: 109.4 },
+  { date: '2026-06-01', mois: 'Juin', valeur: 108.8 },
+  { date: '2026-07-01', mois: 'Juil', valeur: 111.7 },
+  { date: '2026-08-01', mois: 'Août', valeur: 113.2 },
 ];
 
 const orderBookDemo = (m) => {
@@ -11859,6 +11859,37 @@ function ClientCashflows({ devise }) {
 
 function ClientAnalysis({ devise }) {
   const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const [filtrePaysHistorique, setFiltrePaysHistorique] = useState('Tous');
+  const [filtreSgiHistorique, setFiltreSgiHistorique] = useState('Toutes');
+  const [dateDebutHistorique, setDateDebutHistorique] = useState(
+    CLIENT_HISTORY[0]?.date || ''
+  );
+
+  const paysDisponiblesHistorique = [
+    'Tous',
+    ...new Set(portefeuilles.map((portefeuille) => portefeuille.pays)),
+  ];
+  const sgiDisponiblesHistorique = [
+    'Toutes',
+    ...new Set(
+      portefeuilles
+        .filter(
+          (portefeuille) =>
+            filtrePaysHistorique === 'Tous' ||
+            portefeuille.pays === filtrePaysHistorique
+        )
+        .map((portefeuille) => portefeuille.sgi)
+    ),
+  ];
+
+  const portefeuillesHistoriques = portefeuilles.filter(
+    (portefeuille) =>
+      (filtrePaysHistorique === 'Tous' ||
+        portefeuille.pays === filtrePaysHistorique) &&
+      (filtreSgiHistorique === 'Toutes' ||
+        portefeuille.sgi === filtreSgiHistorique)
+  );
+
   const patrimoine = portefeuilles.reduce(
     (somme, portefeuille) =>
       somme + clientPortfolioValueIn(portefeuille, devise),
@@ -11918,6 +11949,364 @@ function ClientAnalysis({ devise }) {
         100
       : 0;
 
+  const pointsHistoriqueAffiches = CLIENT_HISTORY.map(
+    (point, indexOriginal) => ({
+      ...point,
+      indexOriginal,
+    })
+  ).filter(
+    (point) =>
+      !dateDebutHistorique ||
+      point.date.slice(0, 7) >= dateDebutHistorique.slice(0, 7)
+  );
+  const periodesHistorique = pointsHistoriqueAffiches.map(
+    (point) => point.mois
+  );
+  const dateMinHistorique = CLIENT_HISTORY[0]?.date || '';
+  const dateMaxHistorique = '2026-08-31';
+  const libelleDebutHistorique =
+    pointsHistoriqueAffiches[0]?.mois || CLIENT_HISTORY[0]?.mois || '—';
+  const couleursHistorique = [
+    C.gold,
+    C.teal,
+    C.indigo,
+    C.coral,
+    '#8B93A7',
+    '#6D4C9F',
+    '#2F80ED',
+    '#9A6B2F',
+  ];
+  const formatCompact = (montant) =>
+    new Intl.NumberFormat('fr-FR', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(Number(montant || 0));
+  const formatMontantTooltip = (montant) =>
+    `${fmt(Math.round(Number(montant || 0)))} ${devise}`;
+  const seedTexte = (texte) =>
+    String(texte)
+      .split('')
+      .reduce(
+        (somme, caractere, index) =>
+          somme + caractere.charCodeAt(0) * (index + 1),
+        0
+      );
+  const indiceBase100 = (nom, index, famille = 'secteur') => {
+    const seed = seedTexte(`${famille}-${nom}`);
+    const tendance =
+      famille === 'secteur'
+        ? 0.32 + (seed % 7) * 0.07
+        : 0.28 + (seed % 6) * 0.08;
+    const volatilite =
+      famille === 'secteur' ? 0.9 + (seed % 5) * 0.22 : 0.7 + (seed % 4) * 0.2;
+    const phase = (seed % 11) * 0.31;
+    const valeurBrute = (rang) =>
+      100 +
+      rang * tendance +
+      Math.sin(rang * 0.86 + phase) * volatilite +
+      Math.cos(rang * 0.41 + phase / 2) * volatilite * 0.45;
+    return Number((100 + valeurBrute(index) - valeurBrute(0)).toFixed(2));
+  };
+
+  const secteursFiltresMontants = {};
+  portefeuillesHistoriques.forEach((portefeuille) => {
+    portefeuille.lignes.forEach((ligne) => {
+      const secteur = clientSector(ligne.instrument);
+      const valeur = convertCurrency(
+        clientLineValue(ligne),
+        portefeuille.devise,
+        devise
+      );
+      secteursFiltresMontants[secteur] =
+        (secteursFiltresMontants[secteur] || 0) + valeur;
+    });
+  });
+
+  const seriesSecteurs = Object.entries(secteursFiltresMontants)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, montant], index) => ({
+      name,
+      montant,
+      key: `secteur_${index}`,
+      color: couleursHistorique[index % couleursHistorique.length],
+    }));
+  const [visibiliteSecteurs, setVisibiliteSecteurs] = useState(() => {
+    const tousSecteurs = [
+      ...new Set(
+        portefeuilles.flatMap((portefeuille) =>
+          portefeuille.lignes.map((ligne) => clientSector(ligne.instrument))
+        )
+      ),
+    ];
+    return {
+      general: true,
+      ...Object.fromEntries(tousSecteurs.map((secteur) => [secteur, true])),
+    };
+  });
+
+  const historiqueSecteurs = periodesHistorique.map((mois, index) => {
+    const indexOriginal =
+      pointsHistoriqueAffiches[index]?.indexOriginal ?? index;
+    const ligneHistorique = { mois };
+    let investissementGeneralMontant = 0;
+
+    seriesSecteurs.forEach((serie) => {
+      const indice = indiceBase100(serie.name, index, 'secteur');
+      const indiceFinal = indiceBase100(
+        serie.name,
+        periodesHistorique.length - 1,
+        'secteur'
+      );
+      const montant =
+        indiceFinal !== 0
+          ? (serie.montant * indice) / indiceFinal
+          : serie.montant;
+      ligneHistorique[serie.key] = indice;
+      ligneHistorique[`${serie.key}Montant`] = montant;
+      investissementGeneralMontant += montant;
+    });
+
+    ligneHistorique.generalMontant = investissementGeneralMontant;
+    return ligneHistorique;
+  });
+  const baseInvestissementGeneral = historiqueSecteurs[0]?.generalMontant || 1;
+  historiqueSecteurs.forEach((ligneHistorique) => {
+    ligneHistorique.general = Number(
+      (
+        (ligneHistorique.generalMontant / baseInvestissementGeneral) *
+        100
+      ).toFixed(2)
+    );
+  });
+
+  const facteursFluxEspeces = [
+    0, 0.045, -0.028, 0.062, -0.038, 0.024, 0.051, -0.044, 0.035, -0.021, 0.058,
+    -0.017,
+  ];
+  historiqueSecteurs.forEach((ligneHistorique, index) => {
+    const indexOriginal =
+      pointsHistoriqueAffiches[index]?.indexOriginal ?? index;
+    const facteurFlux = facteursFluxEspeces[indexOriginal] ?? 0;
+
+    ligneHistorique.cashVariation = portefeuillesHistoriques.reduce(
+      (somme, portefeuille) => {
+        const cash = clientCashIn(portefeuille, devise);
+        const seed = seedTexte(portefeuille.sgi);
+        const amplitude = 0.82 + (seed % 5) * 0.09;
+        const alternance = (seed + indexOriginal) % 4 === 0 ? -0.35 : 1;
+        return somme + cash * facteurFlux * amplitude * alternance;
+      },
+      0
+    );
+  });
+
+  const sgiFiltresMontants = {};
+  portefeuillesHistoriques.forEach((portefeuille) => {
+    const investissement = portefeuille.lignes.reduce(
+      (somme, ligne) =>
+        somme +
+        convertCurrency(clientLineValue(ligne), portefeuille.devise, devise),
+      0
+    );
+    const cash = clientCashIn(portefeuille, devise);
+    if (!sgiFiltresMontants[portefeuille.sgi]) {
+      sgiFiltresMontants[portefeuille.sgi] = {
+        investissement: 0,
+        cash: 0,
+      };
+    }
+    sgiFiltresMontants[portefeuille.sgi].investissement += investissement;
+    sgiFiltresMontants[portefeuille.sgi].cash += cash;
+  });
+
+  const seriesSgi = Object.entries(sgiFiltresMontants)
+    .sort((a, b) => b[1].investissement - a[1].investissement)
+    .map(([name, valeurs], index) => ({
+      name,
+      ...valeurs,
+      key: `sgi_${index}`,
+      cashKey: `sgi_cash_${index}`,
+      color: couleursHistorique[index % couleursHistorique.length],
+    }));
+  const [visibiliteSgi, setVisibiliteSgi] = useState(() => ({
+    general: true,
+    ...Object.fromEntries(
+      [...new Set(portefeuilles.map((portefeuille) => portefeuille.sgi))].map(
+        (sgi) => [sgi, true]
+      )
+    ),
+  }));
+
+  const facteursSoldeCash = [
+    0.8, 0.84, 0.79, 0.88, 0.91, 0.87, 0.94, 0.9, 0.96, 0.93, 0.98, 1,
+  ];
+  const historiqueSgi = periodesHistorique.map((mois, index) => {
+    const indexOriginal =
+      pointsHistoriqueAffiches[index]?.indexOriginal ?? index;
+    const ligneHistorique = { mois };
+    let investissementGeneralMontant = 0;
+
+    seriesSgi.forEach((serie) => {
+      const indice = indiceBase100(serie.name, index, 'sgi');
+      const indiceFinal = indiceBase100(
+        serie.name,
+        periodesHistorique.length - 1,
+        'sgi'
+      );
+      const montantInvesti =
+        indiceFinal !== 0
+          ? (serie.investissement * indice) / indiceFinal
+          : serie.investissement;
+      const seed = seedTexte(`cash-${serie.name}`);
+      const modulation = 0.88 + (seed % 5) * 0.04;
+      const facteurCash =
+        1 + (facteursSoldeCash[indexOriginal] - 1) * modulation;
+      const montantCash = serie.cash * facteurCash;
+
+      ligneHistorique[serie.key] = indice;
+      ligneHistorique[`${serie.key}Montant`] = montantInvesti;
+      ligneHistorique[serie.cashKey] = montantCash;
+      investissementGeneralMontant += montantInvesti;
+    });
+
+    ligneHistorique.generalMontant = investissementGeneralMontant;
+    return ligneHistorique;
+  });
+  const baseGeneralSgi = historiqueSgi[0]?.generalMontant || 1;
+  historiqueSgi.forEach((ligneHistorique) => {
+    ligneHistorique.general = Number(
+      ((ligneHistorique.generalMontant / baseGeneralSgi) * 100).toFixed(2)
+    );
+  });
+
+  const metaGraphiqueSecteurs = {
+    general: {
+      label: 'Investissement général',
+      type: 'base100',
+      amountKey: 'generalMontant',
+    },
+    cashVariation: {
+      label: 'Variation compte espèces',
+      type: 'cashVariation',
+    },
+    ...Object.fromEntries(
+      seriesSecteurs.map((serie) => [
+        serie.key,
+        {
+          label: serie.name,
+          type: 'base100',
+          amountKey: `${serie.key}Montant`,
+        },
+      ])
+    ),
+  };
+
+  const metaGraphiqueSgi = {
+    general: {
+      label: 'Investissement général',
+      type: 'base100',
+      amountKey: 'generalMontant',
+    },
+    ...Object.fromEntries(
+      seriesSgi.flatMap((serie) => [
+        [
+          serie.key,
+          {
+            label: `${serie.name} · Investissement`,
+            type: 'base100',
+            amountKey: `${serie.key}Montant`,
+          },
+        ],
+        [
+          serie.cashKey,
+          {
+            label: `${serie.name} · Compte espèces`,
+            type: 'cashBalance',
+          },
+        ],
+      ])
+    ),
+  };
+
+  const renderTooltipHistorique = (meta) =>
+    function TooltipHistorique({ active, payload, label }) {
+      if (!active || !payload?.length) return null;
+      const point = payload[0]?.payload || {};
+      const entrees = payload.filter((item) => meta[item.dataKey]);
+
+      return (
+        <div
+          className="p-3 rounded-xl border bg-white shadow-sm"
+          style={{ borderColor: C.line, minWidth: 210, ...F_BODY }}
+        >
+          <div className="text-xs font-bold mb-2" style={{ color: C.ink }}>
+            {label}
+          </div>
+          <div className="space-y-2">
+            {entrees.map((item) => {
+              const info = meta[item.dataKey];
+              if (!info) return null;
+              return (
+                <div key={item.dataKey} className="text-[11px]">
+                  <div
+                    className="flex items-center justify-between gap-3 font-semibold"
+                    style={{ color: item.color || C.ink }}
+                  >
+                    <span>{info.label}</span>
+                    {info.type === 'base100' ? (
+                      <span style={F_MONO}>
+                        Indice {Number(item.value).toFixed(2)}
+                      </span>
+                    ) : (
+                      <span style={F_MONO}>
+                        {info.type === 'cashVariation' && Number(item.value) > 0
+                          ? '+'
+                          : ''}
+                        {formatMontantTooltip(item.value)}
+                      </span>
+                    )}
+                  </div>
+                  {info.type === 'base100' && (
+                    <>
+                      <div
+                        className="flex items-center justify-between gap-3 mt-0.5"
+                        style={{ color: C.sub }}
+                      >
+                        <span>Variation vs base 100</span>
+                        <span style={F_MONO}>
+                          {Number(item.value) - 100 >= 0 ? '+' : ''}
+                          {(Number(item.value) - 100).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div
+                        className="flex items-center justify-between gap-3 mt-0.5"
+                        style={{ color: C.sub }}
+                      >
+                        <span>Montant</span>
+                        <span style={F_MONO}>
+                          {formatMontantTooltip(point[info.amountKey])}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  {info.type === 'cashVariation' && (
+                    <div className="mt-0.5" style={{ color: C.sub }}>
+                      {Number(item.value) >= 0
+                        ? 'Ajout net de liquidité'
+                        : 'Retrait net de liquidité'}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    };
+
+  const TooltipSecteurs = renderTooltipHistorique(metaGraphiqueSecteurs);
+  const TooltipSgi = renderTooltipHistorique(metaGraphiqueSgi);
+
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Performance & risque']} />
@@ -11934,69 +12323,468 @@ function ClientAnalysis({ devise }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 p-5">
-          <Eyebrow>Évolution du patrimoine — base 100</Eyebrow>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={CLIENT_HISTORY}>
+      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Filtres des historiques</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Les deux graphiques utilisent le même périmètre pour comparer
+              secteurs, SGI et mouvements de trésorerie.
+            </div>
+          </div>
+          <div className="flex items-end gap-3 flex-wrap">
+            <div>
+              <label
+                className="text-[10px] font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Date de début
+              </label>
+              <input
+                type="date"
+                min={dateMinHistorique}
+                max={dateMaxHistorique}
+                value={dateDebutHistorique}
+                onChange={(e) => setDateDebutHistorique(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-xs min-w-[150px]"
+                style={{ borderColor: C.line, background: '#fff', ...F_MONO }}
+                aria-label="Date de début d'affichage des graphiques historiques"
+              />
+            </div>
+            <div>
+              <label
+                className="text-[10px] font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Pays
+              </label>
+              <select
+                value={filtrePaysHistorique}
+                onChange={(e) => {
+                  setFiltrePaysHistorique(e.target.value);
+                  setFiltreSgiHistorique('Toutes');
+                }}
+                className="px-3 py-2 rounded-xl border text-xs min-w-[150px]"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                {paysDisponiblesHistorique.map((paysOption) => (
+                  <option key={paysOption}>{paysOption}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                className="text-[10px] font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Société de gestion / SGI
+              </label>
+              <select
+                value={filtreSgiHistorique}
+                onChange={(e) => setFiltreSgiHistorique(e.target.value)}
+                className="px-3 py-2 rounded-xl border text-xs min-w-[190px]"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                {sgiDisponiblesHistorique.map((sgiOption) => (
+                  <option key={sgiOption}>{sgiOption}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {dateDebutHistorique !== dateMinHistorique && (
+                <button
+                  type="button"
+                  onClick={() => setDateDebutHistorique(dateMinHistorique)}
+                  className="px-3 py-2 rounded-xl border text-[10px] font-semibold"
+                  style={{
+                    borderColor: C.line,
+                    color: C.navy,
+                    background: '#fff',
+                  }}
+                >
+                  Tout l'historique
+                </button>
+              )}
+              <Badge tone="gold">
+                Depuis {libelleDebutHistorique} ·{' '}
+                {portefeuillesHistoriques.length} portefeuille(s) ·{' '}
+                {seriesSgi.length} SGI
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-4 items-stretch">
+        <Card className="p-5 min-w-0">
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div>
+              <Eyebrow>
+                Historique par secteur — base 100 &amp; flux espèces
+              </Eyebrow>
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Axe gauche : performance rebasée à 100 au début de la période ·
+                Axe droit : apports (+) et retraits (−) de liquidité en {devise}
+                .
+              </div>
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={historiqueSecteurs}
+              margin={{ top: 12, right: 22, left: 4, bottom: 4 }}
+            >
               <CartesianGrid stroke={C.line} vertical={false} />
               <XAxis
                 dataKey="mois"
-                tick={{ fontSize: 10, fill: C.sub }}
+                tick={{ fontSize: 9, fill: C.sub }}
                 axisLine={{ stroke: C.line }}
                 tickLine={false}
+                interval={1}
               />
               <YAxis
-                tick={{ fontSize: 10, fill: C.sub }}
+                yAxisId="base100"
+                orientation="left"
+                tick={{ fontSize: 9, fill: C.sub }}
                 axisLine={false}
                 tickLine={false}
-                domain={['dataMin - 2', 'dataMax + 2']}
-              />
-              <Tooltip
-                formatter={(value) => [`${value}`, 'Indice patrimoine']}
-                contentStyle={{
-                  borderRadius: 10,
-                  border: `1px solid ${C.line}`,
-                  fontSize: 11,
+                domain={['dataMin - 3', 'dataMax + 3']}
+                label={{
+                  value: 'Base 100',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fontSize: 9, fill: C.sub },
                 }}
               />
+              <YAxis
+                yAxisId="cash"
+                orientation="right"
+                tick={{ fontSize: 9, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={formatCompact}
+                label={{
+                  value: `Flux espèces (${devise})`,
+                  angle: 90,
+                  position: 'insideRight',
+                  style: { fontSize: 9, fill: C.sub },
+                }}
+              />
+              <Tooltip content={<TooltipSecteurs />} />
+              {visibiliteSecteurs.general && (
+                <Line
+                  yAxisId="base100"
+                  type="monotone"
+                  dataKey="general"
+                  name="Investissement général"
+                  stroke={C.navy}
+                  strokeWidth={2.8}
+                  dot={{ r: 2 }}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              )}
+              {seriesSecteurs.map(
+                (serie) =>
+                  visibiliteSecteurs[serie.name] !== false && (
+                    <Line
+                      key={serie.key}
+                      yAxisId="base100"
+                      type="monotone"
+                      dataKey={serie.key}
+                      name={serie.name}
+                      stroke={serie.color}
+                      strokeWidth={1.9}
+                      dot={{ r: 1.8 }}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )
+              )}
               <Line
+                yAxisId="cash"
                 type="monotone"
-                dataKey="valeur"
-                stroke={C.navy}
-                strokeWidth={2.4}
-                dot={false}
+                dataKey="cashVariation"
+                name="Variation compte espèces"
+                stroke={C.coral}
+                strokeWidth={2}
+                strokeDasharray="7 5"
+                dot={{ r: 2.2 }}
+                activeDot={{ r: 4 }}
+                isAnimationActive={false}
               />
             </LineChart>
           </ResponsiveContainer>
+
+          <div
+            className="flex items-center justify-center gap-x-4 gap-y-2 flex-wrap mt-2"
+            style={F_BODY}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setVisibiliteSecteurs((courant) => ({
+                  ...courant,
+                  general: !courant.general,
+                }))
+              }
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold"
+              style={{
+                color: C.ink,
+                opacity: visibiliteSecteurs.general ? 1 : 0.35,
+                textDecoration: visibiliteSecteurs.general
+                  ? 'none'
+                  : 'line-through',
+              }}
+            >
+              <span
+                className="inline-block w-4 rounded-full"
+                style={{ height: 3, background: C.navy }}
+              />
+              Général
+            </button>
+            {seriesSecteurs.map((serie) => {
+              const visible = visibiliteSecteurs[serie.name] !== false;
+              return (
+                <button
+                  key={serie.key}
+                  type="button"
+                  onClick={() =>
+                    setVisibiliteSecteurs((courant) => ({
+                      ...courant,
+                      [serie.name]: !visible,
+                    }))
+                  }
+                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold"
+                  style={{
+                    color: C.ink,
+                    opacity: visible ? 1 : 0.35,
+                    textDecoration: visible ? 'none' : 'line-through',
+                  }}
+                >
+                  <span
+                    className="inline-block w-4 rounded-full"
+                    style={{ height: 3, background: serie.color }}
+                  />
+                  {serie.name}
+                </button>
+              );
+            })}
+            <span
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold"
+              style={{ color: C.coral }}
+            >
+              <span
+                className="inline-block w-4"
+                style={{ borderTop: `2px dashed ${C.coral}` }}
+              />
+              Flux espèces
+            </span>
+          </div>
         </Card>
 
-        <Card className="p-5">
-          <Eyebrow>Concentration</Eyebrow>
-          <div className="text-xs" style={{ color: C.sub }}>
-            Poids des 3 principales lignes
-          </div>
-          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
-            {concentrationTop3.toFixed(1)}%
-          </div>
-          <div className="mt-4 space-y-2">
-            {topLignes.slice(0, 3).map((ligne) => (
-              <div
-                key={`${ligne.sgi}-${ligne.instrument}`}
-                className="flex justify-between gap-3 text-xs"
-              >
-                <span>{ligne.instrument}</span>
-                <span style={F_MONO}>
-                  {patrimoine > 0
-                    ? ((ligne.valeur / patrimoine) * 100).toFixed(1)
-                    : '0.0'}
-                  %
-                </span>
+        <Card className="p-5 min-w-0">
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div>
+              <Eyebrow>
+                Historique par SGI — base 100 &amp; comptes espèces
+              </Eyebrow>
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Traits pleins : investissement rebasé à 100 au début de la
+                période · Traits pointillés : solde du compte espèces de la même
+                SGI en {devise}.
               </div>
-            ))}
+            </div>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart
+              data={historiqueSgi}
+              margin={{ top: 12, right: 22, left: 4, bottom: 4 }}
+            >
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis
+                dataKey="mois"
+                tick={{ fontSize: 9, fill: C.sub }}
+                axisLine={{ stroke: C.line }}
+                tickLine={false}
+                interval={1}
+              />
+              <YAxis
+                yAxisId="base100"
+                orientation="left"
+                tick={{ fontSize: 9, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                domain={['dataMin - 3', 'dataMax + 3']}
+                label={{
+                  value: 'Base 100',
+                  angle: -90,
+                  position: 'insideLeft',
+                  style: { fontSize: 9, fill: C.sub },
+                }}
+              />
+              <YAxis
+                yAxisId="cash"
+                orientation="right"
+                tick={{ fontSize: 9, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={formatCompact}
+                label={{
+                  value: `Compte espèces (${devise})`,
+                  angle: 90,
+                  position: 'insideRight',
+                  style: { fontSize: 9, fill: C.sub },
+                }}
+              />
+              <Tooltip content={<TooltipSgi />} />
+              {visibiliteSgi.general && (
+                <Line
+                  yAxisId="base100"
+                  type="monotone"
+                  dataKey="general"
+                  name="Investissement général"
+                  stroke={C.navy}
+                  strokeWidth={2.8}
+                  dot={{ r: 2 }}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              )}
+              {seriesSgi.map(
+                (serie) =>
+                  visibiliteSgi[serie.name] !== false && (
+                    <Line
+                      key={serie.key}
+                      yAxisId="base100"
+                      type="monotone"
+                      dataKey={serie.key}
+                      name={`${serie.name} · Investissement`}
+                      stroke={serie.color}
+                      strokeWidth={1.9}
+                      dot={{ r: 1.7 }}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )
+              )}
+              {seriesSgi.map(
+                (serie) =>
+                  visibiliteSgi[serie.name] !== false && (
+                    <Line
+                      key={serie.cashKey}
+                      yAxisId="cash"
+                      type="monotone"
+                      dataKey={serie.cashKey}
+                      name={`${serie.name} · Compte espèces`}
+                      stroke={serie.color}
+                      strokeWidth={1.7}
+                      strokeDasharray="7 5"
+                      dot={{ r: 1.7 }}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+
+          <div
+            className="flex items-center justify-center gap-x-4 gap-y-2 flex-wrap mt-2"
+            style={F_BODY}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setVisibiliteSgi((courant) => ({
+                  ...courant,
+                  general: !courant.general,
+                }))
+              }
+              className="inline-flex items-center gap-1.5 text-[10px] font-semibold"
+              style={{
+                color: C.ink,
+                opacity: visibiliteSgi.general ? 1 : 0.35,
+                textDecoration: visibiliteSgi.general ? 'none' : 'line-through',
+              }}
+            >
+              <span
+                className="inline-block w-4 rounded-full"
+                style={{ height: 3, background: C.navy }}
+              />
+              Général
+            </button>
+            {seriesSgi.map((serie) => {
+              const visible = visibiliteSgi[serie.name] !== false;
+              return (
+                <button
+                  key={serie.key}
+                  type="button"
+                  onClick={() =>
+                    setVisibiliteSgi((courant) => ({
+                      ...courant,
+                      [serie.name]: !visible,
+                    }))
+                  }
+                  className="inline-flex items-center gap-1.5 text-[10px] font-semibold"
+                  style={{
+                    color: C.ink,
+                    opacity: visible ? 1 : 0.35,
+                    textDecoration: visible ? 'none' : 'line-through',
+                  }}
+                  title="Afficher/masquer à la fois l'investissement et le compte espèces"
+                >
+                  <span className="inline-flex flex-col gap-[2px]">
+                    <span
+                      className="inline-block w-4 rounded-full"
+                      style={{ height: 2, background: serie.color }}
+                    />
+                    <span
+                      className="inline-block w-4"
+                      style={{ borderTop: `1px dashed ${serie.color}` }}
+                    />
+                  </span>
+                  {serie.name}
+                </button>
+              );
+            })}
           </div>
         </Card>
       </div>
+
+      <Card className="p-5">
+        <Eyebrow>Concentration</Eyebrow>
+        <div className="grid grid-cols-4 gap-4 items-center">
+          <div>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Poids des 3 principales lignes
+            </div>
+            <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
+              {concentrationTop3.toFixed(1)}%
+            </div>
+          </div>
+          {topLignes.slice(0, 3).map((ligne) => (
+            <div
+              key={`${ligne.sgi}-${ligne.instrument}`}
+              className="p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <div className="text-xs font-semibold">{ligne.instrument}</div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                {ligne.sgi}
+              </div>
+              <div className="text-sm font-bold mt-1" style={F_MONO}>
+                {patrimoine > 0
+                  ? ((ligne.valeur / patrimoine) * 100).toFixed(1)
+                  : '0.0'}
+                %
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
 
       <div className="grid grid-cols-2 gap-4">
         <Card className="p-5">
@@ -12052,7 +12840,6 @@ function ClientAnalysis({ devise }) {
     </div>
   );
 }
-
 /* --------------------------------- APP --------------------------------- */
 export default function App() {
   const [workspace, setWorkspace] = useState('gestionnaire');
