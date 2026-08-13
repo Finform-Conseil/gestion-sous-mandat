@@ -3595,12 +3595,269 @@ function Portefeuilles({ go, openClient, initialFilter }) {
   );
 }
 
+const MOIS_HISTORIQUE_CLASSES_ACTIFS = [
+  { key: '2025-09', label: 'Sept 25' },
+  { key: '2025-10', label: 'Oct' },
+  { key: '2025-11', label: 'Nov' },
+  { key: '2025-12', label: 'Déc' },
+  { key: '2026-01', label: 'Jan 26' },
+  { key: '2026-02', label: 'Fév' },
+  { key: '2026-03', label: 'Mar' },
+  { key: '2026-04', label: 'Avr' },
+  { key: '2026-05', label: 'Mai' },
+  { key: '2026-06', label: 'Juin' },
+  { key: '2026-07', label: 'Juil' },
+  { key: '2026-08', label: 'Août' },
+];
+
+const CLASSES_ACTIFS_HISTORIQUES = [
+  { key: 'Actions', label: 'Actions', color: C.navy },
+  { key: 'OblSouveraines', label: 'Obligations souveraines', color: C.gold },
+  { key: 'OblPrivees', label: 'Obligations privées', color: C.teal },
+  { key: 'Liquidite', label: 'Liquidité', color: C.indigo },
+];
+
+const INSTRUMENT_ETAT = {
+  SONATEL: 'Sénégal',
+  'ECOBANK CI': "Côte d'Ivoire",
+  PALMCI: "Côte d'Ivoire",
+  'MTN NIGERIA': 'Nigeria',
+  'ZENITH BANK': 'Nigeria',
+  'GCB BANK': 'Ghana',
+  'Obligation Trésor CI 6.5% 2029': "Côte d'Ivoire",
+  'Obligation Trésor NGN 2028': 'Nigeria',
+  'Obligation Corporate GSE 2027': 'Ghana',
+};
+
+const ORDRE_ETATS_INVESTISSEMENT = [
+  "Côte d'Ivoire",
+  'Sénégal',
+  'Nigeria',
+  'Ghana',
+  'Autres',
+];
+
+const fmtCompactMontant = (value) =>
+  new Intl.NumberFormat('fr-FR', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Number(value || 0));
+
+const seedPortefeuille = (client) =>
+  String(client?.id || client?.nom || '')
+    .split('')
+    .reduce((somme, caractere, index) => {
+      return somme + caractere.charCodeAt(0) * (index + 1);
+    }, 0);
+
+const buildHistoriqueClassesActifs = (client) => {
+  const montantsActuels = {
+    Actions:
+      (Number(client.encours || 0) * Number(client.alloc.Actions || 0)) / 100,
+    OblSouveraines:
+      (Number(client.encours || 0) *
+        Number(client.alloc['Obl. souveraines'] || 0)) /
+      100,
+    OblPrivees:
+      (Number(client.encours || 0) *
+        Number(client.alloc['Obl. privées'] || 0)) /
+      100,
+    Liquidite:
+      (Number(client.encours || 0) * Number(client.alloc.Liquidité || 0)) / 100,
+  };
+
+  const rendementClient = Number(client.perf || 0);
+  const rendementsClasses = {
+    Actions: Math.max(-18, Math.min(24, rendementClient * 1.25 + 2.2)),
+    OblSouveraines: Math.max(-6, Math.min(12, rendementClient * 0.3 + 2.0)),
+    OblPrivees: Math.max(-8, Math.min(14, rendementClient * 0.45 + 2.6)),
+    Liquidite: Math.max(0.2, Math.min(3.5, rendementClient * 0.08 + 0.8)),
+  };
+
+  // Profils mensuels déterministes inspirés d'un comportement de marché réaliste :
+  // les actions sont plus volatiles, les obligations souveraines plus stables,
+  // les obligations privées intermédiaires et la liquidité quasi stable.
+  // Les chocs sont exprimés en décimal et sont combinés avec une dérive mensuelle
+  // calibrée pour que le rendement cumulé sur 11 intervalles corresponde au
+  // rendement annuel cible de chaque classe.
+  const chocsMensuelsBase = {
+    Actions: [
+      -0.021, 0.026, -0.013, 0.031, 0.009, -0.027, 0.019, -0.008, 0.024, -0.016,
+      0.012,
+    ],
+    OblSouveraines: [
+      -0.003, 0.0022, -0.0012, 0.0034, 0.0016, -0.0025, 0.002, -0.001, 0.0027,
+      -0.0015, 0.0013,
+    ],
+    OblPrivees: [
+      -0.005, 0.004, -0.0025, 0.006, 0.0028, -0.0045, 0.0036, -0.002, 0.0048,
+      -0.0032, 0.0025,
+    ],
+    Liquidite: [
+      0.0015, -0.001, 0.0008, 0.0012, -0.0006, 0.001, -0.0005, 0.0009, -0.0004,
+      0.0006, -0.0003,
+    ],
+  };
+
+  const seed = seedPortefeuille(client);
+  const historique = MOIS_HISTORIQUE_CLASSES_ACTIFS.map((mois) => ({
+    mois: mois.label,
+    date: mois.key,
+  }));
+
+  Object.keys(montantsActuels).forEach((classe, classeIndex) => {
+    const rendementAnnuel = rendementsClasses[classe] / 100;
+    const montantActuel = Number(montantsActuels[classe] || 0);
+    const chocsBase = chocsMensuelsBase[classe];
+    const decalage = (seed + classeIndex * 2) % chocsBase.length;
+    const multiplicateurVolatilite =
+      0.88 + ((seed + classeIndex * 17) % 25) / 100;
+
+    const chocsPersonnalises = chocsBase.map((_, index) => {
+      const choc = chocsBase[(index + decalage) % chocsBase.length];
+      const microVariation =
+        ((((seed + index * 11 + classeIndex * 7) % 9) - 4) / 10000) *
+        (classe === 'Actions' ? 4 : classe === 'OblPrivees' ? 2 : 1);
+      return choc * multiplicateurVolatilite + microVariation;
+    });
+
+    const produitChocs = chocsPersonnalises.reduce(
+      (produit, choc) => produit * (1 + choc),
+      1
+    );
+    const nombreIntervalles = chocsPersonnalises.length;
+    const deriveMensuelle =
+      Math.pow(
+        Math.max(0.65, 1 + rendementAnnuel) / produitChocs,
+        1 / nombreIntervalles
+      ) - 1;
+
+    const montantDepart = montantActuel / Math.max(0.65, 1 + rendementAnnuel);
+    let montant = montantDepart;
+    historique[0][classe] = Math.round(montant);
+
+    chocsPersonnalises.forEach((choc, index) => {
+      const rendementMensuel = (1 + deriveMensuelle) * (1 + choc) - 1;
+      montant *= 1 + rendementMensuel;
+      historique[index + 1][classe] = Math.round(montant);
+      historique[index + 1][`${classe}Variation`] = Number(
+        (rendementMensuel * 100).toFixed(2)
+      );
+    });
+
+    // Sécurise l'égalité exacte entre le dernier point du graphique et la
+    // valorisation courante affichée ailleurs dans la fiche portefeuille.
+    historique[historique.length - 1][classe] = Math.round(montantActuel);
+  });
+
+  historique.forEach((ligne) => {
+    ligne.TotalInvesti =
+      Number(ligne.Actions || 0) +
+      Number(ligne.OblSouveraines || 0) +
+      Number(ligne.OblPrivees || 0);
+  });
+
+  return historique;
+};
+
+const buildRepartitionEtatsInvestissement = (client, categorie) => {
+  const estAction = categorie === 'Actions';
+  const estObligataire = categorie === 'Obligations';
+
+  const montantActions =
+    (Number(client.encours || 0) * Number(client.alloc.Actions || 0)) / 100;
+  const montantObligations =
+    (Number(client.encours || 0) *
+      (Number(client.alloc['Obl. souveraines'] || 0) +
+        Number(client.alloc['Obl. privées'] || 0))) /
+    100;
+
+  const repartirClasse = (type, montantClasse) => {
+    if (montantClasse <= 0) return {};
+
+    const instruments = MARKETS_DATA.filter(
+      (instrument) =>
+        instrument.marche === client.marche && instrument.type === type
+    );
+
+    if (instruments.length === 0) {
+      return { [client.pays || 'Autres']: montantClasse };
+    }
+
+    const poidsBruts = instruments.map((instrument) => ({
+      etat: INSTRUMENT_ETAT[instrument.nom] || client.pays || 'Autres',
+      poids: Math.max(0, Number(exposureOf(client.id, instrument.nom) || 0)),
+    }));
+    const totalPoids = poidsBruts.reduce(
+      (somme, item) => somme + item.poids,
+      0
+    );
+
+    return poidsBruts.reduce((acc, item) => {
+      const poidsNormalise =
+        totalPoids > 0 ? item.poids / totalPoids : 1 / poidsBruts.length;
+      acc[item.etat] = (acc[item.etat] || 0) + montantClasse * poidsNormalise;
+      return acc;
+    }, {});
+  };
+
+  const actionsParEtat = repartirClasse('Action', montantActions);
+  const obligationsParEtat = repartirClasse('Obligation', montantObligations);
+
+  let source = {};
+  if (estAction) {
+    source = actionsParEtat;
+  } else if (estObligataire) {
+    source = obligationsParEtat;
+  } else {
+    [
+      ...Object.entries(actionsParEtat),
+      ...Object.entries(obligationsParEtat),
+    ].forEach(([etat, montant]) => {
+      source[etat] = (source[etat] || 0) + montant;
+    });
+  }
+
+  const total = Object.values(source).reduce(
+    (somme, montant) => somme + Number(montant || 0),
+    0
+  );
+
+  return Object.entries(source)
+    .filter(([, montant]) => Number(montant) > 0)
+    .sort(([etatA], [etatB]) => {
+      const indexA = ORDRE_ETATS_INVESTISSEMENT.indexOf(etatA);
+      const indexB = ORDRE_ETATS_INVESTISSEMENT.indexOf(etatB);
+      return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
+    })
+    .map(([name, montant]) => ({
+      name,
+      montant,
+      devise: client.devise,
+      value: total > 0 ? Number(((montant / total) * 100).toFixed(1)) : 0,
+    }));
+};
+
 function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
   const data = Object.entries(client.alloc).map(([name, value]) => ({
     name,
     value,
   }));
   const besoinsReequilibrage = besoinsReequilibrageClient(client);
+  const historiqueClassesActifs = buildHistoriqueClassesActifs(client);
+  const repartitionEtatsActions = buildRepartitionEtatsInvestissement(
+    client,
+    'Actions'
+  );
+  const repartitionEtatsObligations = buildRepartitionEtatsInvestissement(
+    client,
+    'Obligations'
+  );
+  const repartitionEtatsGenerale = buildRepartitionEtatsInvestissement(
+    client,
+    'General'
+  );
+
   return (
     <div className="space-y-4">
       <Breadcrumb items={['Accueil', 'Portefeuilles', client.nom]} />
@@ -3714,7 +3971,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="p-5">
-          <Eyebrow>Allocation actuelle</Eyebrow>
+          <Eyebrow>Répartition par classe d'actifs</Eyebrow>
           <Donut data={data} size={150} />
           <Legende data={data} />
         </Card>
@@ -3752,6 +4009,203 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           </div>
         </Card>
       </div>
+
+      <Card className="p-5" style={{ borderColor: '#D8DFEF' }}>
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+          <div>
+            <Eyebrow>Évolution de la valorisation par classe d'actifs</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Historique sur 1 an · time frame mensuel
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
+              Montants exprimés en {client.devise}. Les variations mensuelles
+              sont différenciées selon le risque de chaque classe ; le dernier
+              point correspond à la valorisation actuelle du portefeuille.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone="navy">12 mois</Badge>
+            <Badge tone="gold">Mensuel</Badge>
+          </div>
+        </div>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart
+            data={historiqueClassesActifs}
+            margin={{ top: 10, right: 20, left: 8, bottom: 4 }}
+          >
+            <CartesianGrid stroke={C.line} vertical={false} />
+            <XAxis
+              dataKey="mois"
+              tick={{ fontSize: 10, fill: C.sub }}
+              axisLine={{ stroke: C.line }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: C.sub }}
+              axisLine={false}
+              tickLine={false}
+              width={70}
+              tickFormatter={(value) => fmtCompactMontant(value)}
+            />
+            <Tooltip
+              formatter={(value, name) => [
+                `${fmt(Math.round(Number(value)))} ${client.devise}`,
+                name,
+              ]}
+              labelFormatter={(label) => `Mois : ${label}`}
+              contentStyle={{
+                borderRadius: 10,
+                fontSize: 12,
+                border: `1px solid ${C.line}`,
+              }}
+            />
+            {CLASSES_ACTIFS_HISTORIQUES.map((serie) => (
+              <Line
+                key={serie.key}
+                type="monotone"
+                dataKey={serie.key}
+                name={serie.label}
+                stroke={serie.color}
+                strokeWidth={2.3}
+                dot={{ r: 2 }}
+                activeDot={{ r: 4 }}
+                isAnimationActive={false}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+
+        <div
+          className="flex items-center justify-center gap-5 flex-wrap mt-2"
+          style={F_BODY}
+        >
+          {CLASSES_ACTIFS_HISTORIQUES.map((serie) => (
+            <div
+              key={serie.key}
+              className="inline-flex items-center gap-2 text-xs font-medium"
+              style={{ color: C.ink }}
+            >
+              <span
+                className="inline-block w-5 rounded-full"
+                style={{ height: 3, background: serie.color }}
+              />
+              {serie.label}
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="mt-3 p-3 rounded-xl text-[11px]"
+          style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}
+        >
+          Dans cette maquette, le détail historique mensuel par classe d'actifs
+          est une série de démonstration reconstruite à partir de la
+          valorisation et de l'allocation actuelles. Il pourra être remplacé
+          directement par les valorisations historiques du backend.
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <Eyebrow>Répartition géographique des investissements</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Répartition par État / pays de rattachement des instruments
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
+              Lecture séparée des Actions, des Obligations, puis de l'ensemble
+              des actifs investis hors liquidité.
+            </div>
+          </div>
+          <Badge tone="navy">{client.marche}</Badge>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 items-start">
+          {[
+            {
+              titre: 'Actions',
+              sousTitre: `${fmt(
+                Math.round(
+                  (client.encours * Number(client.alloc.Actions || 0)) / 100
+                )
+              )} ${client.devise}`,
+              data: repartitionEtatsActions,
+            },
+            {
+              titre: 'Obligations',
+              sousTitre: `${fmt(
+                Math.round(
+                  (client.encours *
+                    (Number(client.alloc['Obl. souveraines'] || 0) +
+                      Number(client.alloc['Obl. privées'] || 0))) /
+                    100
+                )
+              )} ${client.devise}`,
+              data: repartitionEtatsObligations,
+            },
+            {
+              titre: 'Général',
+              sousTitre: `${fmt(
+                Math.round(
+                  (client.encours *
+                    (Number(client.alloc.Actions || 0) +
+                      Number(client.alloc['Obl. souveraines'] || 0) +
+                      Number(client.alloc['Obl. privées'] || 0))) /
+                    100
+                )
+              )} ${client.devise}`,
+              data: repartitionEtatsGenerale,
+            },
+          ].map((bloc) => (
+            <div
+              key={bloc.titre}
+              className="rounded-2xl border p-4"
+              style={{ borderColor: C.line, background: '#FAFAFC' }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div
+                    className="text-xs font-semibold uppercase tracking-wide"
+                    style={{ color: C.sub, ...F_BODY }}
+                  >
+                    {bloc.titre}
+                  </div>
+                  <div
+                    className="text-sm font-bold mt-0.5"
+                    style={{ color: C.ink, ...F_MONO }}
+                  >
+                    {bloc.sousTitre}
+                  </div>
+                </div>
+                <Badge tone={bloc.titre === 'Général' ? 'gold' : 'slate'}>
+                  Par État
+                </Badge>
+              </div>
+
+              {bloc.data.length > 0 ? (
+                <>
+                  <Donut data={bloc.data} size={165} />
+                  <Legende data={bloc.data} />
+                </>
+              ) : (
+                <div
+                  className="h-[165px] flex items-center justify-center text-xs text-center px-4"
+                  style={{ color: C.sub, ...F_BODY }}
+                >
+                  Aucun investissement dans cette catégorie.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="text-[10px] mt-3" style={{ color: C.sub, ...F_BODY }}>
+          Le rattachement géographique est déterminé à partir de l'émetteur ou
+          de l'État associé à l'instrument disponible dans la maquette. La vue
+          générale agrège Actions et Obligations et exclut la liquidité.
+        </div>
+      </Card>
 
       <Card className="p-5">
         <Eyebrow>Situation globale</Eyebrow>
@@ -7132,7 +7586,7 @@ function Reequilibrage({ initial, devise = 'XOF' }) {
                 <thead style={{ background: '#FAFAFC' }}>
                   <tr>
                     <Th>Classe d'actifs</Th>
-                    <Th>Allocation actuelle</Th>
+                    <Th>Répartition par classe d'actifs</Th>
                     <Th>Allocation cible</Th>
                     <Th>Écart</Th>
                     <Th>Action proposée</Th>
@@ -8059,6 +8513,8 @@ function MoneyManagement({ go, devise = 'XOF' }) {
     return {
       ...ligne,
       dateDernierDepot: formatDateFR(dateDernierDepot),
+      montantDernierDepot:
+        origines.find((item) => item.numero === '2')?.montant || 0,
       origines,
       affectations,
       totalOrigines: origines.reduce((somme, item) => somme + item.montant, 0),
@@ -8635,6 +9091,17 @@ function MoneyManagement({ go, devise = 'XOF' }) {
                       <div className="text-xs font-semibold mt-1">
                         {detailLiquiditeSelectionne.dateDernierDepot}
                       </div>
+                      <div
+                        className="text-[11px] font-bold mt-1"
+                        style={{ ...F_MONO, color: C.navy }}
+                      >
+                        {fmt(
+                          Math.round(
+                            detailLiquiditeSelectionne.montantDernierDepot
+                          )
+                        )}{' '}
+                        {detailLiquiditeSelectionne.client.devise}
+                      </div>
                     </div>
                     <div
                       className="p-3 rounded-xl"
@@ -8734,8 +9201,27 @@ function MoneyManagement({ go, devise = 'XOF' }) {
                           )}
                           size={210}
                         />
+                        <Legende
+                          data={detailLiquiditeSelectionne.origines.map(
+                            (item) => ({
+                              name: item.libelle,
+                              value:
+                                detailLiquiditeSelectionne.totalOrigines > 0
+                                  ? Number(
+                                      (
+                                        (item.montant /
+                                          detailLiquiditeSelectionne.totalOrigines) *
+                                        100
+                                      ).toFixed(1)
+                                    )
+                                  : 0,
+                              montant: item.montant,
+                              devise: detailLiquiditeSelectionne.client.devise,
+                            })
+                          )}
+                        />
                         <div
-                          className="text-[10px] text-center mt-1"
+                          className="text-[10px] text-center mt-2"
                           style={{ color: C.sub }}
                         >
                           Somme des sources = liquidité globale (10)
@@ -9081,15 +9567,6 @@ function MoneyManagement({ go, devise = 'XOF' }) {
               </Card>
             )}
           </div>
-        </div>
-
-        <div className="text-[10px]" style={{ color: C.sub }}>
-          Les montants ventilés dans ce prototype sont des répartitions de
-          démonstration appliquées à la liquidité déjà calculée dans le
-          logiciel. Les intitulés, la logique des rubriques et les
-          responsabilités reprennent la fiche fournie ; les montants réels
-          devront être alimentés par le backend et les systèmes métiers
-          concernés.
         </div>
       </section>
 
@@ -12068,36 +12545,6 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           </div>
         </Card>
       </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="p-4">
-          <Eyebrow>Acheter / vendre</Eyebrow>
-          <div className="text-xs mb-3" style={{ color: C.sub }}>
-            Le portefeuille et la SGI sont proposés automatiquement selon le
-            marché de l'actif choisi.
-          </div>
-          <Btn onClick={() => goClient('client-invest')}>Passer un ordre</Btn>
-        </Card>
-        <Card className="p-4">
-          <Eyebrow>Liquidité & revenus</Eyebrow>
-          <div className="text-xs mb-3" style={{ color: C.sub }}>
-            Suivez vos comptes espèces, dividendes et coupons à venir.
-          </div>
-          <Btn tone="ghost" onClick={() => goClient('client-cashflows')}>
-            Consulter
-          </Btn>
-        </Card>
-        <Card className="p-4">
-          <Eyebrow>Performance & risque</Eyebrow>
-          <div className="text-xs mb-3" style={{ color: C.sub }}>
-            Mesurez la performance consolidée, les concentrations et le risque
-            de change.
-          </div>
-          <Btn tone="ghost" onClick={() => goClient('client-analysis')}>
-            Analyser
-          </Btn>
-        </Card>
-      </div>
     </div>
   );
 }
@@ -14966,6 +15413,8 @@ function ClientCashflows({ devise, orders = [] }) {
     return {
       ...ligne,
       dateDernierDepot: formatDateFR(dateDernierDepot),
+      montantDernierDepot:
+        origines.find((item) => item.numero === '2')?.montant || 0,
       origines,
       affectations,
       totalOrigines: origines.reduce((somme, item) => somme + item.montant, 0),
@@ -15445,6 +15894,15 @@ function ClientCashflows({ devise, orders = [] }) {
                         </div>
                         <div className="text-sm font-semibold mt-1">
                           {detailSelectionne.dateDernierDepot}
+                        </div>
+                        <div
+                          className="text-sm font-bold mt-1"
+                          style={{ ...F_MONO, color: C.navy }}
+                        >
+                          {fmt(
+                            Math.round(detailSelectionne.montantDernierDepot)
+                          )}{' '}
+                          {detailSelectionne.portefeuille.devise}
                         </div>
                       </div>
                       <Donut data={originesDonut} size={190} />
