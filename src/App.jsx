@@ -1167,8 +1167,15 @@ const CLIENT_NAV = [
     label: 'Mes portefeuilles & SGI',
     icon: Briefcase,
   },
-  { id: 'client-invest', label: 'Marchés & investir', icon: TrendingUp },
+  {
+    id: 'client-markets',
+    label: 'Vues  des Marchés',
+    icon: Building2,
+  },
+  { id: 'client-watchlist', label: 'Watchlist', icon: Star },
+  { id: 'client-invest', label: 'Passer un ordre', icon: TrendingUp },
   { id: 'client-orders', label: 'Mes ordres', icon: ListOrdered },
+  { id: 'client-avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'client-cashflows', label: 'Liquidité & revenus', icon: Droplets },
   { id: 'client-analysis', label: 'Performance & risque', icon: Activity },
 ];
@@ -4525,7 +4532,7 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
           className="text-xl font-bold"
           style={{ ...F_DISPLAY, color: C.ink }}
         >
-          Marchés — Actions & Obligations
+          Vues des Marchés
         </h2>
         <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
           Données intrajournalières enrichies et filtrage automatique selon les
@@ -7473,8 +7480,17 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   const [filtreType, setFiltreType] = useState('Tous');
   const [filtreProfil, setFiltreProfil] = useState('Tous');
   const [filtreStatut, setFiltreStatut] = useState('Tous');
+  const [filtreEncoursMin, setFiltreEncoursMin] = useState('');
+  const [filtreLiquiditeActuelleMin, setFiltreLiquiditeActuelleMin] =
+    useState('');
+  const [filtreEntrees30JMin, setFiltreEntrees30JMin] = useState('');
+  const [filtreSorties30JMin, setFiltreSorties30JMin] = useState('');
+  const [filtrePrevisionnelMin, setFiltrePrevisionnelMin] = useState('');
   const [dimensionLiquidite, setDimensionLiquidite] = useState('Devise');
   const [triFluxRevenus, setTriFluxRevenus] = useState('desc');
+  const [clientLiquiditeSelectionneId, setClientLiquiditeSelectionneId] =
+    useState(CLIENTS[0]?.id || '');
+  const [vueLiquiditeDetail, setVueLiquiditeDetail] = useState('origines');
 
   const SEUIL_ECART_LIQUIDITE = 3;
   const dateReference = new Date(2026, 7, 7);
@@ -7615,16 +7631,66 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   ];
   const statuts = ['Tous', 'Critique', 'Sous cible', 'Conforme', 'Surplus'];
 
-  const lignesFiltrees = synthesePortefeuilles.filter(({ client, statut }) => {
-    const typeClient = PROFILE_TYPE_LABEL[client.type] || client.type;
-    return (
-      client.nom.toLowerCase().includes(filtreClient.trim().toLowerCase()) &&
-      (filtreMarche === 'Tous' || client.marche === filtreMarche) &&
-      (filtreType === 'Tous' || typeClient === filtreType) &&
-      (filtreProfil === 'Tous' || client.profilRisque === filtreProfil) &&
-      (filtreStatut === 'Tous' || statut === filtreStatut)
-    );
-  });
+  const lignesFiltrees = synthesePortefeuilles.filter(
+    ({
+      client,
+      statut,
+      liquiditeActuelle,
+      encaissements30J,
+      decaissements30J,
+      liquiditePrevisionnelle,
+    }) => {
+      const typeClient = PROFILE_TYPE_LABEL[client.type] || client.type;
+      const encoursVue = convertCurrency(client.encours, client.devise, devise);
+      const liquiditeActuelleVue = convertCurrency(
+        liquiditeActuelle,
+        client.devise,
+        devise
+      );
+      const entrees30JVue = convertCurrency(
+        encaissements30J,
+        client.devise,
+        devise
+      );
+      const sorties30JVue = convertCurrency(
+        decaissements30J,
+        client.devise,
+        devise
+      );
+      const previsionnelVue = convertCurrency(
+        liquiditePrevisionnelle,
+        client.devise,
+        devise
+      );
+
+      const seuilEncours =
+        filtreEncoursMin === '' ? null : Number(filtreEncoursMin);
+      const seuilLiquiditeActuelle =
+        filtreLiquiditeActuelleMin === ''
+          ? null
+          : Number(filtreLiquiditeActuelleMin);
+      const seuilEntrees30J =
+        filtreEntrees30JMin === '' ? null : Number(filtreEntrees30JMin);
+      const seuilSorties30J =
+        filtreSorties30JMin === '' ? null : Number(filtreSorties30JMin);
+      const seuilPrevisionnel =
+        filtrePrevisionnelMin === '' ? null : Number(filtrePrevisionnelMin);
+
+      return (
+        client.nom.toLowerCase().includes(filtreClient.trim().toLowerCase()) &&
+        (filtreMarche === 'Tous' || client.marche === filtreMarche) &&
+        (filtreType === 'Tous' || typeClient === filtreType) &&
+        (filtreProfil === 'Tous' || client.profilRisque === filtreProfil) &&
+        (filtreStatut === 'Tous' || statut === filtreStatut) &&
+        (seuilEncours === null || encoursVue > seuilEncours) &&
+        (seuilLiquiditeActuelle === null ||
+          liquiditeActuelleVue > seuilLiquiditeActuelle) &&
+        (seuilEntrees30J === null || entrees30JVue > seuilEntrees30J) &&
+        (seuilSorties30J === null || sorties30JVue > seuilSorties30J) &&
+        (seuilPrevisionnel === null || previsionnelVue > seuilPrevisionnel)
+      );
+    }
+  );
 
   const clientsFiltresIds = new Set(
     lignesFiltrees.map(({ client }) => client.id)
@@ -7742,7 +7808,12 @@ function MoneyManagement({ go, devise = 'XOF' }) {
     Number(filtreMarche !== 'Tous') +
     Number(filtreType !== 'Tous') +
     Number(filtreProfil !== 'Tous') +
-    Number(filtreStatut !== 'Tous');
+    Number(filtreStatut !== 'Tous') +
+    Number(filtreEncoursMin !== '') +
+    Number(filtreLiquiditeActuelleMin !== '') +
+    Number(filtreEntrees30JMin !== '') +
+    Number(filtreSorties30JMin !== '') +
+    Number(filtrePrevisionnelMin !== '');
 
   const reinitialiserFiltres = () => {
     setFiltreClient('');
@@ -7750,6 +7821,11 @@ function MoneyManagement({ go, devise = 'XOF' }) {
     setFiltreType('Tous');
     setFiltreProfil('Tous');
     setFiltreStatut('Tous');
+    setFiltreEncoursMin('');
+    setFiltreLiquiditeActuelleMin('');
+    setFiltreEntrees30JMin('');
+    setFiltreSorties30JMin('');
+    setFiltrePrevisionnelMin('');
   };
 
   const toneStatut = (statut) => {
@@ -7792,12 +7868,274 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       .sort((a, b) => b.montant - a.montant);
   })();
 
+  const repartitionMontants = (total, definitions) => {
+    let cumule = 0;
+    return definitions.map((definition, index) => {
+      const dernier = index === definitions.length - 1;
+      const montant = dernier
+        ? Math.max(0, total - cumule)
+        : Math.round((total * definition.poids) / 100);
+      cumule += montant;
+      return { ...definition, montant };
+    });
+  };
+
+  const detailLiquiditeParClient = synthesePortefeuilles.map((ligne, index) => {
+    const client = ligne.client;
+    const total = Math.max(0, ligne.liquiditeActuelle);
+    const decalageDepot = 6 + (index % 17);
+    const dateDernierDepot = new Date(dateReference);
+    dateDernierDepot.setDate(dateDernierDepot.getDate() - decalageDepot);
+
+    const origines = repartitionMontants(total, [
+      {
+        numero: '1',
+        libelle: 'Dépôt d’ouverture',
+        description:
+          'Liquidité issue de l’ouverture récente du compte / premier investissement.',
+        responsable: 'Chargé de clientèle',
+        poids: 8,
+      },
+      {
+        numero: '2',
+        libelle: 'Dernier dépôt',
+        description:
+          'Dernier versement enregistré hors opportunité spécifique.',
+        responsable: 'Système',
+        poids: 18,
+      },
+      {
+        numero: '3',
+        libelle: 'Amortissements ESV',
+        description:
+          'Capital remboursé sur les titres détenus arrivant à échéance partielle ou totale.',
+        responsable: 'Système',
+        poids: 16,
+      },
+      {
+        numero: '4',
+        libelle: 'Intérêts / coupons ESV',
+        description: 'Intérêts encaissés sur les titres détenus.',
+        responsable: 'Système',
+        poids: 8,
+      },
+      {
+        numero: '5',
+        libelle: 'Dividendes',
+        description:
+          'Liquidité provenant des dividendes crédités sur le compte.',
+        responsable: 'Système',
+        poids: 12,
+      },
+      {
+        numero: '6',
+        libelle: 'Cession de titre — retrait',
+        description:
+          'Produit de cession destiné à un retrait demandé par le client.',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 8,
+      },
+      {
+        numero: '7',
+        libelle: 'Cession de titre — réinvestissement',
+        description: 'Produit de cession destiné à être réinvesti.',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 18,
+      },
+      {
+        numero: '8',
+        libelle: 'Part à ne pas réinvestir',
+        description:
+          'Montant que le client demande de conserver durablement en espèces.',
+        responsable: 'Chargé de clientèle',
+        poids: 4,
+      },
+      {
+        numero: '9',
+        libelle: 'Dépôt pour opération primaire',
+        description:
+          'Dépôt réalisé pour une opportunité spécifique sur le marché primaire.',
+        responsable: 'Chargé de clientèle',
+        poids: 8,
+      },
+    ]);
+
+    const affectations = repartitionMontants(total, [
+      {
+        numero: '11',
+        libelle: 'Retrait en cours',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Chargé de clientèle / Trésorerie',
+        poids: 7,
+      },
+      {
+        numero: '12',
+        libelle: 'Autre liquidité à investir',
+        groupe: 'À investir',
+        responsable: 'Système',
+        poids: 18,
+      },
+      {
+        numero: '13',
+        libelle: 'Achat marché monétaire — OAT',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 8,
+      },
+      {
+        numero: '14',
+        libelle: 'Achat marché monétaire — BAT',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 7,
+      },
+      {
+        numero: '15',
+        libelle: 'Achat marché financier — OPV / APE',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 10,
+      },
+      {
+        numero: '16',
+        libelle: 'Achat marché financier — Actions',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Gestionnaire de portefeuille',
+        poids: 12,
+      },
+      {
+        numero: '17',
+        libelle: 'ESV — Amortissements bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Chargé de clientèle',
+        poids: 6,
+      },
+      {
+        numero: '18',
+        libelle: 'ESV — Intérêts bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Chargé de clientèle',
+        poids: 5,
+      },
+      {
+        numero: '19',
+        libelle: 'ESV — Dividendes bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Chargé de clientèle',
+        poids: 4,
+      },
+      {
+        numero: '20',
+        libelle: 'Ne pas réinvestir',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Chargé de clientèle',
+        poids: 5,
+      },
+      {
+        numero: '21',
+        libelle: 'Liquidité disponible',
+        groupe: 'Disponible',
+        responsable: 'Système',
+        poids: 18,
+      },
+    ]);
+
+    const sommeGroupe = (groupe) =>
+      affectations
+        .filter((item) => item.groupe === groupe)
+        .reduce((somme, item) => somme + item.montant, 0);
+
+    const actionsActuelles = Number(client.alloc.Actions || 0);
+    const actionsCibles = Number(client.cible.Actions || 0);
+    const obligationsActuelles =
+      Number(client.alloc['Obl. souveraines'] || 0) +
+      Number(client.alloc['Obl. privées'] || 0);
+    const obligationsCibles =
+      Number(client.cible['Obl. souveraines'] || 0) +
+      Number(client.cible['Obl. privées'] || 0);
+    const ecartActions = actionsCibles - actionsActuelles;
+    const ecartObligations = obligationsCibles - obligationsActuelles;
+
+    return {
+      ...ligne,
+      dateDernierDepot: formatDateFR(dateDernierDepot),
+      origines,
+      affectations,
+      totalOrigines: origines.reduce((somme, item) => somme + item.montant, 0),
+      liquiditeBloquee: sommeGroupe('Bloquée / réservée'),
+      autreLiquiditeAInvestir: sommeGroupe('À investir'),
+      liquiditeDisponibleNette: sommeGroupe('Disponible'),
+      ecartActions,
+      ecartObligations,
+      montantCorrectionActions: Math.round(
+        (client.encours * Math.abs(ecartActions)) / 100
+      ),
+      montantCorrectionObligations: Math.round(
+        (client.encours * Math.abs(ecartObligations)) / 100
+      ),
+      rendement: Number(client.rentabilite || 0),
+    };
+  });
+
+  const detailsFiltres = detailLiquiditeParClient.filter((detail) =>
+    clientsFiltresIds.has(detail.client.id)
+  );
+  const detailLiquiditeSelectionne =
+    detailsFiltres.find(
+      (detail) => detail.client.id === clientLiquiditeSelectionneId
+    ) ||
+    detailsFiltres[0] ||
+    null;
+
+  const roleTone = (responsable) => {
+    if (responsable.includes('Gestionnaire')) return 'navy';
+    if (responsable.includes('Chargé')) return 'gold';
+    if (responsable.includes('Trésorerie')) return 'coral';
+    return 'teal';
+  };
+
+  const montantDetailEnDeviseVue = (montant, client) =>
+    convertCurrency(montant, client.devise, devise);
+
   const actionsLiquidite = lignesFiltrees
     .filter((ligne) => ligne.statut !== 'Conforme')
     .sort((a, b) => {
       const ordre = { Critique: 0, 'Sous cible': 1, Surplus: 2 };
       return (ordre[a.statut] ?? 9) - (ordre[b.statut] ?? 9);
     });
+
+  const filtresMontantsMoneyManagement = [
+    {
+      key: 'encours',
+      label: 'Encours (supérieur à)',
+      value: filtreEncoursMin,
+      setter: setFiltreEncoursMin,
+    },
+    {
+      key: 'liquidite-actuelle',
+      label: 'Liquidité actuelle (supérieur à)',
+      value: filtreLiquiditeActuelleMin,
+      setter: setFiltreLiquiditeActuelleMin,
+    },
+    {
+      key: 'entrees-30j',
+      label: 'Entrées 30 j (supérieur à)',
+      value: filtreEntrees30JMin,
+      setter: setFiltreEntrees30JMin,
+    },
+    {
+      key: 'sorties-30j',
+      label: 'Sorties 30 j (supérieur à)',
+      value: filtreSorties30JMin,
+      setter: setFiltreSorties30JMin,
+    },
+    {
+      key: 'previsionnel',
+      label: 'Liquidité prévisionnelle (supérieur à)',
+      value: filtrePrevisionnelMin,
+      setter: setFiltrePrevisionnelMin,
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -7921,6 +8259,64 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             </select>
           </div>
         </div>
+
+        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+            <div>
+              <div
+                className="text-xs font-semibold"
+                style={{ color: C.ink, ...F_BODY }}
+              >
+                Seuils financiers
+              </div>
+              <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
+                Tous les seuils sont comparés après conversion dans la devise
+                principale de vue : {devise}.
+              </div>
+            </div>
+            <Badge tone="navy">Seuils en {devise}</Badge>
+          </div>
+
+          <div className="grid grid-cols-5 gap-3">
+            {filtresMontantsMoneyManagement.map((filtre) => (
+              <div key={filtre.key}>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  {filtre.label}
+                </label>
+                <div
+                  className="flex items-center rounded-xl border overflow-hidden"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={filtre.value}
+                    onChange={(e) => filtre.setter(e.target.value)}
+                    placeholder="Aucun minimum"
+                    className="w-full px-3 py-2 text-xs outline-none min-w-0"
+                    style={F_MONO}
+                  />
+                  <span
+                    className="px-2.5 py-2 text-[10px] font-semibold border-l shrink-0"
+                    style={{
+                      color: C.sub,
+                      borderColor: C.line,
+                      background: '#FAFAFC',
+                      ...F_MONO,
+                    }}
+                  >
+                    {devise}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
           <div className="text-[11px]" style={{ color: C.sub }}>
             Les mêmes filtres pilotent les positions, les flux, les répartitions
@@ -8030,17 +8426,700 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       </section>
 
       <section className="space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>2. Anatomie de la liquidité des comptes clients</Eyebrow>
+            <div className="text-xs max-w-4xl" style={{ color: C.sub }}>
+              Lecture opérationnelle inspirée de la fiche de suivi : origine des
+              fonds, affectations / blocages, liquidité réellement mobilisable,
+              correction des écarts au profil et rendement du portefeuille.
+            </div>
+          </div>
+          <Badge tone="gold">
+            Rubriques 1 à 26 · responsabilités intégrées
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-12 gap-4 items-start">
+          <Card className="col-span-4 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div>
+                <div
+                  className="text-sm font-bold"
+                  style={{ ...F_DISPLAY, color: C.ink }}
+                >
+                  Comptes clients
+                </div>
+                <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>
+                  Sélectionnez un compte pour analyser la provenance et
+                  l'affectation de sa liquidité.
+                </div>
+              </div>
+              <Badge tone="navy">{detailsFiltres.length}</Badge>
+            </div>
+
+            <div className="space-y-2 max-h-[520px] overflow-auto pr-1">
+              {detailsFiltres.length === 0 && (
+                <div
+                  className="text-xs py-5 text-center"
+                  style={{ color: C.sub }}
+                >
+                  Aucun compte ne correspond aux filtres.
+                </div>
+              )}
+              {detailsFiltres.map((detail) => {
+                const actif =
+                  detailLiquiditeSelectionne?.client.id === detail.client.id;
+                const librePct =
+                  detail.liquiditeActuelle > 0
+                    ? ((detail.autreLiquiditeAInvestir +
+                        detail.liquiditeDisponibleNette) /
+                        detail.liquiditeActuelle) *
+                      100
+                    : 0;
+                return (
+                  <button
+                    key={detail.client.id}
+                    type="button"
+                    onClick={() =>
+                      setClientLiquiditeSelectionneId(detail.client.id)
+                    }
+                    className="w-full p-3 rounded-xl border text-left transition-colors"
+                    style={{
+                      borderColor: actif ? C.navy : C.line,
+                      background: actif ? '#EFF3FB' : '#fff',
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div
+                          className="text-xs font-bold truncate"
+                          style={{ color: C.ink }}
+                        >
+                          {detail.client.nom}
+                        </div>
+                        <div
+                          className="text-[10px] mt-0.5"
+                          style={{ color: C.sub }}
+                        >
+                          {detail.client.marche} · {detail.client.profilRisque}{' '}
+                          · {detail.client.devise}
+                        </div>
+                      </div>
+                      <Badge tone={toneStatut(detail.statut)}>
+                        {detail.statut}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div>
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          Liquidité
+                        </div>
+                        <div
+                          className="text-[11px] font-semibold mt-0.5"
+                          style={F_MONO}
+                        >
+                          {fmt(Math.round(detail.liquiditeActuelle))}{' '}
+                          {detail.client.devise}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          Mobilisable
+                        </div>
+                        <div
+                          className="text-[11px] font-semibold mt-0.5"
+                          style={{ ...F_MONO, color: C.teal }}
+                        >
+                          {librePct.toFixed(0)}%
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      className="h-1.5 rounded-full mt-2"
+                      style={{ background: '#EEF0F4' }}
+                    >
+                      <div
+                        className="h-1.5 rounded-full"
+                        style={{
+                          width: `${Math.min(100, librePct)}%`,
+                          background: C.teal,
+                        }}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div className="col-span-8 space-y-3">
+            {detailLiquiditeSelectionne ? (
+              <>
+                <Card className="p-4" style={{ borderColor: C.navy }}>
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div
+                        className="text-lg font-bold"
+                        style={{ ...F_DISPLAY, color: C.ink }}
+                      >
+                        {detailLiquiditeSelectionne.client.nom}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <Badge tone="navy">
+                          {detailLiquiditeSelectionne.client.marche} ·{' '}
+                          {detailLiquiditeSelectionne.client.devise}
+                        </Badge>
+                        <Badge tone="slate">
+                          {detailLiquiditeSelectionne.client.profilRisque}
+                        </Badge>
+                        <Badge
+                          tone={toneStatut(detailLiquiditeSelectionne.statut)}
+                        >
+                          {detailLiquiditeSelectionne.statut}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div
+                        className="text-[10px] uppercase font-semibold"
+                        style={{ color: C.sub }}
+                      >
+                        Liquidité globale du compte (10)
+                      </div>
+                      <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+                        {fmt(
+                          Math.round(
+                            detailLiquiditeSelectionne.liquiditeActuelle
+                          )
+                        )}{' '}
+                        {detailLiquiditeSelectionne.client.devise}
+                      </div>
+                      {detailLiquiditeSelectionne.client.devise !== devise && (
+                        <div
+                          className="text-[10px] mt-0.5"
+                          style={{ color: C.sub, ...F_MONO }}
+                        >
+                          ≈{' '}
+                          {fmt(
+                            Math.round(
+                              montantDetailEnDeviseVue(
+                                detailLiquiditeSelectionne.liquiditeActuelle,
+                                detailLiquiditeSelectionne.client
+                              )
+                            )
+                          )}{' '}
+                          {devise}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mt-4">
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: '#F7F8FB' }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.sub }}
+                      >
+                        Dernier dépôt (2)
+                      </div>
+                      <div className="text-xs font-semibold mt-1">
+                        {detailLiquiditeSelectionne.dateDernierDepot}
+                      </div>
+                    </div>
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: '#FBE9E7' }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.coral }}
+                      >
+                        Bloquée / réservée
+                      </div>
+                      <div className="text-xs font-bold mt-1" style={F_MONO}>
+                        {fmt(detailLiquiditeSelectionne.liquiditeBloquee)}{' '}
+                        {detailLiquiditeSelectionne.client.devise}
+                      </div>
+                    </div>
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: '#FBF1DD' }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: '#8A6A16' }}
+                      >
+                        Autre liquidité à investir (12)
+                      </div>
+                      <div className="text-xs font-bold mt-1" style={F_MONO}>
+                        {fmt(
+                          detailLiquiditeSelectionne.autreLiquiditeAInvestir
+                        )}{' '}
+                        {detailLiquiditeSelectionne.client.devise}
+                      </div>
+                    </div>
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: '#E4F5EF' }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.teal }}
+                      >
+                        Liquidité disponible (21)
+                      </div>
+                      <div className="text-xs font-bold mt-1" style={F_MONO}>
+                        {fmt(
+                          detailLiquiditeSelectionne.liquiditeDisponibleNette
+                        )}{' '}
+                        {detailLiquiditeSelectionne.client.devise}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex gap-1.5 flex-wrap mb-4">
+                    {[
+                      ['origines', 'Origine des fonds · 1–10'],
+                      ['affectations', 'Bloquée & disponible · 11–21'],
+                      ['profil', 'Écart profil & rendement · 22–26'],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setVueLiquiditeDetail(id)}
+                        className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                        style={{
+                          background:
+                            vueLiquiditeDetail === id ? C.navy : '#F0F1F5',
+                          color: vueLiquiditeDetail === id ? '#fff' : C.sub,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {vueLiquiditeDetail === 'origines' && (
+                    <div className="grid grid-cols-5 gap-4 items-start">
+                      <div className="col-span-2">
+                        <Donut
+                          data={detailLiquiditeSelectionne.origines.map(
+                            (item) => ({
+                              name: item.libelle,
+                              value:
+                                detailLiquiditeSelectionne.totalOrigines > 0
+                                  ? Number(
+                                      (
+                                        (item.montant /
+                                          detailLiquiditeSelectionne.totalOrigines) *
+                                        100
+                                      ).toFixed(1)
+                                    )
+                                  : 0,
+                              montant: item.montant,
+                              devise: detailLiquiditeSelectionne.client.devise,
+                            })
+                          )}
+                          size={210}
+                        />
+                        <div
+                          className="text-[10px] text-center mt-1"
+                          style={{ color: C.sub }}
+                        >
+                          Somme des sources = liquidité globale (10)
+                        </div>
+                      </div>
+                      <div className="col-span-3 grid grid-cols-2 gap-2">
+                        {detailLiquiditeSelectionne.origines.map((item) => (
+                          <div
+                            key={item.numero}
+                            className="p-3 rounded-xl border"
+                            style={{ borderColor: C.line }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div
+                                className="text-[11px] font-bold"
+                                style={{ color: C.ink }}
+                              >
+                                {item.numero}. {item.libelle}
+                              </div>
+                              <Badge tone={roleTone(item.responsable)}>
+                                {item.responsable}
+                              </Badge>
+                            </div>
+                            <div
+                              className="text-sm font-bold mt-2"
+                              style={F_MONO}
+                            >
+                              {fmt(item.montant)}{' '}
+                              {detailLiquiditeSelectionne.client.devise}
+                            </div>
+                            <div
+                              className="text-[9px] mt-1 leading-relaxed"
+                              style={{ color: C.sub }}
+                            >
+                              {item.description}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {vueLiquiditeDetail === 'affectations' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        {[
+                          {
+                            label: 'Bloquée / réservée',
+                            montant:
+                              detailLiquiditeSelectionne.liquiditeBloquee,
+                            tone: C.coral,
+                            bg: '#FBE9E7',
+                          },
+                          {
+                            label: 'À investir',
+                            montant:
+                              detailLiquiditeSelectionne.autreLiquiditeAInvestir,
+                            tone: '#8A6A16',
+                            bg: '#FBF1DD',
+                          },
+                          {
+                            label: 'Disponible',
+                            montant:
+                              detailLiquiditeSelectionne.liquiditeDisponibleNette,
+                            tone: C.teal,
+                            bg: '#E4F5EF',
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="p-3 rounded-xl"
+                            style={{ background: item.bg }}
+                          >
+                            <div
+                              className="text-[10px] uppercase font-semibold"
+                              style={{ color: item.tone }}
+                            >
+                              {item.label}
+                            </div>
+                            <div
+                              className="text-lg font-bold mt-1"
+                              style={{ ...F_DISPLAY, color: C.ink }}
+                            >
+                              {fmt(item.montant)}{' '}
+                              {detailLiquiditeSelectionne.client.devise}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {detailLiquiditeSelectionne.affectations.map((item) => {
+                          const pct =
+                            detailLiquiditeSelectionne.liquiditeActuelle > 0
+                              ? (item.montant /
+                                  detailLiquiditeSelectionne.liquiditeActuelle) *
+                                100
+                              : 0;
+                          const couleur =
+                            item.groupe === 'Disponible'
+                              ? C.teal
+                              : item.groupe === 'À investir'
+                              ? C.gold
+                              : C.coral;
+                          return (
+                            <div
+                              key={item.numero}
+                              className="p-3 rounded-xl border"
+                              style={{ borderColor: C.line }}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <div
+                                    className="text-[11px] font-bold"
+                                    style={{ color: C.ink }}
+                                  >
+                                    {item.numero}. {item.libelle}
+                                  </div>
+                                  <div
+                                    className="text-[9px] mt-0.5"
+                                    style={{ color: C.sub }}
+                                  >
+                                    {item.groupe}
+                                  </div>
+                                </div>
+                                <Badge tone={roleTone(item.responsable)}>
+                                  {item.responsable}
+                                </Badge>
+                              </div>
+                              <div className="flex items-end justify-between gap-2 mt-2">
+                                <div
+                                  className="text-sm font-bold"
+                                  style={F_MONO}
+                                >
+                                  {fmt(item.montant)}{' '}
+                                  {detailLiquiditeSelectionne.client.devise}
+                                </div>
+                                <div
+                                  className="text-[10px] font-semibold"
+                                  style={{ color: couleur, ...F_MONO }}
+                                >
+                                  {pct.toFixed(1)}%
+                                </div>
+                              </div>
+                              <div
+                                className="h-1.5 rounded-full mt-2"
+                                style={{ background: '#EEF0F4' }}
+                              >
+                                <div
+                                  className="h-1.5 rounded-full"
+                                  style={{
+                                    width: `${Math.min(100, pct)}%`,
+                                    background: couleur,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {vueLiquiditeDetail === 'profil' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          {
+                            numero: '22 / 24',
+                            actif: 'Actions',
+                            ecart: detailLiquiditeSelectionne.ecartActions,
+                            montant:
+                              detailLiquiditeSelectionne.montantCorrectionActions,
+                          },
+                          {
+                            numero: '23 / 25',
+                            actif: 'Obligations',
+                            ecart: detailLiquiditeSelectionne.ecartObligations,
+                            montant:
+                              detailLiquiditeSelectionne.montantCorrectionObligations,
+                          },
+                        ].map((item) => (
+                          <div
+                            key={item.actif}
+                            className="p-4 rounded-xl border"
+                            style={{ borderColor: C.line }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-bold">
+                                {item.numero}. Correction écart — {item.actif}
+                              </div>
+                              <Badge tone="teal">Système</Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 mt-4">
+                              <div>
+                                <div
+                                  className="text-[9px] uppercase font-semibold"
+                                  style={{ color: C.sub }}
+                                >
+                                  Écart à corriger
+                                </div>
+                                <div
+                                  className="text-xl font-bold mt-1"
+                                  style={{
+                                    ...F_DISPLAY,
+                                    color:
+                                      item.ecart > 0
+                                        ? C.teal
+                                        : item.ecart < 0
+                                        ? C.coral
+                                        : C.sub,
+                                  }}
+                                >
+                                  {item.ecart > 0 ? '+' : ''}
+                                  {item.ecart.toFixed(1)} pts
+                                </div>
+                                <div
+                                  className="text-[10px] mt-1"
+                                  style={{ color: C.sub }}
+                                >
+                                  {item.ecart > 0
+                                    ? `Renforcer ${item.actif.toLowerCase()}`
+                                    : item.ecart < 0
+                                    ? `Réduire ${item.actif.toLowerCase()}`
+                                    : 'Allocation déjà alignée'}
+                                </div>
+                              </div>
+                              <div>
+                                <div
+                                  className="text-[9px] uppercase font-semibold"
+                                  style={{ color: C.sub }}
+                                >
+                                  Valeur correspondante
+                                </div>
+                                <div
+                                  className="text-sm font-bold mt-2"
+                                  style={F_MONO}
+                                >
+                                  {fmt(item.montant)}{' '}
+                                  {detailLiquiditeSelectionne.client.devise}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div
+                          className="p-4 rounded-xl"
+                          style={{ background: '#EFF3FB' }}
+                        >
+                          <div
+                            className="text-[10px] uppercase font-semibold"
+                            style={{ color: C.sub }}
+                          >
+                            26. Rendement du portefeuille
+                          </div>
+                          <div className="mt-1">
+                            <Pct v={detailLiquiditeSelectionne.rendement} />
+                          </div>
+                          <div className="mt-2">
+                            <Badge tone="teal">Système</Badge>
+                          </div>
+                        </div>
+                        <div
+                          className="p-4 rounded-xl"
+                          style={{ background: '#F7F8FB' }}
+                        >
+                          <div
+                            className="text-[10px] uppercase font-semibold"
+                            style={{ color: C.sub }}
+                          >
+                            Liquidité cible
+                          </div>
+                          <div
+                            className="text-lg font-bold mt-1"
+                            style={F_DISPLAY}
+                          >
+                            {detailLiquiditeSelectionne.ratioCible.toFixed(1)}%
+                          </div>
+                        </div>
+                        <div
+                          className="p-4 rounded-xl"
+                          style={{ background: '#F7F8FB' }}
+                        >
+                          <div
+                            className="text-[10px] uppercase font-semibold"
+                            style={{ color: C.sub }}
+                          >
+                            Liquidité prévisionnelle
+                          </div>
+                          <div
+                            className="text-lg font-bold mt-1"
+                            style={F_DISPLAY}
+                          >
+                            {detailLiquiditeSelectionne.ratioPrevisionnel.toFixed(
+                              1
+                            )}
+                            %
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </Card>
+
+                <Card className="p-4" style={{ background: '#FAFAFC' }}>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div
+                        className="text-xs font-bold"
+                        style={{ color: C.ink }}
+                      >
+                        Circuit de responsabilité
+                      </div>
+                      <div
+                        className="text-[10px] mt-1 max-w-2xl"
+                        style={{ color: C.sub }}
+                      >
+                        La fiche source distingue les données saisies par les
+                        équipes et les rubriques calculées automatiquement. Le
+                        Chef Service Informatique coordonne l’implémentation de
+                        ces rubriques dans le système.
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Badge tone="gold">Chargé de clientèle</Badge>
+                      <Badge tone="navy">Gestionnaire de portefeuille</Badge>
+                      <Badge tone="coral">Trésorerie</Badge>
+                      <Badge tone="teal">Système</Badge>
+                    </div>
+                  </div>
+                </Card>
+              </>
+            ) : (
+              <Card
+                className="p-8 text-center text-sm"
+                style={{ color: C.sub }}
+              >
+                Sélectionnez un portefeuille pour afficher son anatomie de
+                liquidité.
+              </Card>
+            )}
+          </div>
+        </div>
+
+        <div className="text-[10px]" style={{ color: C.sub }}>
+          Les montants ventilés dans ce prototype sont des répartitions de
+          démonstration appliquées à la liquidité déjà calculée dans le
+          logiciel. Les intitulés, la logique des rubriques et les
+          responsabilités reprennent la fiche fournie ; les montants réels
+          devront être alimentés par le backend et les systèmes métiers
+          concernés.
+        </div>
+      </section>
+
+      <section className="space-y-3">
         <div>
-          <Eyebrow>2. Position de liquidité par portefeuille</Eyebrow>
+          <Eyebrow>3. Position de liquidité par portefeuille</Eyebrow>
           <div className="text-xs" style={{ color: C.sub }}>
             Contrôle de la poche espèces actuelle, de la cible et de la position
             prévisionnelle après les flux connus.
           </div>
         </div>
         <Card className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-auto"
+            style={{
+              maxHeight: 430,
+              overscrollBehavior: 'contain',
+              scrollbarGutter: 'stable',
+            }}
+          >
             <table className="w-full" style={{ minWidth: 1580 }}>
-              <thead style={{ background: '#FAFAFC' }}>
+              <thead
+                style={{
+                  background: '#FAFAFC',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 4,
+                  boxShadow: `0 1px 0 ${C.line}`,
+                }}
+              >
                 <tr>
                   <Th>Client</Th>
                   <Th>Marché</Th>
@@ -8170,7 +9249,7 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <Eyebrow>3. Échéancier des flux de trésorerie — 30 jours</Eyebrow>
+            <Eyebrow>4. Échéancier des flux de trésorerie — 30 jours</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
               Anticipation des dividendes, coupons et règlements d'ordres
               susceptibles de modifier la liquidité disponible.
@@ -8432,7 +9511,7 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <Eyebrow>4. Répartition et concentration de la liquidité</Eyebrow>
+            <Eyebrow>5. Répartition et concentration de la liquidité</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
               Analyse de la liquidité disponible selon les principales
               dimensions déjà utilisées dans la plateforme.
@@ -8480,7 +9559,7 @@ function MoneyManagement({ go, devise = 'XOF' }) {
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <Eyebrow>5. Actions de gestion de liquidité</Eyebrow>
+            <Eyebrow>6. Actions de gestion de liquidité</Eyebrow>
             <div className="text-xs" style={{ color: C.sub }}>
               Liste priorisée des portefeuilles nécessitant une reconstitution
               de cash ou un réinvestissement de l'excédent.
@@ -10737,7 +11816,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       <ClientBreadcrumb items={['Espace Client', 'Vue consolidée']} />
 
       <MarketTicker
-        onViewAll={() => goClient('client-invest')}
+        onViewAll={() => goClient('client-markets')}
         onInstrumentClick={(m) =>
           goClient('client-market-depth', {
             instrument: m.nom,
@@ -11025,6 +12104,21 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
 
 function ClientPortfolios({ devise, orders }) {
   const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const [paysFiltre, setPaysFiltre] = useState('Tous');
+
+  const paysDisponibles = [
+    'Tous',
+    ...new Set(
+      portefeuilles
+        .map((portefeuille) => portefeuille.pays)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
+    ),
+  ];
+
+  const portefeuillesFiltres = portefeuilles.filter(
+    (portefeuille) => paysFiltre === 'Tous' || portefeuille.pays === paysFiltre
+  );
 
   return (
     <div className="space-y-5">
@@ -11044,7 +12138,76 @@ function ClientPortfolios({ devise, orders }) {
         </div>
       </div>
 
-      {portefeuilles.map((portefeuille) => {
+      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="min-w-[240px]">
+            <label
+              className="text-xs font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Filtrer les portefeuilles par pays
+            </label>
+            <select
+              value={paysFiltre}
+              onChange={(e) => setPaysFiltre(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', ...F_BODY }}
+            >
+              {paysDisponibles.map((pays) => (
+                <option key={pays} value={pays}>
+                  {pays === 'Tous' ? 'Tous les pays' : pays}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone={paysFiltre === 'Tous' ? 'slate' : 'gold'}>
+              {paysFiltre === 'Tous' ? 'Tous les pays' : paysFiltre}
+            </Badge>
+            <Badge tone="navy">
+              {portefeuillesFiltres.length} portefeuille(s)
+            </Badge>
+            <Badge tone="teal">
+              {new Set(portefeuillesFiltres.map((p) => p.sgi)).size} SGI
+            </Badge>
+            {paysFiltre !== 'Tous' && (
+              <button
+                type="button"
+                onClick={() => setPaysFiltre('Tous')}
+                className="px-3 py-2 rounded-xl border text-xs font-semibold"
+                style={{
+                  borderColor: C.line,
+                  color: C.navy,
+                  background: '#fff',
+                  ...F_BODY,
+                }}
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="text-[11px] mt-3" style={{ color: C.sub, ...F_BODY }}>
+          Le filtre agit uniquement sur vos propres comptes de Gestion libre et
+          conserve les montants dans la devise native de chaque portefeuille,
+          avec l'équivalent dans la devise de vue lorsque nécessaire.
+        </div>
+      </Card>
+
+      {portefeuillesFiltres.length === 0 && (
+        <Card className="p-6 text-center">
+          <div className="text-sm font-semibold" style={{ color: C.ink }}>
+            Aucun portefeuille pour ce pays
+          </div>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            Sélectionnez un autre pays ou réinitialisez le filtre.
+          </div>
+        </Card>
+      )}
+
+      {portefeuillesFiltres.map((portefeuille) => {
         const total = clientPortfolioValue(portefeuille);
         const liquiditeTotale = Number(portefeuille.compteEspeces || 0);
         const liquiditeReservee = clientReservedCash(portefeuille, orders);
@@ -11629,6 +12792,1515 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
   );
 }
 
+function ClientMarkets({
+  goClient,
+  watchlistTitles,
+  onAddWatch,
+  onRemoveWatch,
+}) {
+  const [typeActif, setTypeActif] = useState('Action');
+  const [marche, setMarche] = useState('Tous');
+  const [recherche, setRecherche] = useState('');
+  const [secteur, setSecteur] = useState('Tous');
+
+  const univers = MARKETS_DATA.filter(
+    (item) =>
+      item.type === typeActif && (marche === 'Tous' || item.marche === marche)
+  ).map((item) => ({ ...item, secteur: clientSector(item.nom) }));
+
+  const secteurs = ['Tous', ...new Set(univers.map((item) => item.secteur))];
+  const rows = univers.filter(
+    (item) =>
+      item.nom.toLowerCase().includes(recherche.toLowerCase()) &&
+      (secteur === 'Tous' || item.secteur === secteur)
+  );
+
+  const changerType = (value) => {
+    setTypeActif(value);
+    setSecteur('Tous');
+  };
+  const changerMarche = (value) => {
+    setMarche(value);
+    setSecteur('Tous');
+  };
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Vues  des Marchés']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Vues des Marchés
+          </h2>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            Consultez les instruments accessibles via vos SGI, ajoutez-les à
+            votre watchlist personnelle, ouvrez la profondeur de marché ou
+            préparez un ordre.
+          </div>
+        </div>
+        <Badge tone="gold">{rows.length} instrument(s)</Badge>
+      </div>
+
+      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="flex items-end gap-4 flex-wrap">
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold mb-1"
+                style={{ color: C.sub }}
+              >
+                Type d'actif
+              </div>
+              <div className="flex gap-1.5">
+                {['Action', 'Obligation'].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => changerType(type)}
+                    className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                    style={{
+                      background: typeActif === type ? C.navy : '#F0F1F5',
+                      color: typeActif === type ? '#fff' : C.sub,
+                    }}
+                  >
+                    {type === 'Action' ? 'Actions' : 'Obligations'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div
+                className="text-[10px] uppercase font-semibold mb-1"
+                style={{ color: C.sub }}
+              >
+                Marché
+              </div>
+              <div className="flex gap-1.5">
+                {['Tous', 'BRVM', 'NGX', 'GSE'].map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => changerMarche(code)}
+                    className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                    style={{
+                      background: marche === code ? C.navy : '#F0F1F5',
+                      color: marche === code ? '#fff' : C.sub,
+                    }}
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 min-w-[390px]">
+            <div>
+              <label
+                className="text-[10px] uppercase font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Secteur
+              </label>
+              <select
+                value={secteur}
+                onChange={(e) => setSecteur(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                {secteurs.map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label
+                className="text-[10px] uppercase font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Instrument
+              </label>
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                style={{ borderColor: C.line }}
+              >
+                <Search size={13} color={C.sub} />
+                <input
+                  value={recherche}
+                  onChange={(e) => setRecherche(e.target.value)}
+                  placeholder="Rechercher…"
+                  className="w-full text-xs outline-none"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1450 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Instrument</Th>
+                <Th>Secteur</Th>
+                <Th>Marché</Th>
+                <Th>Cours</Th>
+                <Th>Volume jour</Th>
+                <Th>Var %</Th>
+                <Th>Cours min</Th>
+                <Th>Cours max</Th>
+                <Th>SGI accessibles</Th>
+                <Th>Watchlist</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={11}
+                    className="text-center py-8 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucun instrument ne correspond aux filtres sélectionnés.
+                  </td>
+                </tr>
+              )}
+              {rows.map((item, index) => {
+                const compatibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
+                  (pf) => pf.marche === item.marche
+                );
+                const suivi = watchlistTitles.includes(item.nom);
+                return (
+                  <tr
+                    key={item.nom}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: index % 2 ? '#FCFCFD' : '#fff',
+                    }}
+                  >
+                    <Td className="font-semibold whitespace-nowrap">
+                      {item.nom}
+                    </Td>
+                    <Td>{item.secteur}</Td>
+                    <Td>
+                      <Badge tone="navy">{item.marche}</Badge>
+                    </Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmtPrice(item.cours)} {item.devise}
+                    </Td>
+                    <Td mono>{fmt(item.volumeJour)}</Td>
+                    <Td>
+                      <Pct v={item.variation} />
+                    </Td>
+                    <Td mono>
+                      {fmtPrice(item.coursMin)} {item.devise}
+                    </Td>
+                    <Td mono>
+                      {fmtPrice(item.coursMax)} {item.devise}
+                    </Td>
+                    <Td>
+                      <div className="font-semibold text-xs">
+                        {compatibles.length} SGI
+                      </div>
+                      <div
+                        className="text-[10px] mt-0.5"
+                        style={{ color: C.sub }}
+                      >
+                        {compatibles.map((pf) => pf.sgi).join(' · ')}
+                      </div>
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          suivi ? onRemoveWatch(item.nom) : onAddWatch(item.nom)
+                        }
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+                        style={{
+                          background: suivi ? '#E4F5EF' : '#FBF1DD',
+                          color: suivi ? C.teal : '#8A6A16',
+                        }}
+                      >
+                        <Star
+                          size={13}
+                          fill={suivi ? 'currentColor' : 'none'}
+                        />
+                        {suivi ? 'Suivi' : 'Ajouter'}
+                      </button>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-3 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            goClient('client-market-depth', {
+                              instrument: item.nom,
+                              marche: item.marche,
+                            })
+                          }
+                          className="text-xs font-semibold"
+                          style={{ color: C.indigo }}
+                        >
+                          Profondeur →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            goClient('client-invest', {
+                              instrument: item.nom,
+                              marche: item.marche,
+                            })
+                          }
+                          className="text-xs font-semibold"
+                          style={{ color: C.navy }}
+                        >
+                          Préparer un ordre →
+                        </button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="text-[10px]" style={{ color: C.sub }}>
+        Les cours et profondeurs sont des données de démonstration dans ce
+        prototype. L'accès à un instrument est déterminé par l'existence d'au
+        moins un compte SGI compatible avec son marché.
+      </div>
+    </div>
+  );
+}
+
+function ClientWatchlist({
+  goClient,
+  watchlistTitles,
+  onAddWatch,
+  onRemoveWatch,
+}) {
+  const now = new Date();
+  const dateKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    '0'
+  )}-${String(now.getDate()).padStart(2, '0')}`;
+  const dateLabel = new Intl.DateTimeFormat('fr-FR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  }).format(now);
+
+  const defaultDailyFilters = {
+    marche: 'Tous',
+    secteur: 'Tous',
+    mm: 'Tous',
+    macd: 'Tous',
+    rsiMin: '0',
+    rsiMax: '100',
+    bol: 'Tous',
+    signalTechnique: 'Tous',
+    perMax: '',
+    rentabiliteMin: '',
+    evolMin: '',
+    valorisation: 'Tous',
+    signalFondamental: 'Tous',
+  };
+  const [dailyFilters, setDailyFilters] = useState(defaultDailyFilters);
+  const [showDailyFilters, setShowDailyFilters] = useState(true);
+
+  const marchesClient = new Set(
+    CLIENT_GESTION_LIBRE.portefeuilles.map(
+      (portefeuille) => portefeuille.marche
+    )
+  );
+
+  const staticRows = watchlistTitles
+    .map((titre) => {
+      const row = buildStaticWatchlistRow(titre);
+      const market = clientMarket(titre);
+      if (!row || !market || !marchesClient.has(market.marche)) return null;
+      return {
+        ...row,
+        type: market.type,
+        cours: market.cours,
+        variation: market.variation,
+        devise: market.devise,
+        compatibles: CLIENT_GESTION_LIBRE.portefeuilles.filter(
+          (pf) => pf.marche === market.marche
+        ),
+      };
+    })
+    .filter(Boolean);
+
+  const dailyRows = buildWatchlistJournaliere(dateKey)
+    .filter((row) => marchesClient.has(row.marche))
+    .map((row) => ({
+      ...row,
+      compatibles: CLIENT_GESTION_LIBRE.portefeuilles.filter(
+        (pf) => pf.marche === row.marche
+      ),
+    }));
+
+  const marches = ['Tous', ...new Set(dailyRows.map((r) => r.marche))];
+  const secteurs = ['Tous', ...new Set(dailyRows.map((r) => r.secteur))];
+  const macdOptions = [
+    'Tous',
+    ...new Set(dailyRows.map((r) => r.technique.macd)),
+  ];
+  const bolOptions = [
+    'Tous',
+    ...new Set(dailyRows.map((r) => r.technique.bol)),
+  ];
+  const signauxTechniques = [
+    'Tous',
+    ...new Set(dailyRows.map((r) => r.technique.signal)),
+  ];
+  const valorisations = [
+    'Tous',
+    ...new Set(dailyRows.map((r) => r.fondamentale.valo)),
+  ];
+  const signauxFondamentaux = [
+    'Tous',
+    ...new Set(dailyRows.map((r) => r.fondamentale.signal)),
+  ];
+
+  const mmDirection = (mm) =>
+    mm.includes('>') ? 'Haussière' : mm.includes('<') ? 'Baissière' : 'Neutre';
+
+  const rowsJour = dailyRows.filter((r) => {
+    const perMax =
+      dailyFilters.perMax === '' ? null : Number(dailyFilters.perMax);
+    const rentabiliteMin =
+      dailyFilters.rentabiliteMin === ''
+        ? null
+        : Number(dailyFilters.rentabiliteMin);
+    const evolMin =
+      dailyFilters.evolMin === '' ? null : Number(dailyFilters.evolMin);
+    const rsiMin = Number(dailyFilters.rsiMin || 0);
+    const rsiMax = Number(dailyFilters.rsiMax || 100);
+
+    return (
+      (dailyFilters.marche === 'Tous' || r.marche === dailyFilters.marche) &&
+      (dailyFilters.secteur === 'Tous' || r.secteur === dailyFilters.secteur) &&
+      (dailyFilters.mm === 'Tous' ||
+        mmDirection(r.technique.mm) === dailyFilters.mm) &&
+      (dailyFilters.macd === 'Tous' ||
+        r.technique.macd === dailyFilters.macd) &&
+      r.technique.rsi >= rsiMin &&
+      r.technique.rsi <= rsiMax &&
+      (dailyFilters.bol === 'Tous' || r.technique.bol === dailyFilters.bol) &&
+      (dailyFilters.signalTechnique === 'Tous' ||
+        r.technique.signal === dailyFilters.signalTechnique) &&
+      (perMax === null || r.fondamentale.per <= perMax) &&
+      (rentabiliteMin === null ||
+        parsePctNumber(r.fondamentale.rentabilite) >= rentabiliteMin) &&
+      (evolMin === null || parsePctNumber(r.fondamentale.evol) >= evolMin) &&
+      (dailyFilters.valorisation === 'Tous' ||
+        r.fondamentale.valo === dailyFilters.valorisation) &&
+      (dailyFilters.signalFondamental === 'Tous' ||
+        r.fondamentale.signal === dailyFilters.signalFondamental)
+    );
+  });
+
+  const activeFilterCount = Object.entries(dailyFilters).filter(
+    ([key, value]) => {
+      if (
+        [
+          'marche',
+          'secteur',
+          'mm',
+          'macd',
+          'bol',
+          'signalTechnique',
+          'valorisation',
+          'signalFondamental',
+        ].includes(key)
+      ) {
+        return value !== 'Tous';
+      }
+      if (key === 'rsiMin') return value !== '0';
+      if (key === 'rsiMax') return value !== '100';
+      return value !== '';
+    }
+  ).length;
+
+  const updateDailyFilter = (key, value) =>
+    setDailyFilters((current) => ({ ...current, [key]: value }));
+
+  const toneSignalJour = (signal) => {
+    if (signal === 'Surveiller achat') return 'teal';
+    if (signal === 'Attendre confirmation') return 'gold';
+    if (signal === 'Écarter / alléger') return 'coral';
+    return 'slate';
+  };
+
+  const toneSignalFondamental = (signal) => {
+    if (signal === 'Acheter') return 'teal';
+    if (signal === 'Vendre') return 'coral';
+    return 'gold';
+  };
+
+  return (
+    <div className="space-y-6">
+      <ClientBreadcrumb items={['Espace Client', 'Watchlist']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Watchlist — sélection fondamentale &amp; signaux de marché
+          </h2>
+          <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
+            Une watchlist statique que vous construisez vous-même et une
+            watchlist journalière recalculée selon les signaux de marché
+            disponibles sur les places accessibles via vos SGI.
+          </div>
+        </div>
+        <Btn tone="ghost" onClick={() => goClient('client-markets')}>
+          Ajouter depuis les marchés
+        </Btn>
+      </div>
+
+      <Card className="p-0 overflow-hidden" style={{ borderColor: C.gold }}>
+        <div
+          className="p-5 flex items-start justify-between gap-4"
+          style={{ background: '#FBF7EE' }}
+        >
+          <div>
+            <Eyebrow>Watchlist statique — conviction fondamentale</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Votre sélection personnelle de titres à suivre dans la durée
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub }}>
+              Elle est alimentée depuis « Marchés — Actions &amp; Obligations ».
+              Les titres restent enregistrés jusqu'à ce que vous décidiez de les
+              retirer.
+            </div>
+          </div>
+          <Badge tone="gold">{staticRows.length} valeur(s)</Badge>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1780 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Instrument</Th>
+                <Th>Marché</Th>
+                <Th>Secteur</Th>
+                <Th>Cours</Th>
+                <Th>Var. jour</Th>
+                <Th>PER</Th>
+                <Th>Total return YTD</Th>
+                <Th>EVOL</Th>
+                <Th>Valorisation</Th>
+                <Th>Signal fondamental</Th>
+                <Th>SGI accessibles</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {staticRows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={12}
+                    className="text-center py-9 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Votre watchlist statique est vide. Ajoutez un actif depuis «
+                    Marchés — Actions &amp; Obligations ».
+                  </td>
+                </tr>
+              )}
+              {staticRows.map((r, i) => (
+                <tr
+                  key={r.titre}
+                  style={{
+                    borderTop: `1px solid ${C.line}`,
+                    background: i % 2 ? '#FCFCFD' : '#fff',
+                  }}
+                >
+                  <Td className="font-semibold whitespace-nowrap">{r.titre}</Td>
+                  <Td>
+                    <Badge tone="navy">{r.marche}</Badge>
+                  </Td>
+                  <Td className="whitespace-nowrap">{r.secteur}</Td>
+                  <Td mono className="whitespace-nowrap">
+                    {fmtPrice(r.cours)} {r.devise}
+                  </Td>
+                  <Td>
+                    <Pct v={r.variation} />
+                  </Td>
+                  <Td mono>
+                    {r.fondamentale.per == null
+                      ? 'N/D'
+                      : `${r.fondamentale.per.toFixed(1)}x`}
+                  </Td>
+                  <Td mono>{r.fondamentale.rentabilite}</Td>
+                  <Td mono>{r.fondamentale.evol}</Td>
+                  <Td className="whitespace-nowrap">{r.fondamentale.valo}</Td>
+                  <Td>
+                    <Badge tone={toneSignalFondamental(r.fondamentale.signal)}>
+                      {r.fondamentale.signal}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <div className="text-xs font-semibold">
+                      {r.compatibles.length} SGI
+                    </div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      {r.compatibles.map((pf) => pf.sgi).join(' · ')}
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="flex items-center gap-3 whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          goClient('client-market-depth', {
+                            instrument: r.titre,
+                            marche: r.marche,
+                          })
+                        }
+                        className="text-xs font-semibold"
+                        style={{ color: C.indigo }}
+                      >
+                        Profondeur →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          goClient('client-invest', {
+                            instrument: r.titre,
+                            marche: r.marche,
+                          })
+                        }
+                        className="text-xs font-semibold"
+                        style={{ color: C.navy }}
+                      >
+                        Investir →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveWatch(r.titre)}
+                        className="inline-flex items-center gap-1 text-xs font-semibold"
+                        style={{ color: C.coral }}
+                      >
+                        <X size={12} /> Retirer
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card
+        className="p-0 overflow-hidden flex flex-col"
+        style={{
+          borderColor: C.navy,
+          height: 'clamp(650px, calc(100vh - 100px), 830px)',
+        }}
+      >
+        <div
+          className="p-5 shrink-0"
+          style={{
+            background: '#EFF3FB',
+            maxHeight: showDailyFilters ? '52%' : 'auto',
+            overflowY: showDailyFilters ? 'auto' : 'visible',
+            overscrollBehavior: 'contain',
+            scrollbarGutter: 'stable',
+          }}
+        >
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Watchlist journalière — signaux de marché</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Classement du {dateLabel}
+              </div>
+              <div className="text-xs mt-1" style={{ color: C.sub }}>
+                Classement automatique des titres accessibles sur vos marchés.
+                Cette liste ne modifie pas votre watchlist statique tant que
+                vous n'ajoutez pas explicitement un titre.
+              </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Badge tone="navy">Actualisation quotidienne</Badge>
+              <Badge tone="gold">{rowsJour.length} valeur(s)</Badge>
+              <Badge tone={activeFilterCount > 0 ? 'teal' : 'slate'}>
+                {activeFilterCount} filtre(s) actif(s)
+              </Badge>
+              <button
+                type="button"
+                onClick={() => setShowDailyFilters((visible) => !visible)}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                style={{
+                  borderColor: C.line,
+                  color: C.navy,
+                  background: '#fff',
+                }}
+              >
+                {showDailyFilters
+                  ? 'Masquer les filtres ↑'
+                  : 'Afficher les filtres ↓'}
+              </button>
+            </div>
+          </div>
+
+          {showDailyFilters && (
+            <div
+              className="mt-4 p-4 rounded-xl border"
+              style={{ borderColor: '#D8DFEF', background: '#fff' }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: C.ink }}
+                  >
+                    Filtres automatiques — application instantanée
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
+                    Technique, fondamentale, marché et secteur.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDailyFilters(defaultDailyFilters)}
+                  className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                  style={{
+                    borderColor: C.line,
+                    color: C.navy,
+                    background: '#fff',
+                  }}
+                >
+                  Réinitialiser les filtres
+                </button>
+              </div>
+
+              <div className="grid grid-cols-5 gap-3">
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Bourse
+                  </label>
+                  <select
+                    value={dailyFilters.marche}
+                    onChange={(e) =>
+                      updateDailyFilter('marche', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {marches.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Secteur
+                  </label>
+                  <select
+                    value={dailyFilters.secteur}
+                    onChange={(e) =>
+                      updateDailyFilter('secteur', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {secteurs.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    MM
+                  </label>
+                  <select
+                    value={dailyFilters.mm}
+                    onChange={(e) => updateDailyFilter('mm', e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {['Tous', 'Haussière', 'Neutre', 'Baissière'].map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    MACD
+                  </label>
+                  <select
+                    value={dailyFilters.macd}
+                    onChange={(e) => updateDailyFilter('macd', e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {macdOptions.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    BOL
+                  </label>
+                  <select
+                    value={dailyFilters.bol}
+                    onChange={(e) => updateDailyFilter('bol', e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {bolOptions.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    RSI minimum
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={dailyFilters.rsiMin}
+                    onChange={(e) =>
+                      updateDailyFilter('rsiMin', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line, ...F_MONO }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    RSI maximum
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={dailyFilters.rsiMax}
+                    onChange={(e) =>
+                      updateDailyFilter('rsiMax', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line, ...F_MONO }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Signal technique
+                  </label>
+                  <select
+                    value={dailyFilters.signalTechnique}
+                    onChange={(e) =>
+                      updateDailyFilter('signalTechnique', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {signauxTechniques.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    PER maximum
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={dailyFilters.perMax}
+                    onChange={(e) =>
+                      updateDailyFilter('perMax', e.target.value)
+                    }
+                    placeholder="Sans limite"
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line, ...F_MONO }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Rentabilité min. (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={dailyFilters.rentabiliteMin}
+                    onChange={(e) =>
+                      updateDailyFilter('rentabiliteMin', e.target.value)
+                    }
+                    placeholder="Sans limite"
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line, ...F_MONO }}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    EVOL minimum (%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={dailyFilters.evolMin}
+                    onChange={(e) =>
+                      updateDailyFilter('evolMin', e.target.value)
+                    }
+                    placeholder="Sans limite"
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line, ...F_MONO }}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Valorisation
+                  </label>
+                  <select
+                    value={dailyFilters.valorisation}
+                    onChange={(e) =>
+                      updateDailyFilter('valorisation', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {valorisations.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label
+                    className="text-[11px] font-semibold block mb-1"
+                    style={{ color: C.sub }}
+                  >
+                    Signal fondamental
+                  </label>
+                  <select
+                    value={dailyFilters.signalFondamental}
+                    onChange={(e) =>
+                      updateDailyFilter('signalFondamental', e.target.value)
+                    }
+                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                    style={{ borderColor: C.line }}
+                  >
+                    {signauxFondamentaux.map((v) => (
+                      <option key={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div
+          className="flex-1 min-h-0 overflow-auto"
+          style={{
+            overscrollBehavior: 'contain',
+            scrollbarGutter: 'stable',
+          }}
+        >
+          <table className="w-full" style={{ minWidth: 2450 }}>
+            <thead
+              style={{
+                background: '#FAFAFC',
+                position: 'sticky',
+                top: 0,
+                zIndex: 2,
+              }}
+            >
+              <tr>
+                <Th>Rang</Th>
+                <Th>Instrument</Th>
+                <Th>Marché</Th>
+                <Th>Secteur</Th>
+                <Th>Cours</Th>
+                <Th>Variation jour</Th>
+                <Th>MM</Th>
+                <Th>MACD</Th>
+                <Th>RSI</Th>
+                <Th>BOL</Th>
+                <Th>Score technique</Th>
+                <Th>PER</Th>
+                <Th>Rentabilité</Th>
+                <Th>EVOL</Th>
+                <Th>VALO</Th>
+                <Th>Signal fondamental</Th>
+                <Th>Score fondamental</Th>
+                <Th>Score combiné</Th>
+                <Th>Signal du jour</Th>
+                <Th>SGI</Th>
+                <Th>Watchlist statique</Th>
+                <Th>Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rowsJour.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={22}
+                    className="text-center py-8 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucune valeur ne satisfait l'ensemble des filtres
+                    automatiques.
+                  </td>
+                </tr>
+              )}
+              {rowsJour.map((r, i) => {
+                const dejaAjoute = watchlistTitles.includes(r.titre);
+                return (
+                  <tr
+                    key={r.titre}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: i % 2 ? '#FCFCFD' : '#fff',
+                    }}
+                  >
+                    <Td mono>
+                      <span className="font-bold" style={{ color: C.gold }}>
+                        #{i + 1}
+                      </span>
+                    </Td>
+                    <Td className="font-semibold whitespace-nowrap">
+                      {r.titre}
+                    </Td>
+                    <Td>
+                      <Badge tone="navy">{r.marche}</Badge>
+                    </Td>
+                    <Td className="whitespace-nowrap">{r.secteur}</Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmtPrice(r.cours)} {r.devise}
+                    </Td>
+                    <Td>
+                      <Pct v={r.variationJour} />
+                    </Td>
+                    <Td mono className="whitespace-nowrap">
+                      {r.technique.mm}
+                    </Td>
+                    <Td className="whitespace-nowrap">{r.technique.macd}</Td>
+                    <Td mono>{r.technique.rsi}</Td>
+                    <Td className="whitespace-nowrap">{r.technique.bol}</Td>
+                    <Td mono>{r.scoreTechnique}/100</Td>
+                    <Td mono>{r.fondamentale.per.toFixed(1)}x</Td>
+                    <Td mono>{r.fondamentale.rentabilite}</Td>
+                    <Td mono>{r.fondamentale.evol}</Td>
+                    <Td className="whitespace-nowrap">{r.fondamentale.valo}</Td>
+                    <Td>
+                      <Badge
+                        tone={toneSignalFondamental(r.fondamentale.signal)}
+                      >
+                        {r.fondamentale.signal}
+                      </Badge>
+                    </Td>
+                    <Td mono>{r.scoreFondamental}/100</Td>
+                    <Td>
+                      <Badge
+                        tone={
+                          r.scoreCombine >= 78
+                            ? 'teal'
+                            : r.scoreCombine >= 63
+                            ? 'gold'
+                            : r.scoreCombine < 48
+                            ? 'coral'
+                            : 'slate'
+                        }
+                      >
+                        {r.scoreCombine}/100
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <Badge tone={toneSignalJour(r.signalJour)}>
+                        {r.signalJour}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <div className="text-xs font-semibold">
+                        {r.compatibles.length} SGI
+                      </div>
+                      <div
+                        className="text-[10px] whitespace-nowrap"
+                        style={{ color: C.sub }}
+                      >
+                        {r.compatibles.map((pf) => pf.sgi).join(' · ')}
+                      </div>
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          dejaAjoute
+                            ? onRemoveWatch(r.titre)
+                            : onAddWatch(r.titre)
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+                        style={{
+                          background: dejaAjoute ? '#EEF0F4' : '#FBF1DD',
+                          color: dejaAjoute ? C.sub : '#8A6A16',
+                        }}
+                      >
+                        <Star
+                          size={13}
+                          fill={dejaAjoute ? 'currentColor' : 'none'}
+                        />
+                        {dejaAjoute ? 'Retirer' : 'Ajouter'}
+                      </button>
+                    </Td>
+                    <Td>
+                      <div className="flex items-center gap-3 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            goClient('client-market-depth', {
+                              instrument: r.titre,
+                              marche: r.marche,
+                            })
+                          }
+                          className="text-xs font-semibold"
+                          style={{ color: C.indigo }}
+                        >
+                          Analyser →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            goClient('client-invest', {
+                              instrument: r.titre,
+                              marche: r.marche,
+                            })
+                          }
+                          className="text-xs font-semibold"
+                          style={{ color: C.navy }}
+                        >
+                          Investir →
+                        </button>
+                      </div>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="text-[10px]" style={{ color: C.sub }}>
+        Les scores et signaux de cette maquette sont calculés à partir des
+        données de démonstration disponibles. En production, la watchlist
+        journalière devra être alimentée par les données de marché et
+        indicateurs réels du backend.
+      </div>
+    </div>
+  );
+}
+
+function ClientAvis({ orders, devise }) {
+  const [dateDebut, setDateDebut] = useState('');
+  const [filtreMarche, setFiltreMarche] = useState('Tous');
+  const [filtreSgi, setFiltreSgi] = useState('Toutes');
+  const [filtreSens, setFiltreSens] = useState('Tous');
+
+  const baremes = {
+    BRVM: { tauxComSgi: 0.008, tauxIrvm: 0, tauxTaf: 0.18, tauxFraisChange: 0 },
+    NGX: { tauxComSgi: 0.007, tauxIrvm: 0, tauxTaf: 0.075, tauxFraisChange: 0 },
+    GSE: {
+      tauxComSgi: 0.007,
+      tauxIrvm: 0,
+      tauxTaf: 0.15,
+      tauxFraisChange: 0.004,
+    },
+  };
+
+  const avis = orders
+    .filter((ordre) => ordre.statut === 'Exécuté')
+    .map((ordre) => {
+      const portefeuille = CLIENT_GESTION_LIBRE.portefeuilles.find(
+        (pf) => pf.id === ordre.portefeuilleId
+      );
+      const avisBase = {
+        id: `AV-${ordre.id.replace('CL-ORD-', '')}`,
+        client: CLIENT_GESTION_LIBRE.nom,
+        titre: ordre.instrument,
+        sens: ordre.sens,
+        qte: ordre.qte,
+        prix: ordre.prix,
+        marche: ordre.marche,
+        devise: ordre.devise,
+        date: ordre.date,
+        frais: baremes[ordre.marche] || baremes.BRVM,
+      };
+      return {
+        ...avisBase,
+        portefeuille,
+        details: calculerAvis(avisBase),
+      };
+    });
+
+  const sgiDisponibles = [
+    'Toutes',
+    ...new Set(avis.map((item) => item.portefeuille?.sgi).filter(Boolean)),
+  ];
+
+  const rows = avis.filter((item) => {
+    const correspondDate =
+      !dateDebut || parseFR(item.date) >= new Date(`${dateDebut}T00:00:00`);
+    return (
+      correspondDate &&
+      (filtreMarche === 'Tous' || item.marche === filtreMarche) &&
+      (filtreSgi === 'Toutes' || item.portefeuille?.sgi === filtreSgi) &&
+      (filtreSens === 'Tous' || item.sens === filtreSens)
+    );
+  });
+
+  const totalFraisVue = rows.reduce(
+    (sum, item) =>
+      sum + convertCurrency(item.details.totalFrais, item.devise, devise),
+    0
+  );
+  const montantBrutVue = rows.reduce(
+    (sum, item) =>
+      sum + convertCurrency(item.details.montantBrut, item.devise, devise),
+    0
+  );
+
+  const reinitialiser = () => {
+    setDateDebut('');
+    setFiltreMarche('Tous');
+    setFiltreSgi('Toutes');
+    setFiltreSens('Tous');
+  };
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb
+        items={['Espace Client', "Avis d'opéré — vue générale"]}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Avis d'opéré — vue générale
+          </h2>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            Vos opérations exécutées uniquement, consolidées sur l'ensemble de
+            vos SGI. Les ordres en attente restent disponibles dans « Mes ordres
+            ».
+          </div>
+        </div>
+        <Badge tone="gold">{rows.length} avis</Badge>
+      </div>
+
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="grid grid-cols-4 gap-3">
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Depuis le
+            </label>
+            <input
+              type="date"
+              value={dateDebut}
+              onChange={(e) => setDateDebut(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            />
+          </div>
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Marché
+            </label>
+            <select
+              value={filtreMarche}
+              onChange={(e) => setFiltreMarche(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {['Tous', 'BRVM', 'NGX', 'GSE'].map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              SGI
+            </label>
+            <select
+              value={filtreSgi}
+              onChange={(e) => setFiltreSgi(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {sgiDisponibles.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Sens
+            </label>
+            <div className="flex gap-1.5">
+              {['Tous', 'Achat', 'Vente'].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFiltreSens(value)}
+                  className="flex-1 px-2 py-2 rounded-xl text-xs font-semibold"
+                  style={{
+                    background: filtreSens === value ? C.navy : '#F0F1F5',
+                    color: filtreSens === value ? '#fff' : C.sub,
+                  }}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {(dateDebut ||
+          filtreMarche !== 'Tous' ||
+          filtreSgi !== 'Toutes' ||
+          filtreSens !== 'Tous') && (
+          <div className="flex justify-end mt-3">
+            <button
+              type="button"
+              onClick={reinitialiser}
+              className="text-xs font-semibold"
+              style={{ color: C.navy }}
+            >
+              Réinitialiser les filtres
+            </button>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Opérations exécutées
+          </div>
+          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
+            {rows.length}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Montant brut · équiv. {devise}
+          </div>
+          <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(montantBrutVue))} {devise}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Conversion dans la devise de vue
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs" style={{ color: C.sub }}>
+            Frais cumulés · équiv. {devise}
+          </div>
+          <div
+            className="text-lg font-bold mt-1"
+            style={{ ...F_DISPLAY, color: C.gold }}
+          >
+            {fmt(Math.round(totalFraisVue))} {devise}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Barèmes de démonstration · conversion dans la devise de vue
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 2050 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Réf.</Th>
+                <Th>Date</Th>
+                <Th>SGI</Th>
+                <Th>Portefeuille</Th>
+                <Th>Titre</Th>
+                <Th>Sens</Th>
+                <Th>Qté</Th>
+                <Th>Prix exéc.</Th>
+                <Th>Montant brut</Th>
+                <Th>Com. SGI</Th>
+                <Th>IRVM</Th>
+                <Th>TAF</Th>
+                <Th>Frais change</Th>
+                <Th>Total frais</Th>
+                <Th>Montant débité</Th>
+                <Th>Montant crédité</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={16}
+                    className="text-center py-10 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucun avis d'opéré exécuté ne correspond à ces critères.
+                  </td>
+                </tr>
+              )}
+              {rows.map((item, index) => (
+                <tr
+                  key={item.id}
+                  style={{
+                    borderTop: `1px solid ${C.line}`,
+                    background: index % 2 ? '#FCFCFD' : '#fff',
+                  }}
+                >
+                  <Td mono>{item.id}</Td>
+                  <Td>{item.date}</Td>
+                  <Td>
+                    <div className="font-semibold whitespace-nowrap">
+                      {item.portefeuille?.sgi || '—'}
+                    </div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      {item.marche}
+                    </div>
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    {item.portefeuille?.nom || '—'}
+                  </Td>
+                  <Td className="font-semibold whitespace-nowrap">
+                    {item.titre}
+                  </Td>
+                  <Td>
+                    <Badge tone={item.sens === 'Achat' ? 'teal' : 'coral'}>
+                      {item.sens}
+                    </Badge>
+                  </Td>
+                  <Td mono>{fmt(item.qte)}</Td>
+                  <Td mono>
+                    {fmtPrice(item.prix)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    {fmtPrice(item.details.montantBrut)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    {fmtPrice(item.details.comSgi)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    {fmtPrice(item.details.irvm)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    {fmtPrice(item.details.taf)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    {fmtPrice(item.details.fraisChange)} {item.devise}
+                  </Td>
+                  <Td mono>
+                    <span style={{ color: C.gold, fontWeight: 700 }}>
+                      {fmtPrice(item.details.totalFrais)} {item.devise}
+                    </span>
+                  </Td>
+                  <Td mono>
+                    {item.details.montantDebite > 0 ? (
+                      <span style={{ color: C.coral, fontWeight: 700 }}>
+                        {fmtPrice(item.details.montantDebite)} {item.devise}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
+                  <Td mono>
+                    {item.details.montantCredite > 0 ? (
+                      <span style={{ color: C.teal, fontWeight: 700 }}>
+                        {fmtPrice(item.details.montantCredite)} {item.devise}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="text-[10px]" style={{ color: C.sub }}>
+        Les frais affichés sont des paramètres de démonstration. En production,
+        les avis devront reprendre les frais et taxes effectivement communiqués
+        par chaque SGI.
+      </div>
+    </div>
+  );
+}
+
 function ClientOrders({ orders }) {
   return (
     <div className="space-y-5">
@@ -11712,151 +14384,1595 @@ function ClientOrders({ orders }) {
   );
 }
 
-function ClientCashflows({ devise }) {
+function ClientCashflows({ devise, orders = [] }) {
   const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
-  const totalCash = portefeuilles.reduce(
-    (somme, portefeuille) => somme + clientCashIn(portefeuille, devise),
+  const [filtrePays, setFiltrePays] = useState('Tous');
+  const [filtreMarche, setFiltreMarche] = useState('Tous');
+  const [filtreSgi, setFiltreSgi] = useState('Toutes');
+  const [filtreEncoursMin, setFiltreEncoursMin] = useState('');
+  const [filtreLiquiditeActuelleMin, setFiltreLiquiditeActuelleMin] =
+    useState('');
+  const [filtreEntrees30JMin, setFiltreEntrees30JMin] = useState('');
+  const [filtreSorties30JMin, setFiltreSorties30JMin] = useState('');
+  const [filtrePrevisionnelMin, setFiltrePrevisionnelMin] = useState('');
+  const [
+    portefeuilleLiquiditeSelectionneId,
+    setPortefeuilleLiquiditeSelectionneId,
+  ] = useState(portefeuilles[0]?.id || '');
+  const [vueLiquiditeDetail, setVueLiquiditeDetail] = useState('origines');
+
+  const dateReference = new Date(2026, 7, 13);
+  const finHorizon = new Date(dateReference);
+  finHorizon.setDate(finHorizon.getDate() + 30);
+
+  const formatDateFR = (date) =>
+    new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(date);
+
+  const fluxRevenus30J = CLIENT_CASHFLOWS.flatMap((flux) => {
+    const dateFlux = parseFR(flux.date);
+    if (dateFlux < dateReference || dateFlux > finHorizon) return [];
+    const pf = portefeuilles.find(
+      (portefeuille) => portefeuille.id === flux.portefeuilleId
+    );
+    if (!pf) return [];
+    return [
+      {
+        id: flux.id,
+        portefeuilleId: pf.id,
+        date: flux.date,
+        dateObj: dateFlux,
+        nature: flux.type,
+        libelle: flux.instrument,
+        sens: 'Entrée',
+        montant: flux.montant,
+        devise: flux.devise,
+        statut: flux.statut,
+      },
+    ];
+  });
+
+  const fluxOrdres30J = orders
+    .filter((ordre) => CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut))
+    .map((ordre, index) => {
+      const pf = portefeuilles.find(
+        (portefeuille) => portefeuille.id === ordre.portefeuilleId
+      );
+      const dateFlux = new Date(dateReference);
+      dateFlux.setDate(dateFlux.getDate() + 2 + index);
+      return {
+        id: `forecast-${ordre.id}`,
+        portefeuilleId: ordre.portefeuilleId,
+        date: formatDateFR(dateFlux),
+        dateObj: dateFlux,
+        nature: "Règlement d'ordre",
+        libelle: `${ordre.sens} ${ordre.instrument}`,
+        sens: ordre.sens === 'Achat' ? 'Sortie' : 'Entrée',
+        montant: Number(ordre.qte || 0) * Number(ordre.prix || 0),
+        devise: ordre.devise || pf?.devise || devise,
+        statut: ordre.statut,
+      };
+    });
+
+  const flux30J = [...fluxRevenus30J, ...fluxOrdres30J].sort(
+    (a, b) => a.dateObj - b.dateObj
+  );
+
+  const synthesePortefeuilles = portefeuilles.map((portefeuille) => {
+    const encours = clientPortfolioValue(portefeuille);
+    const liquiditeActuelle = Number(portefeuille.compteEspeces || 0);
+    const fluxPf = flux30J.filter(
+      (flux) => flux.portefeuilleId === portefeuille.id
+    );
+    const entrees30J = fluxPf
+      .filter((flux) => flux.sens === 'Entrée')
+      .reduce(
+        (somme, flux) =>
+          somme +
+          convertCurrency(flux.montant, flux.devise, portefeuille.devise),
+        0
+      );
+    const sorties30J = fluxPf
+      .filter((flux) => flux.sens === 'Sortie')
+      .reduce(
+        (somme, flux) =>
+          somme +
+          convertCurrency(flux.montant, flux.devise, portefeuille.devise),
+        0
+      );
+    const liquiditePrevisionnelle = Math.max(
+      0,
+      liquiditeActuelle + entrees30J - sorties30J
+    );
+    const liquiditeReservee = clientReservedCash(portefeuille, orders);
+    const liquiditeDisponibleOrdres = clientAvailableCash(portefeuille, orders);
+
+    return {
+      portefeuille,
+      encours,
+      liquiditeActuelle,
+      liquiditeReservee,
+      liquiditeDisponibleOrdres,
+      entrees30J,
+      sorties30J,
+      liquiditePrevisionnelle,
+      ratioLiquidite: encours > 0 ? (liquiditeActuelle / encours) * 100 : 0,
+      ratioPrevisionnel:
+        encours > 0 ? (liquiditePrevisionnelle / encours) * 100 : 0,
+    };
+  });
+
+  const paysDisponibles = [
+    'Tous',
+    ...new Set(portefeuilles.map((portefeuille) => portefeuille.pays)),
+  ];
+  const marchesDisponibles = [
+    'Tous',
+    ...new Set(portefeuilles.map((portefeuille) => portefeuille.marche)),
+  ];
+  const sgisDisponibles = [
+    'Toutes',
+    ...new Set(
+      portefeuilles
+        .filter(
+          (portefeuille) =>
+            (filtrePays === 'Tous' || portefeuille.pays === filtrePays) &&
+            (filtreMarche === 'Tous' || portefeuille.marche === filtreMarche)
+        )
+        .map((portefeuille) => portefeuille.sgi)
+    ),
+  ];
+
+  const lignesFiltrees = synthesePortefeuilles.filter((ligne) => {
+    const { portefeuille } = ligne;
+    const encoursVue = convertCurrency(
+      ligne.encours,
+      portefeuille.devise,
+      devise
+    );
+    const liquiditeVue = convertCurrency(
+      ligne.liquiditeActuelle,
+      portefeuille.devise,
+      devise
+    );
+    const entreesVue = convertCurrency(
+      ligne.entrees30J,
+      portefeuille.devise,
+      devise
+    );
+    const sortiesVue = convertCurrency(
+      ligne.sorties30J,
+      portefeuille.devise,
+      devise
+    );
+    const previsionnelVue = convertCurrency(
+      ligne.liquiditePrevisionnelle,
+      portefeuille.devise,
+      devise
+    );
+
+    const seuilEncours =
+      filtreEncoursMin === '' ? null : Number(filtreEncoursMin);
+    const seuilLiquidite =
+      filtreLiquiditeActuelleMin === ''
+        ? null
+        : Number(filtreLiquiditeActuelleMin);
+    const seuilEntrees =
+      filtreEntrees30JMin === '' ? null : Number(filtreEntrees30JMin);
+    const seuilSorties =
+      filtreSorties30JMin === '' ? null : Number(filtreSorties30JMin);
+    const seuilPrevisionnel =
+      filtrePrevisionnelMin === '' ? null : Number(filtrePrevisionnelMin);
+
+    return (
+      (filtrePays === 'Tous' || portefeuille.pays === filtrePays) &&
+      (filtreMarche === 'Tous' || portefeuille.marche === filtreMarche) &&
+      (filtreSgi === 'Toutes' || portefeuille.sgi === filtreSgi) &&
+      (seuilEncours === null || encoursVue > seuilEncours) &&
+      (seuilLiquidite === null || liquiditeVue > seuilLiquidite) &&
+      (seuilEntrees === null || entreesVue > seuilEntrees) &&
+      (seuilSorties === null || sortiesVue > seuilSorties) &&
+      (seuilPrevisionnel === null || previsionnelVue > seuilPrevisionnel)
+    );
+  });
+
+  const idsFiltres = new Set(
+    lignesFiltrees.map((ligne) => ligne.portefeuille.id)
+  );
+  const fluxFiltres = flux30J.filter((flux) =>
+    idsFiltres.has(flux.portefeuilleId)
+  );
+  const revenusFiltres = CLIENT_CASHFLOWS.filter((flux) =>
+    idsFiltres.has(flux.portefeuilleId)
+  );
+
+  const totalEncours = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme + convertCurrency(ligne.encours, ligne.portefeuille.devise, devise),
     0
   );
-  const totalRevenus = CLIENT_CASHFLOWS.reduce(
+  const totalCash = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(
+        ligne.liquiditeActuelle,
+        ligne.portefeuille.devise,
+        devise
+      ),
+    0
+  );
+  const totalCashReserve = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(
+        ligne.liquiditeReservee,
+        ligne.portefeuille.devise,
+        devise
+      ),
+    0
+  );
+  const totalEntrees30J = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(ligne.entrees30J, ligne.portefeuille.devise, devise),
+    0
+  );
+  const totalSorties30J = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(ligne.sorties30J, ligne.portefeuille.devise, devise),
+    0
+  );
+  const totalPrevisionnel = lignesFiltrees.reduce(
+    (somme, ligne) =>
+      somme +
+      convertCurrency(
+        ligne.liquiditePrevisionnelle,
+        ligne.portefeuille.devise,
+        devise
+      ),
+    0
+  );
+  const totalRevenus = revenusFiltres.reduce(
     (somme, flux) => somme + convertCurrency(flux.montant, flux.devise, devise),
     0
   );
 
+  const filtresActifs =
+    Number(filtrePays !== 'Tous') +
+    Number(filtreMarche !== 'Tous') +
+    Number(filtreSgi !== 'Toutes') +
+    Number(filtreEncoursMin !== '') +
+    Number(filtreLiquiditeActuelleMin !== '') +
+    Number(filtreEntrees30JMin !== '') +
+    Number(filtreSorties30JMin !== '') +
+    Number(filtrePrevisionnelMin !== '');
+
+  const reinitialiserFiltres = () => {
+    setFiltrePays('Tous');
+    setFiltreMarche('Tous');
+    setFiltreSgi('Toutes');
+    setFiltreEncoursMin('');
+    setFiltreLiquiditeActuelleMin('');
+    setFiltreEntrees30JMin('');
+    setFiltreSorties30JMin('');
+    setFiltrePrevisionnelMin('');
+  };
+
+  const filtresMontants = [
+    {
+      key: 'encours',
+      label: 'Encours (supérieur à)',
+      value: filtreEncoursMin,
+      setter: setFiltreEncoursMin,
+    },
+    {
+      key: 'liquidite',
+      label: 'Liquidité actuelle (supérieur à)',
+      value: filtreLiquiditeActuelleMin,
+      setter: setFiltreLiquiditeActuelleMin,
+    },
+    {
+      key: 'entrees',
+      label: 'Entrées 30 j (supérieur à)',
+      value: filtreEntrees30JMin,
+      setter: setFiltreEntrees30JMin,
+    },
+    {
+      key: 'sorties',
+      label: 'Sorties 30 j (supérieur à)',
+      value: filtreSorties30JMin,
+      setter: setFiltreSorties30JMin,
+    },
+    {
+      key: 'previsionnel',
+      label: 'Liquidité prévisionnelle (supérieur à)',
+      value: filtrePrevisionnelMin,
+      setter: setFiltrePrevisionnelMin,
+    },
+  ];
+
+  const repartitionMontants = (total, definitions) => {
+    let cumule = 0;
+    return definitions.map((definition, index) => {
+      const dernier = index === definitions.length - 1;
+      const montant = dernier
+        ? Math.max(0, total - cumule)
+        : Math.round((total * definition.poids) / 100);
+      cumule += montant;
+      return { ...definition, montant };
+    });
+  };
+
+  const detailsLiquidite = synthesePortefeuilles.map((ligne, index) => {
+    const portefeuille = ligne.portefeuille;
+    const total = Math.max(0, ligne.liquiditeActuelle);
+    const dateDernierDepot = new Date(dateReference);
+    dateDernierDepot.setDate(dateDernierDepot.getDate() - (5 + (index % 19)));
+
+    const origines = repartitionMontants(total, [
+      {
+        numero: '1',
+        libelle: 'Dépôt d’ouverture',
+        description:
+          'Liquidité issue de l’ouverture du compte ou du premier investissement.',
+        responsable: 'Client / SGI',
+        poids: 8,
+      },
+      {
+        numero: '2',
+        libelle: 'Dernier dépôt',
+        description: 'Dernier versement enregistré sur le compte espèces.',
+        responsable: 'Système',
+        poids: 18,
+      },
+      {
+        numero: '3',
+        libelle: 'Amortissements ESV',
+        description:
+          'Capital remboursé sur les titres arrivant à échéance partielle ou totale.',
+        responsable: 'Système',
+        poids: 16,
+      },
+      {
+        numero: '4',
+        libelle: 'Intérêts / coupons ESV',
+        description: 'Intérêts et coupons crédités sur le compte.',
+        responsable: 'Système',
+        poids: 8,
+      },
+      {
+        numero: '5',
+        libelle: 'Dividendes',
+        description: 'Liquidité issue des dividendes encaissés.',
+        responsable: 'Système',
+        poids: 12,
+      },
+      {
+        numero: '6',
+        libelle: 'Cession de titre — retrait',
+        description: 'Produit de cession destiné à un retrait de fonds.',
+        responsable: 'Client',
+        poids: 8,
+      },
+      {
+        numero: '7',
+        libelle: 'Cession de titre — réinvestissement',
+        description:
+          'Produit de cession que vous destinez à un nouvel investissement.',
+        responsable: 'Client',
+        poids: 18,
+      },
+      {
+        numero: '8',
+        libelle: 'Part à ne pas réinvestir',
+        description:
+          'Montant que vous souhaitez conserver durablement en espèces.',
+        responsable: 'Client',
+        poids: 4,
+      },
+      {
+        numero: '9',
+        libelle: 'Dépôt pour opération primaire',
+        description:
+          'Dépôt réalisé pour une opportunité spécifique sur le marché primaire.',
+        responsable: 'Client',
+        poids: 8,
+      },
+    ]);
+
+    const ordresAchatOuverts = orders.filter(
+      (ordre) =>
+        ordre.portefeuilleId === portefeuille.id &&
+        ordre.sens === 'Achat' &&
+        CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut)
+    );
+    const reserveActions = ordresAchatOuverts
+      .filter(
+        (ordre) =>
+          (clientMarket(ordre.instrument)?.type || 'Action') === 'Action'
+      )
+      .reduce(
+        (somme, ordre) =>
+          somme + Number(ordre.qte || 0) * Number(ordre.prix || 0),
+        0
+      );
+    const reserveObligations = ordresAchatOuverts
+      .filter((ordre) => clientMarket(ordre.instrument)?.type === 'Obligation')
+      .reduce(
+        (somme, ordre) =>
+          somme + Number(ordre.qte || 0) * Number(ordre.prix || 0),
+        0
+      );
+    const reserveOrdres = Math.min(total, reserveActions + reserveObligations);
+
+    const definitionsFixes = [
+      {
+        numero: '11',
+        libelle: 'Retrait en cours',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client / SGI',
+        poids: 4,
+      },
+      {
+        numero: '12',
+        libelle: 'Autre liquidité à investir',
+        groupe: 'À investir',
+        responsable: 'Système',
+        poids: 18,
+      },
+      {
+        numero: '13',
+        libelle: 'Achat marché monétaire — OAT',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client',
+        poids: 6,
+      },
+      {
+        numero: '14',
+        libelle: 'Achat marché monétaire — BAT',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client',
+        poids: 5,
+      },
+      {
+        numero: '15',
+        libelle: 'Achat marché financier — OPV / APE',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client',
+        poids: 5,
+      },
+      {
+        numero: '17',
+        libelle: 'ESV — Amortissements bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client / SGI',
+        poids: 4,
+      },
+      {
+        numero: '18',
+        libelle: 'ESV — Intérêts bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client / SGI',
+        poids: 3,
+      },
+      {
+        numero: '19',
+        libelle: 'ESV — Dividendes bloqués',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client / SGI',
+        poids: 3,
+      },
+      {
+        numero: '20',
+        libelle: 'Ne pas réinvestir',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client',
+        poids: 4,
+      },
+    ];
+
+    const poidsTotalFixe = definitionsFixes.reduce(
+      (somme, item) => somme + item.poids,
+      0
+    );
+    const montantFixeTheorique = (total * poidsTotalFixe) / 100;
+    const capaciteFixe = Math.max(0, total - reserveOrdres);
+    const facteur =
+      montantFixeTheorique > 0
+        ? Math.min(1, capaciteFixe / montantFixeTheorique)
+        : 1;
+    const affectationsFixes = definitionsFixes.map((item) => ({
+      ...item,
+      montant: Math.round(((total * item.poids) / 100) * facteur),
+    }));
+
+    const reserveObligationsAffectee = Math.min(
+      reserveObligations,
+      Math.max(
+        0,
+        total - affectationsFixes.reduce((s, item) => s + item.montant, 0)
+      )
+    );
+    const reserveActionsAffectee = Math.min(
+      reserveActions,
+      Math.max(
+        0,
+        total -
+          affectationsFixes.reduce((s, item) => s + item.montant, 0) -
+          reserveObligationsAffectee
+      )
+    );
+
+    const affectationsSansDisponible = [
+      ...affectationsFixes.map((item) =>
+        item.numero === '13'
+          ? { ...item, montant: item.montant + reserveObligationsAffectee }
+          : item
+      ),
+      {
+        numero: '16',
+        libelle: 'Achat marché financier — Actions',
+        groupe: 'Bloquée / réservée',
+        responsable: 'Client',
+        montant: reserveActionsAffectee,
+        reel: true,
+      },
+    ].sort((a, b) => Number(a.numero) - Number(b.numero));
+
+    const montantAvantDisponible = affectationsSansDisponible.reduce(
+      (somme, item) => somme + item.montant,
+      0
+    );
+    const liquiditeDisponible = Math.max(0, total - montantAvantDisponible);
+    const affectations = [
+      ...affectationsSansDisponible,
+      {
+        numero: '21',
+        libelle: 'Liquidité disponible',
+        groupe: 'Disponible',
+        responsable: 'Système',
+        montant: liquiditeDisponible,
+      },
+    ];
+
+    const sommeGroupe = (groupe) =>
+      affectations
+        .filter((item) => item.groupe === groupe)
+        .reduce((somme, item) => somme + item.montant, 0);
+
+    const valeurPortefeuille = clientPortfolioValue(portefeuille);
+    const valeurActions = portefeuille.lignes
+      .filter((position) => clientAssetClass(position.instrument) === 'Actions')
+      .reduce((somme, position) => somme + clientLineValue(position), 0);
+    const valeurObligations = portefeuille.lignes
+      .filter(
+        (position) => clientAssetClass(position.instrument) === 'Obligations'
+      )
+      .reduce((somme, position) => somme + clientLineValue(position), 0);
+    const actionsActuelles =
+      valeurPortefeuille > 0 ? (valeurActions / valeurPortefeuille) * 100 : 0;
+    const obligationsActuelles =
+      valeurPortefeuille > 0
+        ? (valeurObligations / valeurPortefeuille) * 100
+        : 0;
+    const cibleIndicative = { Actions: 55, Obligations: 35, Liquidite: 10 };
+    const ecartActions = cibleIndicative.Actions - actionsActuelles;
+    const ecartObligations = cibleIndicative.Obligations - obligationsActuelles;
+
+    return {
+      ...ligne,
+      dateDernierDepot: formatDateFR(dateDernierDepot),
+      origines,
+      affectations,
+      totalOrigines: origines.reduce((somme, item) => somme + item.montant, 0),
+      liquiditeBloquee: sommeGroupe('Bloquée / réservée'),
+      autreLiquiditeAInvestir: sommeGroupe('À investir'),
+      liquiditeDisponibleNette: sommeGroupe('Disponible'),
+      actionsActuelles,
+      obligationsActuelles,
+      cibleIndicative,
+      ecartActions,
+      ecartObligations,
+      montantCorrectionActions:
+        (valeurPortefeuille * Math.abs(ecartActions)) / 100,
+      montantCorrectionObligations:
+        (valeurPortefeuille * Math.abs(ecartObligations)) / 100,
+      rendement: Number(portefeuille.perfYtd || 0),
+    };
+  });
+
+  const detailsFiltres = detailsLiquidite.filter((detail) =>
+    idsFiltres.has(detail.portefeuille.id)
+  );
+  const detailSelectionne =
+    detailsFiltres.find(
+      (detail) => detail.portefeuille.id === portefeuilleLiquiditeSelectionneId
+    ) ||
+    detailsFiltres[0] ||
+    null;
+
+  const roleTone = (responsable) => {
+    if (responsable.includes('Client')) return 'gold';
+    if (responsable.includes('SGI')) return 'navy';
+    return 'teal';
+  };
+
+  const originesDonut = detailSelectionne
+    ? detailSelectionne.origines.map((item) => ({
+        name: item.libelle,
+        montant: item.montant,
+        devise: detailSelectionne.portefeuille.devise,
+        value:
+          detailSelectionne.totalOrigines > 0
+            ? Number(
+                (
+                  (item.montant / detailSelectionne.totalOrigines) *
+                  100
+                ).toFixed(1)
+              )
+            : 0,
+      }))
+    : [];
+
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Liquidité & revenus']} />
-      <div>
-        <h2
-          className="text-xl font-bold"
-          style={{ ...F_DISPLAY, color: C.ink }}
-        >
-          Liquidité & revenus
-        </h2>
-        <div className="text-xs mt-1" style={{ color: C.sub }}>
-          Centralisez les comptes espèces de vos SGI et les dividendes/coupons
-          attendus avant de décider de nouveaux investissements.
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Liquidité & revenus
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+            Pilotez la liquidité de vos propres comptes SGI, distinguez ce qui
+            est disponible, réservé ou destiné à être investi, et anticipez les
+            entrées et sorties des 30 prochains jours.
+          </div>
         </div>
+        <Badge tone="navy">Devise de vue : {devise}</Badge>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="p-4">
-          <div className="text-xs" style={{ color: C.sub }}>
-            Liquidité totale
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Pays
+            </label>
+            <select
+              value={filtrePays}
+              onChange={(e) => {
+                setFiltrePays(e.target.value);
+                setFiltreSgi('Toutes');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {paysDisponibles.map((value) => (
+                <option key={value} value={value}>
+                  {value === 'Tous' ? 'Tous les pays' : value}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
-            {fmt(Math.round(totalCash))} {devise}
+          <div>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Marché
+            </label>
+            <select
+              value={filtreMarche}
+              onChange={(e) => {
+                setFiltreMarche(e.target.value);
+                setFiltreSgi('Toutes');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {marchesDisponibles.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
           </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs" style={{ color: C.sub }}>
-            Revenus financiers à venir
+          <div>
+            <label
+              className="text-[11px] font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              SGI
+            </label>
+            <select
+              value={filtreSgi}
+              onChange={(e) => setFiltreSgi(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {sgisDisponibles.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
+            </select>
           </div>
-          <div className="text-2xl font-bold mt-1" style={F_DISPLAY}>
-            {fmt(Math.round(totalRevenus))} {devise}
+        </div>
+
+        <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.line}` }}>
+          <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+            <div>
+              <div className="text-xs font-semibold" style={{ color: C.ink }}>
+                Seuils financiers
+              </div>
+              <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
+                Les cinq seuils sont comparés après conversion dans votre devise
+                de vue : {devise}.
+              </div>
+            </div>
+            <Badge tone="navy">Seuils en {devise}</Badge>
           </div>
-        </Card>
-      </div>
+          <div className="grid grid-cols-5 gap-3">
+            {filtresMontants.map((filtre) => (
+              <div key={filtre.key}>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  {filtre.label}
+                </label>
+                <div
+                  className="flex items-center rounded-xl border overflow-hidden"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={filtre.value}
+                    onChange={(e) => filtre.setter(e.target.value)}
+                    placeholder="Aucun minimum"
+                    className="w-full px-3 py-2 text-xs outline-none min-w-0"
+                    style={F_MONO}
+                  />
+                  <span
+                    className="px-2.5 py-2 text-[10px] font-semibold border-l shrink-0"
+                    style={{
+                      color: C.sub,
+                      borderColor: C.line,
+                      background: '#FAFAFC',
+                      ...F_MONO,
+                    }}
+                  >
+                    {devise}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+          <div className="text-[11px]" style={{ color: C.sub }}>
+            Ces filtres pilotent les comptes espèces, le prévisionnel, les
+            revenus attendus et l’anatomie détaillée de votre liquidité.
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>
+              {filtresActifs} filtre(s) actif(s)
+            </Badge>
+            <Badge tone="gold">{lignesFiltrees.length} compte(s) SGI</Badge>
+            {filtresActifs > 0 && (
+              <button
+                type="button"
+                onClick={reinitialiserFiltres}
+                className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+                style={{ borderColor: C.line, color: C.navy }}
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>1. Synthèse de votre liquidité</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>
+              Vue consolidée de vos comptes SGI après application des filtres.
+            </div>
+          </div>
+          <Badge tone="slate">
+            Réservée aujourd’hui : {fmt(Math.round(totalCashReserve))} {devise}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-5 gap-3">
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Encours actuel
+            </div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+              {fmt(Math.round(totalEncours))} {devise}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité actuelle
+            </div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+              {fmt(Math.round(totalCash))} {devise}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Entrées à 30 j
+            </div>
+            <div
+              className="text-xl font-bold mt-1"
+              style={{ ...F_DISPLAY, color: C.teal }}
+            >
+              +{fmt(Math.round(totalEntrees30J))} {devise}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Sorties à 30 j
+            </div>
+            <div
+              className="text-xl font-bold mt-1"
+              style={{ ...F_DISPLAY, color: C.coral }}
+            >
+              -{fmt(Math.round(totalSorties30J))} {devise}
+            </div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité prévisionnelle
+            </div>
+            <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+              {fmt(Math.round(totalPrevisionnel))} {devise}
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>2. Anatomie de la liquidité de vos comptes SGI</Eyebrow>
+            <div className="text-xs max-w-4xl" style={{ color: C.sub }}>
+              Origine des fonds, sommes réservées ou à investir, liquidité
+              réellement mobilisable et lecture indicative de l’écart
+              d’allocation de chaque portefeuille.
+            </div>
+          </div>
+          <Badge tone="gold">
+            Rubriques 1 à 26 adaptées à la gestion libre
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-12 gap-4 items-start">
+          <Card className="col-span-4 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div>
+                <div
+                  className="text-sm font-bold"
+                  style={{ ...F_DISPLAY, color: C.ink }}
+                >
+                  Vos comptes / SGI
+                </div>
+                <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>
+                  Sélectionnez un portefeuille pour analyser sa trésorerie.
+                </div>
+              </div>
+              <Badge tone="navy">{detailsFiltres.length}</Badge>
+            </div>
+
+            <div className="space-y-2 max-h-[520px] overflow-auto pr-1">
+              {detailsFiltres.length === 0 && (
+                <div
+                  className="text-xs py-5 text-center"
+                  style={{ color: C.sub }}
+                >
+                  Aucun compte ne correspond aux filtres.
+                </div>
+              )}
+              {detailsFiltres.map((detail) => {
+                const actif =
+                  detailSelectionne?.portefeuille.id === detail.portefeuille.id;
+                return (
+                  <button
+                    key={detail.portefeuille.id}
+                    type="button"
+                    onClick={() =>
+                      setPortefeuilleLiquiditeSelectionneId(
+                        detail.portefeuille.id
+                      )
+                    }
+                    className="w-full p-3 rounded-xl border text-left transition-colors"
+                    style={{
+                      borderColor: actif ? C.navy : C.line,
+                      background: actif ? '#EFF3FB' : '#fff',
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div
+                          className="text-xs font-bold truncate"
+                          style={{ color: C.ink }}
+                        >
+                          {detail.portefeuille.sgi}
+                        </div>
+                        <div
+                          className="text-[10px] mt-0.5 truncate"
+                          style={{ color: C.sub }}
+                        >
+                          {detail.portefeuille.nom}
+                        </div>
+                      </div>
+                      <Badge tone="navy">{detail.portefeuille.marche}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <div>
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          Liquidité
+                        </div>
+                        <div
+                          className="text-[11px] font-semibold mt-0.5"
+                          style={F_MONO}
+                        >
+                          {fmt(Math.round(detail.liquiditeActuelle))}{' '}
+                          {detail.portefeuille.devise}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          Prévisionnel 30 j
+                        </div>
+                        <div
+                          className="text-[11px] font-semibold mt-0.5"
+                          style={{ ...F_MONO, color: C.teal }}
+                        >
+                          {fmt(Math.round(detail.liquiditePrevisionnelle))}{' '}
+                          {detail.portefeuille.devise}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card className="col-span-8 p-5">
+            {!detailSelectionne ? (
+              <div
+                className="py-12 text-center text-sm"
+                style={{ color: C.sub }}
+              >
+                Sélectionnez un compte pour afficher son analyse de liquidité.
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div
+                      className="text-base font-bold"
+                      style={{ ...F_DISPLAY, color: C.ink }}
+                    >
+                      {detailSelectionne.portefeuille.sgi}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: C.sub }}>
+                      {detailSelectionne.portefeuille.nom} ·{' '}
+                      {detailSelectionne.portefeuille.pays} ·{' '}
+                      {detailSelectionne.portefeuille.marche} ·{' '}
+                      {detailSelectionne.portefeuille.devise}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className="text-[10px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Liquidité actuelle
+                    </div>
+                    <div className="text-lg font-bold mt-0.5" style={F_MONO}>
+                      {fmt(Math.round(detailSelectionne.liquiditeActuelle))}{' '}
+                      {detailSelectionne.portefeuille.devise}
+                    </div>
+                    {detailSelectionne.portefeuille.devise !== devise && (
+                      <div className="text-[10px]" style={{ color: C.sub }}>
+                        ≈{' '}
+                        {fmt(
+                          Math.round(
+                            convertCurrency(
+                              detailSelectionne.liquiditeActuelle,
+                              detailSelectionne.portefeuille.devise,
+                              devise
+                            )
+                          )
+                        )}{' '}
+                        {devise}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 mt-4 flex-wrap">
+                  {[
+                    ['origines', 'Origine des fonds · 1–10'],
+                    ['affectations', 'Bloquée & disponible · 11–21'],
+                    ['profil', 'Écart allocation & rendement · 22–26'],
+                  ].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setVueLiquiditeDetail(id)}
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                      style={{
+                        background:
+                          vueLiquiditeDetail === id ? C.navy : '#F0F1F5',
+                        color: vueLiquiditeDetail === id ? '#fff' : C.sub,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {vueLiquiditeDetail === 'origines' && (
+                  <div className="mt-4 grid grid-cols-5 gap-4">
+                    <div className="col-span-2">
+                      <div
+                        className="p-3 rounded-xl border mb-3"
+                        style={{ borderColor: C.line, background: '#FAFAFC' }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Dernier dépôt estimé
+                        </div>
+                        <div className="text-sm font-semibold mt-1">
+                          {detailSelectionne.dateDernierDepot}
+                        </div>
+                      </div>
+                      <Donut data={originesDonut} size={190} />
+                      <Legende data={originesDonut} />
+                    </div>
+                    <div className="col-span-3 grid grid-cols-2 gap-2">
+                      {detailSelectionne.origines.map((item) => (
+                        <div
+                          key={item.numero}
+                          className="p-3 rounded-xl border"
+                          style={{ borderColor: C.line }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span
+                              className="text-[10px] font-bold"
+                              style={{ color: C.gold, ...F_MONO }}
+                            >
+                              #{item.numero}
+                            </span>
+                            <Badge tone={roleTone(item.responsable)}>
+                              {item.responsable}
+                            </Badge>
+                          </div>
+                          <div className="text-xs font-bold mt-2">
+                            {item.libelle}
+                          </div>
+                          <div
+                            className="text-sm font-semibold mt-1"
+                            style={F_MONO}
+                          >
+                            {fmt(Math.round(item.montant))}{' '}
+                            {detailSelectionne.portefeuille.devise}
+                          </div>
+                          <div
+                            className="text-[10px] mt-1 leading-relaxed"
+                            style={{ color: C.sub }}
+                          >
+                            {item.description}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {vueLiquiditeDetail === 'affectations' && (
+                  <div className="mt-4">
+                    <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{
+                          borderColor: '#F3C4BF',
+                          background: '#FFF7F6',
+                        }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Bloquée / réservée
+                        </div>
+                        <div
+                          className="text-base font-bold mt-1"
+                          style={{ ...F_MONO, color: C.coral }}
+                        >
+                          {fmt(Math.round(detailSelectionne.liquiditeBloquee))}{' '}
+                          {detailSelectionne.portefeuille.devise}
+                        </div>
+                      </div>
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{
+                          borderColor: '#E6D4AC',
+                          background: '#FFFBF2',
+                        }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Autre liquidité à investir
+                        </div>
+                        <div
+                          className="text-base font-bold mt-1"
+                          style={{ ...F_MONO, color: C.gold }}
+                        >
+                          {fmt(
+                            Math.round(
+                              detailSelectionne.autreLiquiditeAInvestir
+                            )
+                          )}{' '}
+                          {detailSelectionne.portefeuille.devise}
+                        </div>
+                      </div>
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{
+                          borderColor: '#B9E2D5',
+                          background: '#F5FCF9',
+                        }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Liquidité disponible
+                        </div>
+                        <div
+                          className="text-base font-bold mt-1"
+                          style={{ ...F_MONO, color: C.teal }}
+                        >
+                          {fmt(
+                            Math.round(
+                              detailSelectionne.liquiditeDisponibleNette
+                            )
+                          )}{' '}
+                          {detailSelectionne.portefeuille.devise}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {detailSelectionne.affectations.map((item) => {
+                        const pct =
+                          detailSelectionne.liquiditeActuelle > 0
+                            ? (item.montant /
+                                detailSelectionne.liquiditeActuelle) *
+                              100
+                            : 0;
+                        const tone =
+                          item.groupe === 'Disponible'
+                            ? C.teal
+                            : item.groupe === 'À investir'
+                            ? C.gold
+                            : C.coral;
+                        return (
+                          <div
+                            key={item.numero}
+                            className="p-3 rounded-xl border"
+                            style={{ borderColor: C.line }}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span
+                                    className="text-[10px] font-bold"
+                                    style={{ color: C.gold, ...F_MONO }}
+                                  >
+                                    #{item.numero}
+                                  </span>
+                                  <span className="text-xs font-bold">
+                                    {item.libelle}
+                                  </span>
+                                  {item.reel && (
+                                    <Badge tone="teal">
+                                      Ordres ouverts réels
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="mt-1">
+                                  <Badge tone={roleTone(item.responsable)}>
+                                    {item.responsable}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div
+                                  className="text-xs font-semibold"
+                                  style={F_MONO}
+                                >
+                                  {fmt(Math.round(item.montant))}{' '}
+                                  {detailSelectionne.portefeuille.devise}
+                                </div>
+                                <div
+                                  className="text-[10px] mt-0.5"
+                                  style={{ color: C.sub }}
+                                >
+                                  {pct.toFixed(1)}%
+                                </div>
+                              </div>
+                            </div>
+                            <div
+                              className="h-1.5 rounded-full mt-2"
+                              style={{ background: '#EEF0F4' }}
+                            >
+                              <div
+                                className="h-1.5 rounded-full"
+                                style={{
+                                  width: `${Math.min(100, pct)}%`,
+                                  background: tone,
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div
+                      className="text-[10px] mt-3 p-3 rounded-xl"
+                      style={{ background: '#EFF3FB', color: C.sub }}
+                    >
+                      Les réservations liées aux ordres d’achat ouverts sont
+                      calculées à partir de vos ordres. Les autres
+                      sous-rubriques restent une ventilation de démonstration
+                      jusqu’au branchement des données détaillées de la SGI.
+                    </div>
+                  </div>
+                )}
+
+                {vueLiquiditeDetail === 'profil' && (
+                  <div className="mt-4 space-y-4">
+                    <div
+                      className="p-3 rounded-xl"
+                      style={{ background: '#FBF7EE' }}
+                    >
+                      <div
+                        className="text-xs font-semibold"
+                        style={{ color: C.ink }}
+                      >
+                        Cible indicative de démonstration
+                      </div>
+                      <div
+                        className="text-[10px] mt-1"
+                        style={{ color: C.sub }}
+                      >
+                        55% Actions · 35% Obligations · 10% Liquidité. Cette
+                        cible devra être remplacée par votre profil
+                        d’investissement réel lorsqu’il sera disponible dans le
+                        backend.
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {[
+                        {
+                          numeroPct: '22',
+                          numeroValeur: '24',
+                          nom: 'Actions',
+                          actuel: detailSelectionne.actionsActuelles,
+                          cible: detailSelectionne.cibleIndicative.Actions,
+                          ecart: detailSelectionne.ecartActions,
+                          montant: detailSelectionne.montantCorrectionActions,
+                        },
+                        {
+                          numeroPct: '23',
+                          numeroValeur: '25',
+                          nom: 'Obligations',
+                          actuel: detailSelectionne.obligationsActuelles,
+                          cible: detailSelectionne.cibleIndicative.Obligations,
+                          ecart: detailSelectionne.ecartObligations,
+                          montant:
+                            detailSelectionne.montantCorrectionObligations,
+                        },
+                      ].map((item) => (
+                        <div
+                          key={item.nom}
+                          className="p-4 rounded-xl border"
+                          style={{ borderColor: C.line }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-bold">{item.nom}</div>
+                            <Badge tone={item.ecart >= 0 ? 'gold' : 'navy'}>
+                              #{item.numeroPct} / #{item.numeroValeur}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+                            <div>
+                              <div
+                                className="text-[9px] uppercase"
+                                style={{ color: C.sub }}
+                              >
+                                Actuel
+                              </div>
+                              <div
+                                className="text-sm font-semibold mt-1"
+                                style={F_MONO}
+                              >
+                                {item.actuel.toFixed(1)}%
+                              </div>
+                            </div>
+                            <div>
+                              <div
+                                className="text-[9px] uppercase"
+                                style={{ color: C.sub }}
+                              >
+                                Cible
+                              </div>
+                              <div
+                                className="text-sm font-semibold mt-1"
+                                style={F_MONO}
+                              >
+                                {item.cible.toFixed(1)}%
+                              </div>
+                            </div>
+                            <div>
+                              <div
+                                className="text-[9px] uppercase"
+                                style={{ color: C.sub }}
+                              >
+                                Écart
+                              </div>
+                              <div
+                                className="text-sm font-semibold mt-1"
+                                style={{
+                                  ...F_MONO,
+                                  color:
+                                    Math.abs(item.ecart) > 3 ? C.coral : C.teal,
+                                }}
+                              >
+                                {item.ecart >= 0 ? '+' : ''}
+                                {item.ecart.toFixed(1)} pts
+                              </div>
+                            </div>
+                          </div>
+                          <div
+                            className="mt-3 pt-3 flex items-center justify-between text-xs"
+                            style={{ borderTop: `1px solid ${C.line}` }}
+                          >
+                            <span style={{ color: C.sub }}>
+                              Correction indicative
+                            </span>
+                            <span className="font-semibold" style={F_MONO}>
+                              {fmt(Math.round(item.montant))}{' '}
+                              {detailSelectionne.portefeuille.devise}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{ borderColor: C.line }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Liquidité actuelle
+                        </div>
+                        <div className="text-sm font-bold mt-1" style={F_MONO}>
+                          {detailSelectionne.ratioLiquidite.toFixed(1)}%
+                        </div>
+                      </div>
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{ borderColor: C.line }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Liquidité prévisionnelle
+                        </div>
+                        <div className="text-sm font-bold mt-1" style={F_MONO}>
+                          {detailSelectionne.ratioPrevisionnel.toFixed(1)}%
+                        </div>
+                      </div>
+                      <div
+                        className="p-3 rounded-xl border"
+                        style={{ borderColor: C.line }}
+                      >
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          Rendement YTD · #26
+                        </div>
+                        <div className="mt-1">
+                          <Pct v={detailSelectionne.rendement} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        </div>
+      </section>
 
       <Card className="p-0 overflow-hidden">
-        <div className="p-4">
-          <Eyebrow>Comptes espèces par SGI</Eyebrow>
+        <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>3. Comptes espèces par SGI</Eyebrow>
+            <div className="text-[11px]" style={{ color: C.sub }}>
+              Situation actuelle, réservations d’ordres et prévision à 30 jours.
+            </div>
+          </div>
+          <Badge tone="gold">{lignesFiltrees.length} compte(s)</Badge>
         </div>
-        <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
-            <tr>
-              <Th>SGI</Th>
-              <Th>Pays / marché</Th>
-              <Th>Solde local</Th>
-              <Th>Équivalent {devise}</Th>
-              <Th>Part de la liquidité</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {portefeuilles.map((portefeuille) => {
-              const equivalent = clientCashIn(portefeuille, devise);
-              return (
-                <tr
-                  key={portefeuille.id}
-                  style={{ borderTop: `1px solid ${C.line}` }}
-                >
-                  <Td className="font-semibold">{portefeuille.sgi}</Td>
-                  <Td>
-                    {portefeuille.pays} · {portefeuille.marche}
-                  </Td>
-                  <Td mono>
-                    {fmt(Math.round(portefeuille.compteEspeces))}{' '}
-                    {portefeuille.devise}
-                  </Td>
-                  <Td mono>
-                    {fmt(Math.round(equivalent))} {devise}
-                  </Td>
-                  <Td mono>
-                    {totalCash > 0
-                      ? ((equivalent / totalCash) * 100).toFixed(1)
-                      : '0.0'}
-                    %
-                  </Td>
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1250 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>SGI</Th>
+                <Th>Pays / marché</Th>
+                <Th>Encours actuel</Th>
+                <Th>Liquidité actuelle</Th>
+                <Th>Réservée</Th>
+                <Th>Entrées 30 j</Th>
+                <Th>Sorties 30 j</Th>
+                <Th>Prévisionnel</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignesFiltrees.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="text-center py-7 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucun compte ne correspond aux critères sélectionnés.
+                  </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+              {lignesFiltrees.map((ligne) => {
+                const pf = ligne.portefeuille;
+                return (
+                  <tr key={pf.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                    <Td className="font-semibold">{pf.sgi}</Td>
+                    <Td>
+                      {pf.pays} · {pf.marche}
+                    </Td>
+                    <Td mono>
+                      {fmt(Math.round(ligne.encours))} {pf.devise}
+                    </Td>
+                    <Td mono>
+                      {fmt(Math.round(ligne.liquiditeActuelle))} {pf.devise}
+                    </Td>
+                    <Td mono>
+                      <span style={{ color: C.coral }}>
+                        {fmt(Math.round(ligne.liquiditeReservee))} {pf.devise}
+                      </span>
+                    </Td>
+                    <Td mono>
+                      <span style={{ color: C.teal }}>
+                        +{fmt(Math.round(ligne.entrees30J))} {pf.devise}
+                      </span>
+                    </Td>
+                    <Td mono>
+                      <span style={{ color: C.coral }}>
+                        -{fmt(Math.round(ligne.sorties30J))} {pf.devise}
+                      </span>
+                    </Td>
+                    <Td mono>
+                      {fmt(Math.round(ligne.liquiditePrevisionnelle))}{' '}
+                      {pf.devise}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        <div className="p-4">
-          <Eyebrow>Dividendes & coupons attendus</Eyebrow>
+        <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>4. Dividendes & coupons attendus</Eyebrow>
+            <div className="text-[11px]" style={{ color: C.sub }}>
+              Revenus financiers correspondant au périmètre filtré.
+            </div>
+          </div>
+          <Badge tone="teal">
+            {fmt(Math.round(totalRevenus))} {devise}
+          </Badge>
         </div>
-        <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
-            <tr>
-              <Th>Date</Th>
-              <Th>SGI</Th>
-              <Th>Instrument</Th>
-              <Th>Nature</Th>
-              <Th>Montant</Th>
-              <Th>Équivalent {devise}</Th>
-              <Th>Statut</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {CLIENT_CASHFLOWS.map((flux) => {
-              const pf = portefeuilles.find(
-                (portefeuille) => portefeuille.id === flux.portefeuilleId
-              );
-              return (
-                <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                  <Td>{flux.date}</Td>
-                  <Td className="font-semibold">{pf?.sgi}</Td>
-                  <Td>{flux.instrument}</Td>
-                  <Td>
-                    <Badge tone="teal">{flux.type}</Badge>
-                  </Td>
-                  <Td mono>
-                    {fmt(Math.round(flux.montant))} {flux.devise}
-                  </Td>
-                  <Td mono>
-                    {fmt(
-                      Math.round(
-                        convertCurrency(flux.montant, flux.devise, devise)
-                      )
-                    )}{' '}
-                    {devise}
-                  </Td>
-                  <Td>
-                    <Badge tone="gold">{flux.statut}</Badge>
-                  </Td>
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1050 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Date</Th>
+                <Th>SGI</Th>
+                <Th>Instrument</Th>
+                <Th>Nature</Th>
+                <Th>Montant</Th>
+                <Th>Équivalent {devise}</Th>
+                <Th>Statut</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {revenusFiltres.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="text-center py-7 text-sm"
+                    style={{ color: C.sub }}
+                  >
+                    Aucun dividende ou coupon ne correspond aux filtres.
+                  </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              )}
+              {revenusFiltres.map((flux) => {
+                const pf = portefeuilles.find(
+                  (portefeuille) => portefeuille.id === flux.portefeuilleId
+                );
+                return (
+                  <tr
+                    key={flux.id}
+                    style={{ borderTop: `1px solid ${C.line}` }}
+                  >
+                    <Td>{flux.date}</Td>
+                    <Td className="font-semibold">{pf?.sgi}</Td>
+                    <Td>{flux.instrument}</Td>
+                    <Td>
+                      <Badge tone="teal">{flux.type}</Badge>
+                    </Td>
+                    <Td mono>
+                      {fmt(Math.round(flux.montant))} {flux.devise}
+                    </Td>
+                    <Td mono>
+                      {fmt(
+                        Math.round(
+                          convertCurrency(flux.montant, flux.devise, devise)
+                        )
+                      )}{' '}
+                      {devise}
+                    </Td>
+                    <Td>
+                      <Badge tone="gold">{flux.statut}</Badge>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+        <div className="text-xs font-semibold" style={{ color: C.ink }}>
+          Lecture du prévisionnel à 30 jours
+        </div>
+        <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+          Les entrées combinent les dividendes/coupons à recevoir et les ventes
+          ouvertes ; les sorties correspondent aux achats ouverts. Les ordres
+          restent soumis à leur exécution effective par la SGI. Le détail des
+          rubriques 1 à 21 est une structure opérationnelle prête à recevoir les
+          données réelles du backend.
+        </div>
       </Card>
     </div>
   );
 }
-
 function ClientAnalysis({ devise }) {
   const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
   const [filtrePaysHistorique, setFiltrePaysHistorique] = useState('Tous');
@@ -12851,6 +16967,19 @@ export default function App() {
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
+  const [clientWatchlistTitles, setClientWatchlistTitles] = useState(() => {
+    const fallback = ['SONATEL', 'MTN NIGERIA', 'GCB BANK'];
+    if (typeof window === 'undefined') return fallback;
+    try {
+      const saved = window.localStorage.getItem(
+        'afrimarket-client-watchlist-v1'
+      );
+      const parsed = saved ? JSON.parse(saved) : null;
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  });
   const [watchlistTitles, setWatchlistTitles] = useState(() => {
     if (typeof window === 'undefined') return DEFAULT_STATIC_WATCHLIST_TITLES;
     try {
@@ -12884,6 +17013,30 @@ export default function App() {
   const removeFromWatchlist = (titre) =>
     setWatchlistTitles((current) =>
       persistWatchlist(current.filter((item) => item !== titre))
+    );
+
+  const persistClientWatchlist = (next) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(
+          'afrimarket-client-watchlist-v1',
+          JSON.stringify(next)
+        );
+      } catch {
+        // La watchlist Client reste disponible pendant la session.
+      }
+    }
+    return next;
+  };
+  const addToClientWatchlist = (titre) =>
+    setClientWatchlistTitles((current) =>
+      persistClientWatchlist(
+        current.includes(titre) ? current : [...current, titre]
+      )
+    );
+  const removeFromClientWatchlist = (titre) =>
+    setClientWatchlistTitles((current) =>
+      persistClientWatchlist(current.filter((item) => item !== titre))
     );
 
   const remonterEnHaut = () => {
@@ -12943,7 +17096,7 @@ export default function App() {
         style={{
           background: C.bg,
           minHeight: '100vh',
-          overflowX: 'hidden',
+          overflowX: 'clip',
           ...F_BODY,
           filter: dark ? 'invert(1) hue-rotate(180deg)' : 'none',
         }}
@@ -12951,8 +17104,13 @@ export default function App() {
         <style>{FONTS}</style>
         <div className="flex">
           <aside
-            className="w-64 shrink-0 min-h-screen p-5"
-            style={{ background: C.navy }}
+            className="w-64 shrink-0 h-screen p-5 sticky top-0 overflow-y-auto"
+            style={{
+              background: C.navy,
+              alignSelf: 'flex-start',
+              overscrollBehavior: 'contain',
+              scrollbarGutter: 'stable',
+            }}
           >
             <div className="flex items-center gap-2 mb-8">
               <div
@@ -13036,7 +17194,7 @@ export default function App() {
                       (n.id === 'marches' && screen === 'profondeur') ||
                       (n.id === 'comite' && screen === 'decisions-comite')
                     : clientScreen === n.id ||
-                      (n.id === 'client-invest' &&
+                      (n.id === 'client-markets' &&
                         clientScreen === 'client-market-depth');
                 return (
                   <button
@@ -13175,6 +17333,22 @@ export default function App() {
                 {clientScreen === 'client-portfolios' && (
                   <ClientPortfolios devise={siteDevise} orders={clientOrders} />
                 )}
+                {clientScreen === 'client-markets' && (
+                  <ClientMarkets
+                    goClient={goClient}
+                    watchlistTitles={clientWatchlistTitles}
+                    onAddWatch={addToClientWatchlist}
+                    onRemoveWatch={removeFromClientWatchlist}
+                  />
+                )}
+                {clientScreen === 'client-watchlist' && (
+                  <ClientWatchlist
+                    goClient={goClient}
+                    watchlistTitles={clientWatchlistTitles}
+                    onAddWatch={addToClientWatchlist}
+                    onRemoveWatch={removeFromClientWatchlist}
+                  />
+                )}
                 {clientScreen === 'client-invest' && (
                   <ClientInvest
                     goClient={goClient}
@@ -13193,8 +17367,11 @@ export default function App() {
                 {clientScreen === 'client-orders' && (
                   <ClientOrders orders={clientOrders} />
                 )}
+                {clientScreen === 'client-avis' && (
+                  <ClientAvis orders={clientOrders} devise={siteDevise} />
+                )}
                 {clientScreen === 'client-cashflows' && (
-                  <ClientCashflows devise={siteDevise} />
+                  <ClientCashflows devise={siteDevise} orders={clientOrders} />
                 )}
                 {clientScreen === 'client-analysis' && (
                   <ClientAnalysis devise={siteDevise} />
