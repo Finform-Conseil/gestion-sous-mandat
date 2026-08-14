@@ -1425,8 +1425,9 @@ function VueBourses({
             Suivi intrajournalier simulé des marchés actions de la BRVM, de la
             NGX et de la GSE : indice principal, activité, breadth, volumes,
             transactions et principaux mouvements de séance. Depuis cette vue,
-            chaque valeur peut être ajoutée à la watchlist ou ouverte dans son
-            carnet d'ordres.
+            chaque valeur peut être ajoutée à la watchlist, ouverte dans son
+            carnet d'ordres ou envoyée directement vers son Ticket d'ordre dans
+            l'espace Client.
           </div>
         </div>
 
@@ -1782,7 +1783,7 @@ function VueBourses({
                 <Th>Transactions</Th>
                 <Th>Valeur échangée</Th>
                 <Th>Watchlist</Th>
-                <Th>Carnet d'ordres</Th>
+                <Th>{espaceClient ? 'Actions' : "Carnet d'ordres"}</Th>
               </tr>
             </thead>
             <tbody>
@@ -1848,14 +1849,32 @@ function VueBourses({
                       </button>
                     </Td>
                     <Td>
-                      <button
-                        type="button"
-                        onClick={() => ouvrirProfondeur(instrument)}
-                        className="text-xs font-semibold whitespace-nowrap"
-                        style={{ color: C.indigo }}
-                      >
-                        Voir profondeur →
-                      </button>
+                      <div className="flex items-center gap-3 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => ouvrirProfondeur(instrument)}
+                          className="text-xs font-semibold"
+                          style={{ color: C.indigo }}
+                        >
+                          Voir profondeur →
+                        </button>
+                        {espaceClient && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              goClient?.('client-ticket', {
+                                instrument: instrument.nom,
+                                marche: snapshot.code,
+                                source: 'vue-boursiere',
+                              })
+                            }
+                            className="text-xs font-semibold"
+                            style={{ color: C.navy }}
+                          >
+                            Ticket d'ordre →
+                          </button>
+                        )}
+                      </div>
                     </Td>
                   </tr>
                 ))}
@@ -2200,11 +2219,10 @@ const CLIENT_NAV = [
   },
   {
     id: 'client-markets',
-    label: 'Marché des obligations',
+    label: 'Marchés Obligataire',
     icon: Building2,
   },
   { id: 'client-watchlist', label: 'Watchlist', icon: Star },
-  { id: 'client-invest', label: 'Passer un ordre', icon: TrendingUp },
   { id: 'client-orders', label: 'Mes ordres', icon: ListOrdered },
   { id: 'client-avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'client-cashflows', label: 'Liquidité & revenus', icon: Droplets },
@@ -3250,7 +3268,7 @@ const NAV = [
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
-  { id: 'marches', label: 'Marché des obligations', icon: Building2 },
+  { id: 'marches', label: 'Marchés Obligataire', icon: Building2 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   { id: 'recos-actions', label: 'Recommandations actions', icon: TrendingUp },
   { id: 'reco-alloc', label: "Reco. d'allocation", icon: SlidersHorizontal },
@@ -3437,7 +3455,7 @@ const BREADCRUMB_ROUTES = {
   "Carnet d'ordres": 'carnet',
   "Avis d'opéré": 'avis',
   'Marchés Actions': 'vue-boursiere',
-  'Marché des obligations': 'marches',
+  'Marchés Obligataire': 'marches',
   Marchés: 'marches',
   Watchlist: 'watchlist',
   'Recommandations actions': 'recos-actions',
@@ -5912,7 +5930,7 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
 
   return (
     <div className="space-y-4">
-      <Breadcrumb items={['Accueil', 'Marché des obligations']} />
+      <Breadcrumb items={['Accueil', 'Marchés Obligataire']} />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -5921,16 +5939,8 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
             className="text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Marché des obligations
+            Marchés Obligataire
           </h2>
-          <div
-            className="text-xs mt-1 max-w-3xl"
-            style={{ color: C.sub, ...F_BODY }}
-          >
-            Cet onglet est désormais exclusivement consacré aux obligations.
-            Consultez les cours, rendements indicatifs, volumes, maturités,
-            ajoutez un titre à la watchlist et ouvrez sa profondeur de marché.
-          </div>
         </div>
         <Badge tone="gold">{rows.length} obligation(s)</Badge>
       </div>
@@ -6249,12 +6259,6 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
           </table>
         </div>
       </Card>
-
-      <div className="text-[10px]" style={{ color: C.sub, ...F_BODY }}>
-        Les rendements, coupons, durations et profondeurs présentés dans cette
-        maquette sont des données de démonstration. L'onglet ne présente plus
-        d'actions ; celles-ci sont accessibles depuis « Marchés Actions ».
-      </div>
     </div>
   );
 }
@@ -6279,7 +6283,7 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
             'Espace Client',
             ctx?.source === 'vue-boursiere'
               ? 'Marchés Actions'
-              : 'Marché des obligations',
+              : 'Marchés Obligataire',
             'Profondeur',
             m.nom,
           ]}
@@ -6290,7 +6294,7 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
             'Accueil',
             ctx?.source === 'vue-boursiere'
               ? 'Marchés Actions'
-              : 'Marché des obligations',
+              : 'Marchés Obligataire',
             m.nom,
           ]}
         />
@@ -6334,13 +6338,16 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
             </Btn>
             <Btn
               onClick={() =>
-                goClient?.('client-invest', {
+                goClient?.('client-ticket', {
                   instrument: m.nom,
                   marche: m.marche,
+                  source:
+                    ctx?.source ||
+                    (m.type === 'Obligation' ? 'obligations' : 'vue-boursiere'),
                 })
               }
             >
-              Préparer un ordre
+              Ticket d'ordre
             </Btn>
           </div>
         ) : (
@@ -9906,12 +9913,6 @@ function MoneyManagement({ go, devise = 'XOF' }) {
                             })
                           )}
                         />
-                        <div
-                          className="text-[10px] text-center mt-2"
-                          style={{ color: C.sub }}
-                        >
-                          Somme des sources = liquidité globale (10)
-                        </div>
                       </div>
                       <div className="col-span-3 grid grid-cols-2 gap-2">
                         {detailLiquiditeSelectionne.origines.map((item) => (
@@ -10213,34 +10214,6 @@ function MoneyManagement({ go, devise = 'XOF' }) {
                       </div>
                     </div>
                   )}
-                </Card>
-
-                <Card className="p-4" style={{ background: '#FAFAFC' }}>
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div>
-                      <div
-                        className="text-xs font-bold"
-                        style={{ color: C.ink }}
-                      >
-                        Circuit de responsabilité
-                      </div>
-                      <div
-                        className="text-[10px] mt-1 max-w-2xl"
-                        style={{ color: C.sub }}
-                      >
-                        La fiche source distingue les données saisies par les
-                        équipes et les rubriques calculées automatiquement. Le
-                        Chef Service Informatique coordonne l’implémentation de
-                        ces rubriques dans le système.
-                      </div>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge tone="gold">Chargé de clientèle</Badge>
-                      <Badge tone="navy">Gestionnaire de portefeuille</Badge>
-                      <Badge tone="coral">Trésorerie</Badge>
-                      <Badge tone="teal">Système</Badge>
-                    </div>
-                  </div>
                 </Card>
               </>
             ) : (
@@ -13566,26 +13539,58 @@ function ClientPortfolios({ devise, orders }) {
   );
 }
 
-function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
-  const instrumentInitial =
-    clientMarket(initialInstrument) || CLIENT_TRADABLE_MARKETS[0];
-  const [instrument, setInstrument] = useState(instrumentInitial.nom);
-  const marche = clientMarket(instrument) || CLIENT_TRADABLE_MARKETS[0];
-  const portefeuillesEligibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
-    (portefeuille) => portefeuille.marche === marche.marche
+function ClientOrderTicket({
+  goClient,
+  onCreateOrder,
+  orders,
+  initialInstrument,
+  initialMarket,
+  source = 'vue-boursiere',
+}) {
+  const typeSource =
+    source === 'obligations'
+      ? 'Obligation'
+      : source === 'vue-boursiere'
+      ? 'Action'
+      : null;
+
+  const universTicket = CLIENT_TRADABLE_MARKETS.filter(
+    (item) => !typeSource || item.type === typeSource
   );
+
+  const instrumentDemande = clientMarket(initialInstrument, initialMarket);
+  const instrumentInitial =
+    instrumentDemande && (!typeSource || instrumentDemande.type === typeSource)
+      ? instrumentDemande
+      : universTicket[0] || CLIENT_TRADABLE_MARKETS[0];
+
+  const [instrument, setInstrument] = useState(instrumentInitial?.nom || '');
+  const marche =
+    clientMarket(instrument, initialMarket) ||
+    instrumentInitial ||
+    CLIENT_TRADABLE_MARKETS[0];
+
+  const portefeuillesEligibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
+    (portefeuille) => portefeuille.marche === marche?.marche
+  );
+
   const [portefeuilleId, setPortefeuilleId] = useState(
     portefeuillesEligibles[0]?.id || ''
   );
   const [sens, setSens] = useState('Achat');
   const [qte, setQte] = useState(100);
   const [typeOrdre, setTypeOrdre] = useState('Ordre limite');
-  const [prixLimite, setPrixLimite] = useState(marche.cours);
+  const [prixLimite, setPrixLimite] = useState(Number(marche?.cours || 0));
   const [message, setMessage] = useState('');
 
   const portefeuilleCourant =
     portefeuillesEligibles.find((p) => p.id === portefeuilleId) ||
     portefeuillesEligibles[0];
+
+  const retourRoute =
+    source === 'obligations' ? 'client-markets' : 'client-exchanges';
+  const retourLabel =
+    source === 'obligations' ? 'Marchés Obligataire' : 'Marchés Actions';
 
   const changerInstrument = (nom) => {
     const nouveauMarche = clientMarket(nom);
@@ -13599,7 +13604,9 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
   };
 
   const prixEstime =
-    typeOrdre === 'Ordre au marché' ? marche.cours : Number(prixLimite || 0);
+    typeOrdre === 'Ordre au marché'
+      ? Number(marche?.cours || 0)
+      : Number(prixLimite || 0);
   const montantEstime = Number(qte || 0) * prixEstime;
   const position =
     portefeuilleCourant?.lignes.find((ligne) => ligne.instrument === instrument)
@@ -13631,6 +13638,7 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
       );
       return;
     }
+
     onCreateOrder({
       portefeuilleId: portefeuilleCourant.id,
       instrument,
@@ -13645,158 +13653,160 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
     goClient('client-orders');
   };
 
+  if (!marche) {
+    return (
+      <Card className="p-6 text-center text-sm" style={{ color: C.sub }}>
+        Instrument indisponible pour le passage d'ordre.
+      </Card>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      <ClientBreadcrumb items={['Espace Client', 'Marchés & investir']} />
-      <div>
-        <h2
-          className="text-xl font-bold"
-          style={{ ...F_DISPLAY, color: C.ink }}
-        >
-          Marchés & investir
-        </h2>
-        <div className="text-xs mt-1" style={{ color: C.sub }}>
-          Sélectionnez un actif : la plateforme rattache automatiquement l'ordre
-          à votre portefeuille et à votre SGI du marché concerné.
+      <ClientBreadcrumb
+        items={['Espace Client', retourLabel, "Ticket d'ordre", marche.nom]}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Passage d'ordre · Gestion libre</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Ticket d'ordre
+          </h2>
+          <div className="text-xs mt-1 max-w-2xl" style={{ color: C.sub }}>
+            Le ticket est ouvert depuis {retourLabel}. L'instrument et le marché
+            sont présélectionnés ; choisissez la SGI / le portefeuille, le sens,
+            la quantité et le type d'ordre avant envoi.
+          </div>
         </div>
+        <Btn tone="ghost" onClick={() => goClient(retourRoute)}>
+          ← Retour à {retourLabel}
+        </Btn>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 p-0 overflow-hidden">
-          <div className="p-4">
-            <Eyebrow>Instruments accessibles via vos SGI</Eyebrow>
+      <div className="grid grid-cols-3 gap-4 items-start">
+        <Card className="p-5">
+          <Eyebrow>Instrument sélectionné</Eyebrow>
+          <div
+            className="text-lg font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            {marche.nom}
           </div>
-          <table className="w-full">
-            <thead style={{ background: '#FAFAFC' }}>
-              <tr>
-                <Th>Instrument</Th>
-                <Th>Marché</Th>
-                <Th>Cours</Th>
-                <Th>Variation</Th>
-                <Th>Portefeuille / SGI</Th>
-                <Th>Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {CLIENT_TRADABLE_MARKETS.map((item) => {
-                const pfsCompatibles =
-                  CLIENT_GESTION_LIBRE.portefeuilles.filter(
-                    (portefeuille) => portefeuille.marche === item.marche
-                  );
-                return (
-                  <tr
-                    key={item.nom}
-                    style={{
-                      borderTop: `1px solid ${C.line}`,
-                      background: item.nom === instrument ? '#FBF7EE' : '#fff',
-                    }}
-                  >
-                    <Td className="font-semibold">{item.nom}</Td>
-                    <Td>
-                      <Badge tone="navy">{item.marche}</Badge>
-                    </Td>
-                    <Td mono>
-                      {fmtPrice(item.cours)} {item.devise}
-                    </Td>
-                    <Td>
-                      <Pct v={item.variation} />
-                    </Td>
-                    <Td>
-                      <div className="text-xs font-semibold">
-                        {pfsCompatibles.length > 0
-                          ? `${pfsCompatibles.length} SGI compatibles`
-                          : '—'}
-                      </div>
-                      <div className="text-[10px]" style={{ color: C.sub }}>
-                        {pfsCompatibles.length > 0
-                          ? pfsCompatibles.map((pf) => pf.sgi).join(' · ')
-                          : 'Aucun compte compatible'}
-                      </div>
-                    </Td>
-                    <Td>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            goClient('client-market-depth', {
-                              instrument: item.nom,
-                              marche: item.marche,
-                              source:
-                                item.type === 'Obligation'
-                                  ? 'obligations'
-                                  : 'vue-boursiere',
-                            })
-                          }
-                          className="text-xs font-semibold whitespace-nowrap"
-                          style={{ color: C.indigo }}
-                        >
-                          Profondeur →
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => changerInstrument(item.nom)}
-                          className="text-xs font-semibold whitespace-nowrap"
-                          style={{ color: C.navy }}
-                        >
-                          Préparer un ordre →
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <Badge tone="navy">{marche.marche}</Badge>
+            <Badge tone={marche.type === 'Obligation' ? 'gold' : 'teal'}>
+              {marche.type}
+            </Badge>
+          </div>
+
+          <div
+            className="mt-4 pt-4 space-y-3"
+            style={{ borderTop: `1px solid ${C.line}` }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs" style={{ color: C.sub }}>
+                Dernier cours
+              </span>
+              <b style={{ ...F_MONO, color: C.ink }}>
+                {fmtPrice(marche.cours)} {marche.devise}
+              </b>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs" style={{ color: C.sub }}>
+                Variation
+              </span>
+              <Pct v={Number(marche.variation || 0)} />
+            </div>
+            <div className="flex items-start justify-between gap-3">
+              <span className="text-xs" style={{ color: C.sub }}>
+                SGI compatibles
+              </span>
+              <span
+                className="text-xs font-semibold text-right"
+                style={{ color: C.ink }}
+              >
+                {portefeuillesEligibles.length > 0
+                  ? portefeuillesEligibles.map((pf) => pf.sgi).join(' · ')
+                  : 'Aucune SGI compatible'}
+              </span>
+            </div>
+          </div>
+
+          <div
+            className="mt-4 p-3 rounded-xl text-[10px]"
+            style={{ background: '#FAFAFC', color: C.sub }}
+          >
+            Vous pouvez changer d'instrument uniquement à l'intérieur du même
+            univers de marché ({typeSource || 'Actions / Obligations'}).
+          </div>
         </Card>
 
-        <Card className="p-5" style={{ borderColor: C.gold }}>
-          <Eyebrow>Ticket d'ordre</Eyebrow>
+        <Card className="col-span-2 p-5" style={{ borderColor: C.gold }}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <Eyebrow>Ticket d'ordre</Eyebrow>
+            <Badge tone="gold">
+              {marche.type === 'Obligation' ? 'Fixed Income' : 'Equity'}
+            </Badge>
+          </div>
 
-          <label
-            className="text-xs font-semibold block mb-1"
-            style={{ color: C.sub }}
-          >
-            Instrument
-          </label>
-          <select
-            value={instrument}
-            onChange={(e) => changerInstrument(e.target.value)}
-            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
-            style={{ borderColor: C.line }}
-          >
-            {CLIENT_TRADABLE_MARKETS.map((item) => (
-              <option key={item.nom}>{item.nom}</option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Instrument
+              </label>
+              <select
+                value={instrument}
+                onChange={(e) => changerInstrument(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line }}
+              >
+                {universTicket.map((item) => (
+                  <option key={item.nom} value={item.nom}>
+                    {item.nom} · {item.marche}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <label
-            className="text-xs font-semibold block mb-1"
-            style={{ color: C.sub }}
-          >
-            Portefeuille / SGI
-          </label>
-          <select
-            value={portefeuilleCourant?.id || ''}
-            onChange={(e) => setPortefeuilleId(e.target.value)}
-            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
-            style={{ borderColor: C.line }}
-          >
-            {portefeuillesEligibles.map((portefeuille) => (
-              <option key={portefeuille.id} value={portefeuille.id}>
-                {portefeuille.sgi} — {portefeuille.nom}
-              </option>
-            ))}
-          </select>
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Portefeuille / SGI
+              </label>
+              <select
+                value={portefeuilleCourant?.id || ''}
+                onChange={(e) => setPortefeuilleId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line }}
+              >
+                {portefeuillesEligibles.map((portefeuille) => (
+                  <option key={portefeuille.id} value={portefeuille.id}>
+                    {portefeuille.sgi} — {portefeuille.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="grid grid-cols-2 gap-2 my-4">
             {['Achat', 'Vente'].map((value) => (
               <button
                 key={value}
+                type="button"
                 onClick={() => {
                   setSens(value);
                   setMessage('');
                 }}
-                className="px-3 py-2 rounded-xl text-xs font-semibold"
+                className="px-3 py-2.5 rounded-xl text-xs font-semibold"
                 style={{
                   background:
                     sens === value
@@ -13812,23 +13822,25 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
             ))}
           </div>
 
-          <label
-            className="text-xs font-semibold block mb-1"
-            style={{ color: C.sub }}
-          >
-            Type d'ordre
-          </label>
-          <select
-            value={typeOrdre}
-            onChange={(e) => setTypeOrdre(e.target.value)}
-            className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
-            style={{ borderColor: C.line }}
-          >
-            <option>Ordre au marché</option>
-            <option>Ordre limite</option>
-          </select>
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Type d'ordre
+              </label>
+              <select
+                value={typeOrdre}
+                onChange={(e) => setTypeOrdre(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line }}
+              >
+                <option>Ordre au marché</option>
+                <option>Ordre limite</option>
+              </select>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2 mb-3">
             <div>
               <label
                 className="text-xs font-semibold block mb-1"
@@ -13845,6 +13857,7 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
                 style={{ borderColor: C.line, ...F_MONO }}
               />
             </div>
+
             <div>
               <label
                 className="text-xs font-semibold block mb-1"
@@ -13869,30 +13882,30 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
           </div>
 
           <div
-            className="p-3 rounded-xl text-xs mb-3"
+            className="grid grid-cols-2 gap-x-8 gap-y-2 p-4 rounded-xl text-xs mb-4"
             style={{ background: '#EFF3FB', color: C.ink }}
           >
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3">
               <span>Montant estimé</span>
               <b style={F_MONO}>
                 {fmt(Math.round(montantEstime))} {marche.devise}
               </b>
             </div>
-            <div className="flex justify-between mt-1">
+            <div className="flex justify-between gap-3">
               <span>Liquidité disponible</span>
               <span style={F_MONO}>
                 {fmt(Math.round(cash))}{' '}
                 {portefeuilleCourant?.devise || marche.devise}
               </span>
             </div>
-            <div className="flex justify-between mt-1">
+            <div className="flex justify-between gap-3">
               <span>Liquidité réservée</span>
               <span style={F_MONO}>
                 {fmt(Math.round(cashReserve))}{' '}
                 {portefeuilleCourant?.devise || marche.devise}
               </span>
             </div>
-            <div className="flex justify-between mt-1">
+            <div className="flex justify-between gap-3">
               <span>Liquidité totale</span>
               <span style={F_MONO}>
                 {fmt(Math.round(cashTotal))}{' '}
@@ -13900,7 +13913,7 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
               </span>
             </div>
             {sens === 'Vente' && (
-              <div className="flex justify-between mt-1">
+              <div className="flex justify-between gap-3 col-span-2">
                 <span>Position disponible</span>
                 <span style={F_MONO}>{fmt(position)} titre(s)</span>
               </div>
@@ -13916,13 +13929,15 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
             </div>
           )}
 
-          <Btn onClick={envoyerOrdre}>
-            Envoyer l'ordre à {portefeuilleCourant?.sgi || 'la SGI'}
-          </Btn>
-          <div className="text-[10px] mt-2" style={{ color: C.sub }}>
-            Prototype : l'ordre est enregistré dans l'espace client. En
-            production, l'envoi devra être confirmé par l'API ou le workflow de
-            la SGI concernée.
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-[10px] max-w-xl" style={{ color: C.sub }}>
+              Prototype : l'ordre est enregistré dans l'espace client. En
+              production, l'envoi devra être confirmé par l'API ou le workflow
+              de la SGI concernée.
+            </div>
+            <Btn onClick={envoyerOrdre}>
+              Envoyer l'ordre à {portefeuilleCourant?.sgi || 'la SGI'}
+            </Btn>
           </div>
         </Card>
       </div>
@@ -13948,7 +13963,7 @@ function ClientMarkets({
 
   return (
     <div className="space-y-5">
-      <ClientBreadcrumb items={['Espace Client', 'Marché des obligations']} />
+      <ClientBreadcrumb items={['Espace Client', 'Marchés Obligataire']} />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -13957,13 +13972,8 @@ function ClientMarkets({
             className="text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Marché des obligations
+            Marchés Obligataire
           </h2>
-          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-            Cet espace est désormais exclusivement obligataire. Consultez les
-            titres accessibles via vos SGI, ajoutez-les à votre watchlist,
-            ouvrez la profondeur ou préparez un ordre.
-          </div>
         </div>
         <Badge tone="gold">{rows.length} obligation(s)</Badge>
       </div>
@@ -14142,15 +14152,16 @@ function ClientMarkets({
                         <button
                           type="button"
                           onClick={() =>
-                            goClient('client-invest', {
+                            goClient('client-ticket', {
                               instrument: item.nom,
                               marche: item.marche,
+                              source: 'obligations',
                             })
                           }
                           className="text-xs font-semibold"
                           style={{ color: C.navy }}
                         >
-                          Préparer un ordre →
+                          Ticket d'ordre →
                         </button>
                       </div>
                     </Td>
@@ -14161,12 +14172,6 @@ function ClientMarkets({
           </table>
         </div>
       </Card>
-
-      <div className="text-[10px]" style={{ color: C.sub }}>
-        Les actions sont désormais consultées depuis « Vue des bourses Actions
-        ». Les cours, rendements et profondeurs obligataires restent des données
-        de démonstration dans ce prototype.
-      </div>
     </div>
   );
 }
@@ -14470,9 +14475,14 @@ function ClientWatchlist({
                       <button
                         type="button"
                         onClick={() =>
-                          goClient('client-invest', {
+                          goClient('client-ticket', {
                             instrument: r.titre,
                             marche: r.marche,
+                            source:
+                              clientMarket(r.titre, r.marche)?.type ===
+                              'Obligation'
+                                ? 'obligations'
+                                : 'vue-boursiere',
                           })
                         }
                         className="text-xs font-semibold"
@@ -15009,9 +15019,14 @@ function ClientWatchlist({
                         <button
                           type="button"
                           onClick={() =>
-                            goClient('client-invest', {
+                            goClient('client-ticket', {
                               instrument: r.titre,
                               marche: r.marche,
+                              source:
+                                clientMarket(r.titre, r.marche)?.type ===
+                                'Obligation'
+                                  ? 'obligations'
+                                  : 'vue-boursiere',
                             })
                           }
                           className="text-xs font-semibold"
@@ -15028,13 +15043,6 @@ function ClientWatchlist({
           </table>
         </div>
       </Card>
-
-      <div className="text-[10px]" style={{ color: C.sub }}>
-        Les scores et signaux de cette maquette sont calculés à partir des
-        données de démonstration disponibles. En production, la watchlist
-        journalière devra être alimentée par les données de marché et
-        indicateurs réels du backend.
-      </div>
     </div>
   );
 }
@@ -18301,10 +18309,14 @@ export default function App() {
                       (n.id === 'comite' && screen === 'decisions-comite')
                     : clientScreen === n.id ||
                       (n.id === 'client-exchanges' &&
-                        clientScreen === 'client-market-depth' &&
+                        ['client-market-depth', 'client-ticket'].includes(
+                          clientScreen
+                        ) &&
                         clientCtx.source === 'vue-boursiere') ||
                       (n.id === 'client-markets' &&
-                        clientScreen === 'client-market-depth' &&
+                        ['client-market-depth', 'client-ticket'].includes(
+                          clientScreen
+                        ) &&
                         clientCtx.source !== 'vue-boursiere');
                 return (
                   <button
@@ -18475,12 +18487,14 @@ export default function App() {
                     onRemoveWatch={removeFromClientWatchlist}
                   />
                 )}
-                {clientScreen === 'client-invest' && (
-                  <ClientInvest
+                {clientScreen === 'client-ticket' && (
+                  <ClientOrderTicket
                     goClient={goClient}
                     onCreateOrder={createClientOrder}
                     orders={clientOrders}
                     initialInstrument={clientCtx.instrument}
+                    initialMarket={clientCtx.marche}
+                    source={clientCtx.source}
                   />
                 )}
                 {clientScreen === 'client-market-depth' && (
