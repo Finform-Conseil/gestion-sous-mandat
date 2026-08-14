@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   PieChart,
   Pie,
@@ -852,6 +852,1032 @@ const MARKETS_DATA = [
   },
 ];
 
+/* -------------------------- VUE BOURSIÈRE SIMULÉE -------------------------- */
+/*
+ * Données entièrement générées pour donner vie à la maquette.
+ * Elles ne représentent pas des cotations officielles ni des données temps réel.
+ * La simulation ajoute de petites micro-variations toutes les 2,5 secondes,
+ * tout en conservant des amplitudes cohérentes avec chaque place.
+ */
+const BOURSES_ACTIVE_CONFIG = {
+  BRVM: {
+    code: 'BRVM',
+    nom: 'Bourse Régionale des Valeurs Mobilières',
+    indice: 'BRVM Composite',
+    devise: 'XOF',
+    baseIndice: 302.84,
+    ouvertureIndice: 300.92,
+    plusHautIndice: 304.15,
+    plusBasIndice: 299.86,
+    capitalisationBase: 20_850_000_000_000,
+    session: '09:45 — 14:00',
+    instruments: [
+      {
+        nom: 'SONATEL',
+        secteur: 'Télécoms',
+        cours: 14_200,
+        variation: 1.8,
+        volume: 128_450,
+        transactions: 186,
+      },
+      {
+        nom: 'ECOBANK CI',
+        secteur: 'Banques',
+        cours: 6_650,
+        variation: -0.9,
+        volume: 84_620,
+        transactions: 132,
+      },
+      {
+        nom: 'PALMCI',
+        secteur: 'Agro-industrie',
+        cours: 8_100,
+        variation: 0.3,
+        volume: 23_410,
+        transactions: 61,
+      },
+      {
+        nom: 'BICI',
+        secteur: 'Banques',
+        cours: 11_900,
+        variation: 2.1,
+        volume: 39_280,
+        transactions: 89,
+      },
+      {
+        nom: 'BOA CI',
+        secteur: 'Banques',
+        cours: 7_800,
+        variation: -1.4,
+        volume: 44_560,
+        transactions: 104,
+      },
+      {
+        nom: 'TOTALENERGIES CI',
+        secteur: 'Énergie',
+        cours: 2_350,
+        variation: 0.8,
+        volume: 65_740,
+        transactions: 118,
+      },
+      {
+        nom: 'SODECI',
+        secteur: 'Services publics',
+        cours: 5_400,
+        variation: -0.4,
+        volume: 17_850,
+        transactions: 47,
+      },
+      {
+        nom: 'ORANGE CI',
+        secteur: 'Télécoms',
+        cours: 16_500,
+        variation: 1.2,
+        volume: 92_100,
+        transactions: 156,
+      },
+    ],
+  },
+  NGX: {
+    code: 'NGX',
+    nom: 'Nigerian Exchange',
+    indice: 'NGX All Share Index',
+    devise: 'NGN',
+    baseIndice: 126_840.6,
+    ouvertureIndice: 125_970.4,
+    plusHautIndice: 127_410.2,
+    plusBasIndice: 125_680.9,
+    capitalisationBase: 79_600_000_000_000,
+    session: '09:30 — 14:30',
+    instruments: [
+      {
+        nom: 'MTN NIGERIA',
+        secteur: 'Télécoms',
+        cours: 218.5,
+        variation: 2.4,
+        volume: 2_845_000,
+        transactions: 1_248,
+      },
+      {
+        nom: 'ZENITH BANK',
+        secteur: 'Banques',
+        cours: 41.2,
+        variation: -1.1,
+        volume: 7_420_000,
+        transactions: 2_460,
+      },
+      {
+        nom: 'DANGOTE CEMENT',
+        secteur: 'Matériaux',
+        cours: 590,
+        variation: 1.5,
+        volume: 1_180_000,
+        transactions: 730,
+      },
+      {
+        nom: 'GTCO',
+        secteur: 'Banques',
+        cours: 92.5,
+        variation: 0.7,
+        volume: 5_920_000,
+        transactions: 2_030,
+      },
+      {
+        nom: 'ACCESSCORP',
+        secteur: 'Banques',
+        cours: 24.3,
+        variation: -0.8,
+        volume: 9_640_000,
+        transactions: 2_910,
+      },
+      {
+        nom: 'AIRTEL AFRICA',
+        secteur: 'Télécoms',
+        cours: 2_250,
+        variation: 1.1,
+        volume: 820_000,
+        transactions: 504,
+      },
+      {
+        nom: 'UBA',
+        secteur: 'Banques',
+        cours: 47.8,
+        variation: -0.3,
+        volume: 6_770_000,
+        transactions: 2_220,
+      },
+      {
+        nom: 'NESTLE NIGERIA',
+        secteur: 'Consommation',
+        cours: 1_790,
+        variation: 2.0,
+        volume: 310_000,
+        transactions: 284,
+      },
+    ],
+  },
+  GSE: {
+    code: 'GSE',
+    nom: 'Ghana Stock Exchange',
+    indice: 'GSE Composite Index',
+    devise: 'GHS',
+    baseIndice: 6_942.3,
+    ouvertureIndice: 6_886.8,
+    plusHautIndice: 6_978.4,
+    plusBasIndice: 6_862.1,
+    capitalisationBase: 192_500_000_000,
+    session: '10:00 — 15:00',
+    instruments: [
+      {
+        nom: 'GCB BANK',
+        secteur: 'Banques',
+        cours: 5.4,
+        variation: 3.2,
+        volume: 318_500,
+        transactions: 142,
+      },
+      {
+        nom: 'MTN GHANA',
+        secteur: 'Télécoms',
+        cours: 3.85,
+        variation: 1.6,
+        volume: 1_460_000,
+        transactions: 430,
+      },
+      {
+        nom: 'CALBANK',
+        secteur: 'Banques',
+        cours: 0.42,
+        variation: -1.2,
+        volume: 480_000,
+        transactions: 176,
+      },
+      {
+        nom: 'SCB GHANA',
+        secteur: 'Banques',
+        cours: 29.8,
+        variation: 0.4,
+        volume: 54_600,
+        transactions: 68,
+      },
+      {
+        nom: 'ECOBANK GHANA',
+        secteur: 'Banques',
+        cours: 11.4,
+        variation: -0.7,
+        volume: 96_700,
+        transactions: 91,
+      },
+      {
+        nom: 'TOTALENERGIES GH',
+        secteur: 'Énergie',
+        cours: 21.5,
+        variation: 1.3,
+        volume: 42_300,
+        transactions: 55,
+      },
+      {
+        nom: 'GOIL',
+        secteur: 'Énergie',
+        cours: 1.95,
+        variation: -0.5,
+        volume: 211_000,
+        transactions: 110,
+      },
+      {
+        nom: 'BOPP',
+        secteur: 'Agro-industrie',
+        cours: 7.8,
+        variation: 2.2,
+        volume: 35_800,
+        transactions: 46,
+      },
+    ],
+  },
+};
+
+const marketActiveSeed = (value) =>
+  String(value)
+    .split('')
+    .reduce(
+      (total, char, index) => total + char.charCodeAt(0) * (index + 1),
+      0
+    );
+
+const buildBourseActiveSnapshot = (code, pulse = 0) => {
+  const config = BOURSES_ACTIVE_CONFIG[code] || BOURSES_ACTIVE_CONFIG.BRVM;
+  const pulseNormalise = pulse % 1200;
+
+  const instruments = config.instruments.map((instrument, index) => {
+    const seed = marketActiveSeed(`${code}-${instrument.nom}`);
+    const micro =
+      Math.sin((pulseNormalise + seed) * 0.42) * 0.1 +
+      Math.sin((pulseNormalise + seed * 0.7) * 0.17) * 0.05;
+    const variation = Number((instrument.variation + micro).toFixed(2));
+    const variationPrix =
+      Math.sin((pulseNormalise + seed) * 0.33) * 0.0012 +
+      Math.cos((pulseNormalise + index * 13) * 0.21) * 0.0005;
+    const precisionCours = code === 'BRVM' ? 0 : 2;
+    const cours = Number(
+      Math.max(0.01, instrument.cours * (1 + variationPrix)).toFixed(
+        precisionCours
+      )
+    );
+    const progressionVolume =
+      1 +
+      (pulseNormalise % 180) * (0.0008 + (seed % 7) * 0.00005) +
+      Math.abs(Math.sin((pulseNormalise + seed) * 0.09)) * 0.035;
+    const volume = Math.round(instrument.volume * progressionVolume);
+    const transactions =
+      instrument.transactions +
+      Math.floor((pulseNormalise % 90) * (1 + (seed % 3) * 0.25));
+    const spreadPct =
+      code === 'NGX' ? 0.0018 : code === 'GSE' ? 0.0024 : 0.0015;
+    const bid = Number((cours * (1 - spreadPct / 2)).toFixed(precisionCours));
+    const ask = Number((cours * (1 + spreadPct / 2)).toFixed(precisionCours));
+    const intradayAmplitude =
+      0.006 + Math.min(0.018, Math.abs(variation) / 220);
+    const coursMin = Number(
+      (cours * (1 - intradayAmplitude)).toFixed(precisionCours)
+    );
+    const coursMax = Number(
+      (cours * (1 + intradayAmplitude * 1.15)).toFixed(precisionCours)
+    );
+
+    return {
+      ...instrument,
+      cours,
+      variation,
+      volume,
+      transactions,
+      bid,
+      ask,
+      coursMin,
+      coursMax,
+      valeurEchangee: volume * cours,
+    };
+  });
+
+  const totalVolume = instruments.reduce(
+    (somme, instrument) => somme + instrument.volume,
+    0
+  );
+  const totalTransactions = instruments.reduce(
+    (somme, instrument) => somme + instrument.transactions,
+    0
+  );
+  const valeurEchangee = instruments.reduce(
+    (somme, instrument) => somme + instrument.valeurEchangee,
+    0
+  );
+  const hausses = instruments.filter(
+    (instrument) => instrument.variation > 0.12
+  ).length;
+  const baisses = instruments.filter(
+    (instrument) => instrument.variation < -0.12
+  ).length;
+  const stables = instruments.length - hausses - baisses;
+
+  const moyenneVariation =
+    instruments.reduce(
+      (somme, instrument, index) =>
+        somme + instrument.variation * (1 + index * 0.08),
+      0
+    ) / instruments.reduce((somme, _, index) => somme + (1 + index * 0.08), 0);
+
+  const microIndice =
+    Math.sin((pulseNormalise + marketActiveSeed(code)) * 0.19) * 0.08;
+  const variationIndice = Number(
+    (moyenneVariation * 0.62 + microIndice).toFixed(2)
+  );
+  const niveauIndice = Number(
+    (config.ouvertureIndice * (1 + variationIndice / 100)).toFixed(
+      code === 'BRVM' ? 2 : 1
+    )
+  );
+
+  const heures = [
+    '09:30',
+    '09:50',
+    '10:10',
+    '10:30',
+    '10:50',
+    '11:10',
+    '11:30',
+    '11:50',
+    '12:10',
+    '12:30',
+    '12:50',
+    '13:10',
+    '13:30',
+    '13:50',
+  ];
+  const intraday = heures.map((heure, index) => {
+    const progression = index / (heures.length - 1);
+    const chemin =
+      Math.sin(index * 0.78 + marketActiveSeed(code) * 0.01) * 0.18 +
+      Math.sin(index * 0.29 + 1.2) * 0.12;
+    const variationPoint =
+      variationIndice * progression + chemin * (1 - progression * 0.45);
+    return {
+      heure,
+      indice: Number(
+        (config.ouvertureIndice * (1 + variationPoint / 100)).toFixed(
+          code === 'BRVM' ? 2 : 1
+        )
+      ),
+      volumeCumule: Math.round(totalVolume * Math.pow(progression, 1.35)),
+    };
+  });
+  intraday[intraday.length - 1].indice = niveauIndice;
+  intraday[intraday.length - 1].volumeCumule = totalVolume;
+
+  const breadth = [
+    {
+      name: 'Hausse',
+      value: Number(((hausses / instruments.length) * 100).toFixed(1)),
+    },
+    {
+      name: 'Baisse',
+      value: Number(((baisses / instruments.length) * 100).toFixed(1)),
+    },
+    {
+      name: 'Stable',
+      value: Number(((stables / instruments.length) * 100).toFixed(1)),
+    },
+  ];
+
+  return {
+    ...config,
+    instruments,
+    totalVolume,
+    totalTransactions,
+    valeurEchangee,
+    hausses,
+    baisses,
+    stables,
+    breadth,
+    variationIndice,
+    niveauIndice,
+    capitalisation: config.capitalisationBase * (1 + variationIndice / 100),
+    intraday,
+  };
+};
+
+const BOND_MARKET_META = {
+  'Obligation Trésor CI 6.5% 2029': {
+    emetteur: "Côte d'Ivoire",
+    coupon: 6.5,
+    rendement: 6.82,
+    echeance: '2029',
+    duration: 2.7,
+  },
+  'Obligation Trésor NGN 2028': {
+    emetteur: 'Nigeria',
+    coupon: 14.5,
+    rendement: 15.35,
+    echeance: '2028',
+    duration: 1.8,
+  },
+  'Obligation Corporate GSE 2027': {
+    emetteur: 'Corporate Ghana',
+    coupon: 18.0,
+    rendement: 17.65,
+    echeance: '2027',
+    duration: 1.2,
+  },
+};
+
+const resolveMarketInstrument = (instrument, marcheHint) => {
+  const direct = MARKETS_DATA.find(
+    (item) =>
+      item.nom === instrument && (!marcheHint || item.marche === marcheHint)
+  );
+  if (direct) return direct;
+
+  for (const [code, config] of Object.entries(BOURSES_ACTIVE_CONFIG)) {
+    if (marcheHint && code !== marcheHint) continue;
+    const action = config.instruments.find((item) => item.nom === instrument);
+    if (!action) continue;
+
+    const amplitude = Math.max(
+      0.004,
+      Math.min(0.03, Math.abs(Number(action.variation || 0)) / 180)
+    );
+
+    return {
+      nom: action.nom,
+      type: 'Action',
+      marche: code,
+      devise: config.devise,
+      secteur: action.secteur,
+      cours: Number(action.cours),
+      variation: Number(action.variation || 0),
+      volumeJour: Number(action.volume || 0),
+      coursMin: Number(
+        (action.cours * (1 - amplitude)).toFixed(code === 'BRVM' ? 0 : 2)
+      ),
+      coursMax: Number(
+        (action.cours * (1 + amplitude * 1.15)).toFixed(code === 'BRVM' ? 0 : 2)
+      ),
+    };
+  }
+
+  return null;
+};
+
+const CLIENT_TRADABLE_MARKETS = (() => {
+  const univers = [...MARKETS_DATA];
+
+  Object.entries(BOURSES_ACTIVE_CONFIG).forEach(([code, config]) => {
+    config.instruments.forEach((instrument) => {
+      const normalise = resolveMarketInstrument(instrument.nom, code);
+      if (normalise) univers.push(normalise);
+    });
+  });
+
+  return Array.from(
+    new Map(univers.map((instrument) => [instrument.nom, instrument])).values()
+  );
+})();
+
+function VueBourses({
+  mode = 'gestionnaire',
+  go,
+  goClient,
+  watchlistTitles = [],
+  onAddWatch,
+}) {
+  const [bourse, setBourse] = useState('BRVM');
+  const [pulse, setPulse] = useState(0);
+  const [simulationActive, setSimulationActive] = useState(true);
+
+  useEffect(() => {
+    if (!simulationActive) return undefined;
+    const timer = window.setInterval(() => {
+      setPulse((current) => current + 1);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [simulationActive]);
+
+  const snapshot = buildBourseActiveSnapshot(bourse, pulse);
+  const miseAJour = new Date().toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const topHausses = [...snapshot.instruments]
+    .sort((a, b) => b.variation - a.variation)
+    .slice(0, 4);
+  const topBaisses = [...snapshot.instruments]
+    .sort((a, b) => a.variation - b.variation)
+    .slice(0, 4);
+  const plusActifs = [...snapshot.instruments]
+    .sort((a, b) => b.valeurEchangee - a.valeurEchangee)
+    .slice(0, 4);
+  const espaceClient = mode === 'client';
+
+  const ouvrirInstruments = () => {
+    if (espaceClient) {
+      goClient?.('client-markets');
+      return;
+    }
+    go?.('marches');
+  };
+
+  const ouvrirProfondeur = (instrument) => {
+    const params = {
+      marche: snapshot.code,
+      instrument: instrument.nom,
+      source: 'vue-boursiere',
+    };
+    if (espaceClient) {
+      goClient?.('client-market-depth', params);
+      return;
+    }
+    go?.('profondeur', params);
+  };
+
+  const ajouterWatchlist = (instrument) => {
+    if (!watchlistTitles.includes(instrument.nom)) {
+      onAddWatch?.(instrument.nom);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {espaceClient ? (
+        <ClientBreadcrumb items={['Espace Client', 'Marchés Actions']} />
+      ) : (
+        <Breadcrumb items={['Accueil', 'Marchés Actions']} />
+      )}
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Tableau de bord boursier</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Vue des bourses africaines
+          </h2>
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Suivi intrajournalier simulé des marchés actions de la BRVM, de la
+            NGX et de la GSE : indice principal, activité, breadth, volumes,
+            transactions et principaux mouvements de séance. Depuis cette vue,
+            chaque valeur peut être ajoutée à la watchlist ou ouverte dans son
+            carnet d'ordres.
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Badge tone={simulationActive ? 'teal' : 'slate'}>
+            {simulationActive
+              ? '● Marchés actifs · simulation'
+              : 'Simulation en pause'}
+          </Badge>
+          <span className="text-[10px]" style={{ color: C.sub, ...F_MONO }}>
+            MAJ {miseAJour}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          {Object.keys(BOURSES_ACTIVE_CONFIG).map((code) => (
+            <button
+              key={code}
+              type="button"
+              onClick={() => setBourse(code)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.98]"
+              style={{
+                background: bourse === code ? C.navy : '#EEF0F4',
+                color: bourse === code ? '#fff' : C.sub,
+                ...F_BODY,
+              }}
+            >
+              {code}
+            </button>
+          ))}
+        </div>
+        <Btn tone="ghost" onClick={ouvrirInstruments}>
+          Ouvrir le marché obligataire
+        </Btn>
+      </div>
+
+      <Card className="p-5" style={{ borderColor: C.navy }}>
+        <div className="flex items-start justify-between gap-5 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone="navy">{snapshot.code}</Badge>
+              <Badge tone="teal">Marché actif</Badge>
+              <Badge tone="slate">Session {snapshot.session}</Badge>
+            </div>
+            <div
+              className="text-lg font-bold mt-2"
+              style={{ ...F_DISPLAY, color: C.ink }}
+            >
+              {snapshot.nom}
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub }}>
+              Indice de référence : {snapshot.indice}
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              {snapshot.indice}
+            </div>
+            <div
+              className="text-3xl font-bold mt-1"
+              style={{ ...F_MONO, color: C.ink }}
+            >
+              {fmtPrice(snapshot.niveauIndice)}
+            </div>
+            <div className="mt-1">
+              <Pct v={snapshot.variationIndice} />
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-6 gap-3">
+        {[
+          {
+            label: 'Valeur échangée',
+            value: `${fmtCompactMontant(snapshot.valeurEchangee)} ${
+              snapshot.devise
+            }`,
+            detail: 'sur l’univers simulé',
+          },
+          {
+            label: 'Volume titres',
+            value: fmtCompactMontant(snapshot.totalVolume),
+            detail: 'titres négociés',
+          },
+          {
+            label: 'Transactions',
+            value: fmt(snapshot.totalTransactions),
+            detail: 'exécutions cumulées',
+          },
+          {
+            label: 'Capitalisation',
+            value: `${fmtCompactMontant(snapshot.capitalisation)} ${
+              snapshot.devise
+            }`,
+            detail: 'capitalisation simulée',
+          },
+          {
+            label: 'Plus haut indice',
+            value: fmtPrice(
+              Math.max(
+                snapshot.plusHautIndice,
+                ...snapshot.intraday.map((point) => point.indice)
+              )
+            ),
+            detail: 'séance',
+          },
+          {
+            label: 'Plus bas indice',
+            value: fmtPrice(
+              Math.min(
+                snapshot.plusBasIndice,
+                ...snapshot.intraday.map((point) => point.indice)
+              )
+            ),
+            detail: 'séance',
+          },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-3">
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              {stat.label}
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{ color: C.ink, ...F_MONO }}
+            >
+              {stat.value}
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              {stat.detail}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card className="col-span-2 p-5">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div>
+              <Eyebrow>Indice intrajournalier</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                {snapshot.indice} · séance simulée
+              </div>
+            </div>
+            <Badge tone={snapshot.variationIndice >= 0 ? 'teal' : 'coral'}>
+              {snapshot.variationIndice >= 0
+                ? 'Tendance positive'
+                : 'Tendance négative'}
+            </Badge>
+          </div>
+
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart
+              data={snapshot.intraday}
+              margin={{ top: 10, right: 18, left: 4, bottom: 4 }}
+            >
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis
+                dataKey="heure"
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={{ stroke: C.line }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                width={68}
+                domain={['dataMin - 5', 'dataMax + 5']}
+                tickFormatter={(value) => fmtPrice(value)}
+              />
+              <Tooltip
+                formatter={(value) => [fmtPrice(value), snapshot.indice]}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: `1px solid ${C.line}`,
+                  fontSize: 12,
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="indice"
+                name={snapshot.indice}
+                stroke={C.navy}
+                strokeWidth={2.6}
+                dot={false}
+                activeDot={{ r: 4 }}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        <Card className="p-5">
+          <Eyebrow>État du marché</Eyebrow>
+          <div className="text-sm font-semibold" style={{ color: C.ink }}>
+            Breadth de séance
+          </div>
+          <Donut data={snapshot.breadth} size={175} />
+          <div className="grid grid-cols-3 gap-2 mt-1 text-center">
+            <div>
+              <div
+                className="text-lg font-bold"
+                style={{ color: C.teal, ...F_MONO }}
+              >
+                {snapshot.hausses}
+              </div>
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Hausses
+              </div>
+            </div>
+            <div>
+              <div
+                className="text-lg font-bold"
+                style={{ color: C.coral, ...F_MONO }}
+              >
+                {snapshot.baisses}
+              </div>
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Baisses
+              </div>
+            </div>
+            <div>
+              <div
+                className="text-lg font-bold"
+                style={{ color: C.sub, ...F_MONO }}
+              >
+                {snapshot.stables}
+              </div>
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Stables
+              </div>
+            </div>
+          </div>
+          <div
+            className="mt-4 p-3 rounded-xl text-[10px]"
+            style={{ background: '#FAFAFC', color: C.sub }}
+          >
+            Ratio hausse / baisse :{' '}
+            <b style={{ color: C.ink }}>
+              {snapshot.baisses > 0
+                ? (snapshot.hausses / snapshot.baisses).toFixed(2)
+                : snapshot.hausses.toFixed(2)}
+            </b>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          {
+            titre: 'Plus fortes hausses',
+            rows: topHausses,
+            mode: 'variation',
+          },
+          {
+            titre: 'Plus fortes baisses',
+            rows: topBaisses,
+            mode: 'variation',
+          },
+          {
+            titre: 'Plus fortes activités',
+            rows: plusActifs,
+            mode: 'volume',
+          },
+        ].map((bloc) => (
+          <Card key={bloc.titre} className="p-4">
+            <div
+              className="text-xs font-semibold uppercase tracking-wide mb-2"
+              style={{ color: C.sub }}
+            >
+              {bloc.titre}
+            </div>
+            <div className="space-y-2">
+              {bloc.rows.map((instrument, index) => (
+                <div
+                  key={instrument.nom}
+                  className="flex items-center justify-between gap-3 py-2"
+                  style={{
+                    borderTop: index === 0 ? 'none' : `1px solid ${C.line}`,
+                  }}
+                >
+                  <div className="min-w-0">
+                    <div
+                      className="text-xs font-semibold truncate"
+                      style={{ color: C.ink }}
+                    >
+                      {instrument.nom}
+                    </div>
+                    <div className="text-[9px]" style={{ color: C.sub }}>
+                      {instrument.secteur}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    {bloc.mode === 'variation' ? (
+                      <Pct v={instrument.variation} />
+                    ) : (
+                      <>
+                        <div
+                          className="text-xs font-semibold"
+                          style={{ color: C.ink, ...F_MONO }}
+                        >
+                          {fmtCompactMontant(instrument.volume)}
+                        </div>
+                        <div className="text-[9px]" style={{ color: C.sub }}>
+                          titres
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 flex items-center justify-between gap-3">
+          <div>
+            <Eyebrow>Cotation</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Principales valeurs · {snapshot.code}
+            </div>
+          </div>
+          <Badge tone="gold">
+            {snapshot.instruments.length} valeurs actives
+          </Badge>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1500 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Instrument</Th>
+                <Th>Secteur</Th>
+                <Th>Dernier cours</Th>
+                <Th>Var %</Th>
+                <Th>Bid</Th>
+                <Th>Ask</Th>
+                <Th>Plus bas</Th>
+                <Th>Plus haut</Th>
+                <Th>Volume</Th>
+                <Th>Transactions</Th>
+                <Th>Valeur échangée</Th>
+                <Th>Watchlist</Th>
+                <Th>Carnet d'ordres</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...snapshot.instruments]
+                .sort((a, b) => b.valeurEchangee - a.valeurEchangee)
+                .map((instrument, index) => (
+                  <tr
+                    key={instrument.nom}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: index % 2 ? '#FCFCFD' : '#fff',
+                    }}
+                  >
+                    <Td className="font-semibold whitespace-nowrap">
+                      {instrument.nom}
+                    </Td>
+                    <Td>{instrument.secteur}</Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmtPrice(instrument.cours)} {snapshot.devise}
+                    </Td>
+                    <Td>
+                      <Pct v={instrument.variation} />
+                    </Td>
+                    <Td mono>{fmtPrice(instrument.bid)}</Td>
+                    <Td mono>{fmtPrice(instrument.ask)}</Td>
+                    <Td mono>{fmtPrice(instrument.coursMin)}</Td>
+                    <Td mono>{fmtPrice(instrument.coursMax)}</Td>
+                    <Td mono>{fmt(instrument.volume)}</Td>
+                    <Td mono>{fmt(instrument.transactions)}</Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmtCompactMontant(instrument.valeurEchangee)}{' '}
+                      {snapshot.devise}
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        disabled={watchlistTitles.includes(instrument.nom)}
+                        onClick={() => ajouterWatchlist(instrument)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+                        style={{
+                          background: watchlistTitles.includes(instrument.nom)
+                            ? '#E4F5EF'
+                            : '#FBF1DD',
+                          color: watchlistTitles.includes(instrument.nom)
+                            ? C.teal
+                            : '#8A6A16',
+                          cursor: watchlistTitles.includes(instrument.nom)
+                            ? 'default'
+                            : 'pointer',
+                        }}
+                      >
+                        <Star
+                          size={13}
+                          fill={
+                            watchlistTitles.includes(instrument.nom)
+                              ? 'currentColor'
+                              : 'none'
+                          }
+                        />
+                        {watchlistTitles.includes(instrument.nom)
+                          ? 'Ajouté'
+                          : 'Add Watch'}
+                      </button>
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => ouvrirProfondeur(instrument)}
+                        className="text-xs font-semibold whitespace-nowrap"
+                        style={{ color: C.indigo }}
+                      >
+                        Voir profondeur →
+                      </button>
+                    </Td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div
+        className="text-[10px] p-3 rounded-xl"
+        style={{ background: '#FBF7EE', color: C.sub, ...F_BODY }}
+      >
+        <b style={{ color: C.ink }}>Important :</b> cette vue est une simulation
+        destinée à rendre la maquette active. Les cours, indices, volumes,
+        capitalisations, transactions, bid/ask et mouvements intrajournaliers
+        sont générés localement et ne doivent pas être interprétés comme des
+        données officielles de la BRVM, de la NGX ou de la GSE.
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------- ESPACE CLIENT — GESTION LIBRE ---------------------- */
 /*
  * Données de démonstration : un même investisseur consolide ici plusieurs
@@ -1168,8 +2194,13 @@ const CLIENT_NAV = [
     icon: Briefcase,
   },
   {
+    id: 'client-exchanges',
+    label: 'Marchés Actions',
+    icon: Activity,
+  },
+  {
     id: 'client-markets',
-    label: 'Vues  des Marchés',
+    label: 'Marché des obligations',
     icon: Building2,
   },
   { id: 'client-watchlist', label: 'Watchlist', icon: Star },
@@ -1180,8 +2211,8 @@ const CLIENT_NAV = [
   { id: 'client-analysis', label: 'Performance & risque', icon: Activity },
 ];
 
-const clientMarket = (instrument) =>
-  MARKETS_DATA.find((item) => item.nom === instrument);
+const clientMarket = (instrument, marcheHint) =>
+  resolveMarketInstrument(instrument, marcheHint);
 
 const clientPortfolioValue = (portefeuille) =>
   portefeuille.compteEspeces +
@@ -1867,7 +2898,7 @@ const DEFAULT_STATIC_WATCHLIST_TITLES = WATCHLIST_STATIQUE.map((r) => r.titre);
 
 const buildStaticWatchlistRow = (titre) => {
   const reco = RECOS.find((r) => r.titre === titre);
-  const market = MARKETS_DATA.find((m) => m.nom === titre);
+  const market = clientMarket(titre);
 
   if (reco) {
     return {
@@ -1886,7 +2917,9 @@ const buildStaticWatchlistRow = (titre) => {
     marche: market.marche,
     devise: market.devise,
     cours: market.cours,
-    secteur: market.type === 'Obligation' ? 'Obligations' : 'Non renseigné',
+    secteur:
+      market.secteur ||
+      (market.type === 'Obligation' ? 'Obligations' : 'Non renseigné'),
     fondamentale: {
       per: null,
       rentabilite: 'N/D',
@@ -2216,7 +3249,8 @@ const NAV = [
   { id: 'money-management', label: 'Money Management', icon: Droplets },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
-  { id: 'marches', label: 'Marchés (Actions & Obligations)', icon: Building2 },
+  { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
+  { id: 'marches', label: 'Marché des obligations', icon: Building2 },
   { id: 'watchlist', label: 'Watchlist', icon: Star },
   { id: 'recos-actions', label: 'Recommandations actions', icon: TrendingUp },
   { id: 'reco-alloc', label: "Reco. d'allocation", icon: SlidersHorizontal },
@@ -2402,7 +3436,8 @@ const BREADCRUMB_ROUTES = {
   'Money Management': 'money-management',
   "Carnet d'ordres": 'carnet',
   "Avis d'opéré": 'avis',
-  'Marchés (Actions & Obligations)': 'marches',
+  'Marchés Actions': 'vue-boursiere',
+  'Marché des obligations': 'marches',
   Marchés: 'marches',
   Watchlist: 'watchlist',
   'Recommandations actions': 'recos-actions',
@@ -2730,7 +3765,7 @@ function Accueil({
       <Breadcrumb items={['Accueil']} />
 
       <MarketTicker
-        onViewAll={() => go('marches')}
+        onViewAll={() => go('vue-boursiere')}
         onInstrumentClick={(m) =>
           go('profondeur', { marche: m.marche, instrument: m.nom })
         }
@@ -4810,234 +5845,112 @@ function Avis() {
 }
 
 function Marches({ go, watchlistTitles, onAddWatch }) {
-  const [tab, setTab] = useState('Action');
   const [marche, setMarche] = useState('Tous');
   const [showMarketFilters, setShowMarketFilters] = useState(true);
-
-  const defaultMarketFilters = {
+  const [filters, setFilters] = useState({
     recherche: '',
-    secteur: 'Tous',
     volumeMin: '',
     variationMin: '',
     variationMax: '',
     coursMin: '',
     coursMax: '',
     statutWatchlist: 'Tous',
-    mm: 'Tous',
-    macd: 'Tous',
-    rsiMin: '0',
-    rsiMax: '100',
-    bol: 'Tous',
-    signalTechnique: 'Tous',
-    perMax: '',
-    rentabiliteMin: '',
-    evolMin: '',
-    valorisation: 'Tous',
-    signalFondamental: 'Tous',
-  };
-  const [marketFilters, setMarketFilters] = useState(defaultMarketFilters);
-
-  const mmDirection = (mm) =>
-    mm.includes('>') ? 'Haussière' : mm.includes('<') ? 'Baissière' : 'Neutre';
-
-  const marketUniverse = MARKETS_DATA.filter(
-    (m) => m.type === tab && (marche === 'Tous' || m.marche === marche)
-  ).map((m) => {
-    const reco = RECOS.find((r) => r.titre === m.nom);
-    return {
-      ...m,
-      reco,
-      secteur:
-        reco?.secteur ||
-        (m.type === 'Obligation' ? 'Obligations' : 'Non renseigné'),
-    };
   });
 
-  const secteurs = ['Tous', ...new Set(marketUniverse.map((m) => m.secteur))];
-  const macdOptions = [
-    'Tous',
-    ...new Set(
-      marketUniverse.map((m) => m.reco?.technique.macd).filter(Boolean)
-    ),
-  ];
-  const bolOptions = [
-    'Tous',
-    ...new Set(
-      marketUniverse.map((m) => m.reco?.technique.bol).filter(Boolean)
-    ),
-  ];
-  const signauxTechniques = [
-    'Tous',
-    ...new Set(
-      marketUniverse.map((m) => m.reco?.technique.signal).filter(Boolean)
-    ),
-  ];
-  const valorisations = [
-    'Tous',
-    ...new Set(
-      marketUniverse.map((m) => m.reco?.fondamentale.valo).filter(Boolean)
-    ),
-  ];
-  const signauxFondamentaux = [
-    'Tous',
-    ...new Set(
-      marketUniverse.map((m) => m.reco?.fondamentale.signal).filter(Boolean)
-    ),
-  ];
+  const obligations = MARKETS_DATA.filter(
+    (item) =>
+      item.type === 'Obligation' &&
+      (marche === 'Tous' || item.marche === marche)
+  );
 
-  const rows = marketUniverse.filter((m) => {
-    const reco = m.reco;
+  const rows = obligations.filter((item) => {
     const volumeMin =
-      marketFilters.volumeMin === '' ? null : Number(marketFilters.volumeMin);
+      filters.volumeMin === '' ? null : Number(filters.volumeMin);
     const variationMin =
-      marketFilters.variationMin === ''
-        ? null
-        : Number(marketFilters.variationMin);
+      filters.variationMin === '' ? null : Number(filters.variationMin);
     const variationMax =
-      marketFilters.variationMax === ''
-        ? null
-        : Number(marketFilters.variationMax);
-    const coursMin =
-      marketFilters.coursMin === '' ? null : Number(marketFilters.coursMin);
-    const coursMax =
-      marketFilters.coursMax === '' ? null : Number(marketFilters.coursMax);
-    const perMax =
-      marketFilters.perMax === '' ? null : Number(marketFilters.perMax);
-    const rentabiliteMin =
-      marketFilters.rentabiliteMin === ''
-        ? null
-        : Number(marketFilters.rentabiliteMin);
-    const evolMin =
-      marketFilters.evolMin === '' ? null : Number(marketFilters.evolMin);
-    const rsiMin = Number(marketFilters.rsiMin || 0);
-    const rsiMax = Number(marketFilters.rsiMax || 100);
-    const estAjoute = watchlistTitles.includes(m.nom);
+      filters.variationMax === '' ? null : Number(filters.variationMax);
+    const coursMin = filters.coursMin === '' ? null : Number(filters.coursMin);
+    const coursMax = filters.coursMax === '' ? null : Number(filters.coursMax);
+    const suivi = watchlistTitles.includes(item.nom);
 
     return (
-      m.nom.toLowerCase().includes(marketFilters.recherche.toLowerCase()) &&
-      (marketFilters.secteur === 'Tous' ||
-        m.secteur === marketFilters.secteur) &&
-      (volumeMin === null || m.volumeJour >= volumeMin) &&
-      (variationMin === null || m.variation >= variationMin) &&
-      (variationMax === null || m.variation <= variationMax) &&
-      (coursMin === null || m.cours >= coursMin) &&
-      (coursMax === null || m.cours <= coursMax) &&
-      (marketFilters.statutWatchlist === 'Tous' ||
-        (marketFilters.statutWatchlist === 'Ajoutés' && estAjoute) ||
-        (marketFilters.statutWatchlist === 'Non ajoutés' && !estAjoute)) &&
-      (marketFilters.mm === 'Tous' ||
-        (reco && mmDirection(reco.technique.mm) === marketFilters.mm)) &&
-      (marketFilters.macd === 'Tous' ||
-        (reco && reco.technique.macd === marketFilters.macd)) &&
-      (marketFilters.rsiMin === '' ||
-        marketFilters.rsiMin === '0' ||
-        (reco && reco.technique.rsi >= rsiMin)) &&
-      (marketFilters.rsiMax === '' ||
-        marketFilters.rsiMax === '100' ||
-        (reco && reco.technique.rsi <= rsiMax)) &&
-      (marketFilters.bol === 'Tous' ||
-        (reco && reco.technique.bol === marketFilters.bol)) &&
-      (marketFilters.signalTechnique === 'Tous' ||
-        (reco && reco.technique.signal === marketFilters.signalTechnique)) &&
-      (perMax === null || (reco && reco.fondamentale.per <= perMax)) &&
-      (rentabiliteMin === null ||
-        (reco &&
-          parsePctNumber(reco.fondamentale.rentabilite) >= rentabiliteMin)) &&
-      (evolMin === null ||
-        (reco && parsePctNumber(reco.fondamentale.evol) >= evolMin)) &&
-      (marketFilters.valorisation === 'Tous' ||
-        (reco && reco.fondamentale.valo === marketFilters.valorisation)) &&
-      (marketFilters.signalFondamental === 'Tous' ||
-        (reco && reco.fondamentale.signal === marketFilters.signalFondamental))
+      item.nom.toLowerCase().includes(filters.recherche.toLowerCase()) &&
+      (volumeMin === null || item.volumeJour >= volumeMin) &&
+      (variationMin === null || item.variation >= variationMin) &&
+      (variationMax === null || item.variation <= variationMax) &&
+      (coursMin === null || item.cours >= coursMin) &&
+      (coursMax === null || item.cours <= coursMax) &&
+      (filters.statutWatchlist === 'Tous' ||
+        (filters.statutWatchlist === 'Ajoutés' && suivi) ||
+        (filters.statutWatchlist === 'Non ajoutés' && !suivi))
     );
   });
 
-  const activeMarketFilterCount = Object.entries(marketFilters).filter(
-    ([key, value]) => {
-      if (
-        [
-          'secteur',
-          'statutWatchlist',
-          'mm',
-          'macd',
-          'bol',
-          'signalTechnique',
-          'valorisation',
-          'signalFondamental',
-        ].includes(key)
-      ) {
-        return value !== 'Tous';
-      }
-      if (key === 'rsiMin') return value !== '' && value !== '0';
-      if (key === 'rsiMax') return value !== '' && value !== '100';
-      return value !== '';
-    }
-  ).length;
+  const filtresActifs =
+    Number(Boolean(filters.recherche.trim())) +
+    Number(filters.volumeMin !== '') +
+    Number(filters.variationMin !== '') +
+    Number(filters.variationMax !== '') +
+    Number(filters.coursMin !== '') +
+    Number(filters.coursMax !== '') +
+    Number(filters.statutWatchlist !== 'Tous');
 
-  const updateMarketFilter = (key, value) =>
-    setMarketFilters((current) => ({ ...current, [key]: value }));
+  const updateFilter = (key, value) =>
+    setFilters((current) => ({ ...current, [key]: value }));
+
+  const resetFilters = () =>
+    setFilters({
+      recherche: '',
+      volumeMin: '',
+      variationMin: '',
+      variationMax: '',
+      coursMin: '',
+      coursMax: '',
+      statutWatchlist: 'Tous',
+    });
 
   return (
     <div className="space-y-4">
-      <Breadcrumb items={['Accueil', 'Marchés (Actions & Obligations)']} />
+      <Breadcrumb items={['Accueil', 'Marché des obligations']} />
 
-      <div>
-        <h2
-          className="text-xl font-bold"
-          style={{ ...F_DISPLAY, color: C.ink }}
-        >
-          Vues des Marchés
-        </h2>
-        <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
-          Données intrajournalières enrichies et filtrage automatique selon les
-          informations de marché, les indicateurs techniques et les critères
-          fondamentaux disponibles.
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Fixed Income · marché secondaire</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Marché des obligations
+          </h2>
+          <div
+            className="text-xs mt-1 max-w-3xl"
+            style={{ color: C.sub, ...F_BODY }}
+          >
+            Cet onglet est désormais exclusivement consacré aux obligations.
+            Consultez les cours, rendements indicatifs, volumes, maturités,
+            ajoutez un titre à la watchlist et ouvrez sa profondeur de marché.
+          </div>
         </div>
+        <Badge tone="gold">{rows.length} obligation(s)</Badge>
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-1.5">
-          {['Action', 'Obligation'].map((t) => (
+          {['Tous', 'BRVM', 'NGX', 'GSE'].map((code) => (
             <button
-              key={t}
-              onClick={() => {
-                setTab(t);
-                setMarketFilters(defaultMarketFilters);
-              }}
-              className="px-3.5 py-1.5 rounded-full text-xs font-semibold"
+              key={code}
+              type="button"
+              onClick={() => setMarche(code)}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold"
               style={{
-                background: tab === t ? C.navy : '#F0F1F5',
-                color: tab === t ? '#fff' : C.sub,
+                background: marche === code ? C.navy : '#F0F1F5',
+                color: marche === code ? '#fff' : C.sub,
               }}
             >
-              {t === 'Action' ? 'Actions' : 'Obligations'}
+              {code}
             </button>
           ))}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex gap-1.5">
-            {['Tous', 'BRVM', 'NGX', 'GSE'].map((m) => (
-              <button
-                key={m}
-                onClick={() => {
-                  setMarche(m);
-                  setMarketFilters(defaultMarketFilters);
-                }}
-                className="px-3 py-1 rounded-full text-xs font-semibold"
-                style={{
-                  background: marche === m ? C.navy : '#F0F1F5',
-                  color: marche === m ? '#fff' : C.sub,
-                }}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
-          <Badge tone="gold">{rows.length} instrument(s)</Badge>
-          <Badge tone={activeMarketFilterCount > 0 ? 'teal' : 'slate'}>
-            {activeMarketFilterCount} filtre(s) actif(s)
-          </Badge>
         </div>
       </div>
 
@@ -5046,18 +5959,21 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
           <div className="flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold" style={{ color: C.ink }}>
-                Filtres automatiques — application instantanée
+                Filtres obligataires — application instantanée
               </div>
               <div className="text-[11px] mt-0.5" style={{ color: C.sub }}>
-                Marché : cours, volume, variation et watchlist. Analyse :
-                indicateurs techniques et fondamentaux disponibles.
+                Filtrez par instrument, volume, variation, niveau de cours et
+                statut dans la watchlist.
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {activeMarketFilterCount > 0 && (
+              <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>
+                {filtresActifs} filtre(s)
+              </Badge>
+              {filtresActifs > 0 && (
                 <button
                   type="button"
-                  onClick={() => setMarketFilters(defaultMarketFilters)}
+                  onClick={resetFilters}
                   className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
                   style={{
                     borderColor: C.line,
@@ -5087,378 +6003,130 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
 
           {showMarketFilters && (
             <div
-              className="mt-4 p-4 rounded-xl border"
+              className="mt-4 grid grid-cols-4 gap-3 p-4 rounded-xl border"
               style={{ borderColor: '#D8DFEF', background: '#fff' }}
             >
-              <div className="grid grid-cols-5 gap-3">
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Instrument
-                  </label>
-                  <input
-                    type="text"
-                    value={marketFilters.recherche}
-                    onChange={(e) =>
-                      updateMarketFilter('recherche', e.target.value)
-                    }
-                    placeholder="Rechercher…"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Secteur
-                  </label>
-                  <select
-                    value={marketFilters.secteur}
-                    onChange={(e) =>
-                      updateMarketFilter('secteur', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {secteurs.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Volume minimum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={marketFilters.volumeMin}
-                    onChange={(e) =>
-                      updateMarketFilter('volumeMin', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Var. minimum (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={marketFilters.variationMin}
-                    onChange={(e) =>
-                      updateMarketFilter('variationMin', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Var. maximum (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={marketFilters.variationMax}
-                    onChange={(e) =>
-                      updateMarketFilter('variationMax', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Cours minimum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={marketFilters.coursMin}
-                    onChange={(e) =>
-                      updateMarketFilter('coursMin', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Cours maximum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={marketFilters.coursMax}
-                    onChange={(e) =>
-                      updateMarketFilter('coursMax', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Statut watchlist
-                  </label>
-                  <select
-                    value={marketFilters.statutWatchlist}
-                    onChange={(e) =>
-                      updateMarketFilter('statutWatchlist', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {['Tous', 'Ajoutés', 'Non ajoutés'].map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    MM
-                  </label>
-                  <select
-                    value={marketFilters.mm}
-                    onChange={(e) => updateMarketFilter('mm', e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {['Tous', 'Haussière', 'Neutre', 'Baissière'].map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    MACD
-                  </label>
-                  <select
-                    value={marketFilters.macd}
-                    onChange={(e) => updateMarketFilter('macd', e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {macdOptions.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    RSI minimum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={marketFilters.rsiMin}
-                    onChange={(e) =>
-                      updateMarketFilter('rsiMin', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    RSI maximum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={marketFilters.rsiMax}
-                    onChange={(e) =>
-                      updateMarketFilter('rsiMax', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    BOL
-                  </label>
-                  <select
-                    value={marketFilters.bol}
-                    onChange={(e) => updateMarketFilter('bol', e.target.value)}
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {bolOptions.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Signal technique
-                  </label>
-                  <select
-                    value={marketFilters.signalTechnique}
-                    onChange={(e) =>
-                      updateMarketFilter('signalTechnique', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {signauxTechniques.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    PER maximum
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={marketFilters.perMax}
-                    onChange={(e) =>
-                      updateMarketFilter('perMax', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Rentabilité min. (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={marketFilters.rentabiliteMin}
-                    onChange={(e) =>
-                      updateMarketFilter('rentabiliteMin', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    EVOL minimum (%)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={marketFilters.evolMin}
-                    onChange={(e) =>
-                      updateMarketFilter('evolMin', e.target.value)
-                    }
-                    placeholder="Sans limite"
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line, ...F_MONO }}
-                  />
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Valorisation
-                  </label>
-                  <select
-                    value={marketFilters.valorisation}
-                    onChange={(e) =>
-                      updateMarketFilter('valorisation', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {valorisations.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label
-                    className="text-[11px] font-semibold block mb-1"
-                    style={{ color: C.sub }}
-                  >
-                    Signal fondamental
-                  </label>
-                  <select
-                    value={marketFilters.signalFondamental}
-                    onChange={(e) =>
-                      updateMarketFilter('signalFondamental', e.target.value)
-                    }
-                    className="w-full px-2.5 py-2 rounded-xl border text-xs"
-                    style={{ borderColor: C.line }}
-                  >
-                    {signauxFondamentaux.map((v) => (
-                      <option key={v}>{v}</option>
-                    ))}
-                  </select>
-                </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Instrument
+                </label>
+                <input
+                  value={filters.recherche}
+                  onChange={(e) => updateFilter('recherche', e.target.value)}
+                  placeholder="Rechercher une obligation…"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Volume minimum
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={filters.volumeMin}
+                  onChange={(e) => updateFilter('volumeMin', e.target.value)}
+                  placeholder="Sans limite"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, ...F_MONO }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Variation min. (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={filters.variationMin}
+                  onChange={(e) => updateFilter('variationMin', e.target.value)}
+                  placeholder="Sans limite"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, ...F_MONO }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Variation max. (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={filters.variationMax}
+                  onChange={(e) => updateFilter('variationMax', e.target.value)}
+                  placeholder="Sans limite"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, ...F_MONO }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Cours minimum
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={filters.coursMin}
+                  onChange={(e) => updateFilter('coursMin', e.target.value)}
+                  placeholder="Sans limite"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, ...F_MONO }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Cours maximum
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={filters.coursMax}
+                  onChange={(e) => updateFilter('coursMax', e.target.value)}
+                  placeholder="Sans limite"
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, ...F_MONO }}
+                />
+              </div>
+              <div>
+                <label
+                  className="text-[11px] font-semibold block mb-1"
+                  style={{ color: C.sub }}
+                >
+                  Statut watchlist
+                </label>
+                <select
+                  value={filters.statutWatchlist}
+                  onChange={(e) =>
+                    updateFilter('statutWatchlist', e.target.value)
+                  }
+                  className="w-full px-2.5 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                >
+                  {['Tous', 'Ajoutés', 'Non ajoutés'].map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
               </div>
             </div>
           )}
@@ -5467,124 +6135,111 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
 
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1480 }}>
+          <table className="w-full" style={{ minWidth: 1550 }}>
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>Instrument</Th>
+                <Th>Émetteur</Th>
                 <Th>Marché</Th>
                 <Th>Cours</Th>
+                <Th>Coupon</Th>
+                <Th>Rendement indicatif</Th>
+                <Th>Échéance</Th>
+                <Th>Duration</Th>
                 <Th>Volume</Th>
                 <Th>Var %</Th>
-                <Th>Var</Th>
-                <Th>Cours min</Th>
-                <Th>Cours max</Th>
+                <Th>Plus bas</Th>
+                <Th>Plus haut</Th>
                 <Th>Watchlist</Th>
-                <Th></Th>
+                <Th>Profondeur</Th>
               </tr>
             </thead>
-
             <tbody>
               {rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={14}
                     className="text-center py-8 text-sm"
                     style={{ color: C.sub }}
                   >
-                    Aucun instrument ne satisfait l'ensemble des filtres
-                    automatiques.
+                    Aucune obligation ne correspond aux filtres sélectionnés.
                   </td>
                 </tr>
               )}
-
-              {rows.map((m, i) => {
-                const dejaAjoute = watchlistTitles.includes(m.nom);
-                const cloturePrecedente =
-                  m.variation === -100
-                    ? m.cours
-                    : m.cours / (1 + m.variation / 100);
-                const variationMonetaire = m.cours - cloturePrecedente;
-                const variationPositive = variationMonetaire >= 0;
-
+              {rows.map((item, index) => {
+                const meta = BOND_MARKET_META[item.nom] || {};
+                const suivi = watchlistTitles.includes(item.nom);
                 return (
                   <tr
-                    key={m.nom}
+                    key={item.nom}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: i % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? '#FCFCFD' : '#fff',
                     }}
                   >
-                    <Td className="font-semibold whitespace-nowrap">{m.nom}</Td>
-
+                    <Td className="font-semibold whitespace-nowrap">
+                      {item.nom}
+                    </Td>
+                    <Td>{meta.emetteur || '—'}</Td>
                     <Td>
-                      <Badge tone="navy">{m.marche}</Badge>
+                      <Badge tone="navy">{item.marche}</Badge>
                     </Td>
-
                     <Td mono className="whitespace-nowrap">
-                      {fmtPrice(m.cours)} {m.devise}
+                      {fmtPrice(item.cours)} {item.devise}
                     </Td>
-
-                    <Td mono className="whitespace-nowrap">
-                      {fmt(m.volumeJour)}
+                    <Td mono>
+                      {meta.coupon != null ? `${meta.coupon.toFixed(2)}%` : '—'}
                     </Td>
-
+                    <Td mono>
+                      {meta.rendement != null
+                        ? `${meta.rendement.toFixed(2)}%`
+                        : '—'}
+                    </Td>
+                    <Td mono>{meta.echeance || '—'}</Td>
+                    <Td mono>
+                      {meta.duration != null
+                        ? `${meta.duration.toFixed(1)} an(s)`
+                        : '—'}
+                    </Td>
+                    <Td mono>{fmt(item.volumeJour)}</Td>
                     <Td>
-                      <Pct v={m.variation} />
+                      <Pct v={item.variation} />
                     </Td>
-
-                    <Td mono className="whitespace-nowrap">
-                      <span
-                        style={{
-                          color: variationPositive ? C.teal : C.coral,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {variationPositive ? '+' : ''}
-                        {fmtPrice(variationMonetaire)} {m.devise}
-                      </span>
-                    </Td>
-
-                    <Td mono className="whitespace-nowrap">
-                      {fmtPrice(m.coursMin)} {m.devise}
-                    </Td>
-
-                    <Td mono className="whitespace-nowrap">
-                      {fmtPrice(m.coursMax)} {m.devise}
-                    </Td>
-
+                    <Td mono>{fmtPrice(item.coursMin)}</Td>
+                    <Td mono>{fmtPrice(item.coursMax)}</Td>
                     <Td>
                       <button
                         type="button"
-                        disabled={dejaAjoute}
-                        onClick={() => onAddWatch(m.nom)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
+                        disabled={suivi}
+                        onClick={() => !suivi && onAddWatch(item.nom)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
                         style={{
-                          background: dejaAjoute ? '#EEF0F4' : '#FBF1DD',
-                          color: dejaAjoute ? C.sub : '#8A6A16',
-                          cursor: dejaAjoute ? 'default' : 'pointer',
-                          opacity: dejaAjoute ? 0.75 : 1,
+                          background: suivi ? '#E4F5EF' : '#FBF1DD',
+                          color: suivi ? C.teal : '#8A6A16',
+                          cursor: suivi ? 'default' : 'pointer',
                         }}
                       >
                         <Star
                           size={13}
-                          fill={dejaAjoute ? 'currentColor' : 'none'}
+                          fill={suivi ? 'currentColor' : 'none'}
                         />
-                        {dejaAjoute ? 'Ajouté' : 'Add Watch'}
+                        {suivi ? 'Ajouté' : 'Add Watch'}
                       </button>
                     </Td>
-
                     <Td>
                       <button
+                        type="button"
                         onClick={() =>
                           go('profondeur', {
-                            marche: m.marche,
-                            instrument: m.nom,
+                            marche: item.marche,
+                            instrument: item.nom,
+                            source: 'obligations',
                           })
                         }
                         className="text-xs font-semibold whitespace-nowrap"
-                        style={{ color: C.navy }}
+                        style={{ color: C.indigo }}
                       >
-                        Profondeur de marché →
+                        Voir profondeur →
                       </button>
                     </Td>
                   </tr>
@@ -5594,13 +6249,19 @@ function Marches({ go, watchlistTitles, onAddWatch }) {
           </table>
         </div>
       </Card>
+
+      <div className="text-[10px]" style={{ color: C.sub, ...F_BODY }}>
+        Les rendements, coupons, durations et profondeurs présentés dans cette
+        maquette sont des données de démonstration. L'onglet ne présente plus
+        d'actions ; celles-ci sont accessibles depuis « Marchés Actions ».
+      </div>
     </div>
   );
 }
 
 function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
   const m =
-    MARKETS_DATA.find((x) => x.nom === ctx?.instrument) || MARKETS_DATA[0];
+    resolveMarketInstrument(ctx?.instrument, ctx?.marche) || MARKETS_DATA[0];
   const { asks, bids } = orderBookDemo(m);
   const execs = executionsDemo(m);
   const espaceClient = mode === 'client';
@@ -5614,10 +6275,25 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
     <div className="space-y-4">
       {espaceClient ? (
         <ClientBreadcrumb
-          items={['Espace Client', 'Marchés & investir', 'Profondeur', m.nom]}
+          items={[
+            'Espace Client',
+            ctx?.source === 'vue-boursiere'
+              ? 'Marchés Actions'
+              : 'Marché des obligations',
+            'Profondeur',
+            m.nom,
+          ]}
         />
       ) : (
-        <Breadcrumb items={['Accueil', 'Marchés', m.nom]} />
+        <Breadcrumb
+          items={[
+            'Accueil',
+            ctx?.source === 'vue-boursiere'
+              ? 'Marchés Actions'
+              : 'Marché des obligations',
+            m.nom,
+          ]}
+        />
       )}
 
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -5644,8 +6320,17 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
 
         {espaceClient ? (
           <div className="flex items-center gap-2 flex-wrap">
-            <Btn tone="ghost" onClick={() => goClient?.('client-invest')}>
-              Retour aux marchés
+            <Btn
+              tone="ghost"
+              onClick={() =>
+                goClient?.(
+                  ctx?.source === 'vue-boursiere'
+                    ? 'client-exchanges'
+                    : 'client-markets'
+                )
+              }
+            >
+              Retour au marché
             </Btn>
             <Btn
               onClick={() =>
@@ -5982,11 +6667,12 @@ function Watchlist({ go, watchlistTitles, onRemoveWatch }) {
           <div>
             <Eyebrow>Watchlist statique — conviction fondamentale</Eyebrow>
             <div className="text-sm font-semibold" style={{ color: C.ink }}>
-              Valeurs ajoutées depuis « Marchés — Actions &amp; Obligations »
+              Valeurs ajoutées depuis la Vue des bourses ou le marché
+              obligataire
             </div>
             <div className="text-xs mt-1" style={{ color: C.sub }}>
-              Utilisez le bouton « Add Watch » sur la page Marchés pour ajouter
-              une valeur, puis supprimez-la directement dans ce tableau.
+              Utilisez « Add Watch » depuis la Vu Marchés Actions ou le marché
+              obligataire, puis supprimez la valeur directement ici.
             </div>
           </div>
           <Badge tone="gold">{staticRows.length} valeur(s)</Badge>
@@ -12293,7 +12979,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       <ClientBreadcrumb items={['Espace Client', 'Vue consolidée']} />
 
       <MarketTicker
-        onViewAll={() => goClient('client-markets')}
+        onViewAll={() => goClient('client-exchanges')}
         onInstrumentClick={(m) =>
           goClient('client-market-depth', {
             instrument: m.nom,
@@ -12881,9 +13567,10 @@ function ClientPortfolios({ devise, orders }) {
 }
 
 function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
-  const instrumentInitial = clientMarket(initialInstrument) || MARKETS_DATA[0];
+  const instrumentInitial =
+    clientMarket(initialInstrument) || CLIENT_TRADABLE_MARKETS[0];
   const [instrument, setInstrument] = useState(instrumentInitial.nom);
-  const marche = clientMarket(instrument) || MARKETS_DATA[0];
+  const marche = clientMarket(instrument) || CLIENT_TRADABLE_MARKETS[0];
   const portefeuillesEligibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
     (portefeuille) => portefeuille.marche === marche.marche
   );
@@ -12991,7 +13678,7 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
               </tr>
             </thead>
             <tbody>
-              {MARKETS_DATA.map((item) => {
+              {CLIENT_TRADABLE_MARKETS.map((item) => {
                 const pfsCompatibles =
                   CLIENT_GESTION_LIBRE.portefeuilles.filter(
                     (portefeuille) => portefeuille.marche === item.marche
@@ -13034,6 +13721,10 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
                             goClient('client-market-depth', {
                               instrument: item.nom,
                               marche: item.marche,
+                              source:
+                                item.type === 'Obligation'
+                                  ? 'obligations'
+                                  : 'vue-boursiere',
                             })
                           }
                           className="text-xs font-semibold whitespace-nowrap"
@@ -13073,7 +13764,7 @@ function ClientInvest({ goClient, onCreateOrder, orders, initialInstrument }) {
             className="w-full mb-3 px-3 py-2 rounded-xl border text-sm"
             style={{ borderColor: C.line }}
           >
-            {MARKETS_DATA.map((item) => (
+            {CLIENT_TRADABLE_MARKETS.map((item) => (
               <option key={item.nom}>{item.nom}</option>
             ))}
           </select>
@@ -13245,144 +13936,83 @@ function ClientMarkets({
   onAddWatch,
   onRemoveWatch,
 }) {
-  const [typeActif, setTypeActif] = useState('Action');
   const [marche, setMarche] = useState('Tous');
   const [recherche, setRecherche] = useState('');
-  const [secteur, setSecteur] = useState('Tous');
 
-  const univers = MARKETS_DATA.filter(
+  const rows = MARKETS_DATA.filter(
     (item) =>
-      item.type === typeActif && (marche === 'Tous' || item.marche === marche)
-  ).map((item) => ({ ...item, secteur: clientSector(item.nom) }));
-
-  const secteurs = ['Tous', ...new Set(univers.map((item) => item.secteur))];
-  const rows = univers.filter(
-    (item) =>
-      item.nom.toLowerCase().includes(recherche.toLowerCase()) &&
-      (secteur === 'Tous' || item.secteur === secteur)
+      item.type === 'Obligation' &&
+      (marche === 'Tous' || item.marche === marche) &&
+      item.nom.toLowerCase().includes(recherche.toLowerCase())
   );
-
-  const changerType = (value) => {
-    setTypeActif(value);
-    setSecteur('Tous');
-  };
-  const changerMarche = (value) => {
-    setMarche(value);
-    setSecteur('Tous');
-  };
 
   return (
     <div className="space-y-5">
-      <ClientBreadcrumb items={['Espace Client', 'Vues  des Marchés']} />
+      <ClientBreadcrumb items={['Espace Client', 'Marché des obligations']} />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
+          <Eyebrow>Fixed Income · Gestion libre</Eyebrow>
           <h2
             className="text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Vues des Marchés
+            Marché des obligations
           </h2>
-          <div className="text-xs mt-1" style={{ color: C.sub }}>
-            Consultez les instruments accessibles via vos SGI, ajoutez-les à
-            votre watchlist personnelle, ouvrez la profondeur de marché ou
-            préparez un ordre.
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Cet espace est désormais exclusivement obligataire. Consultez les
+            titres accessibles via vos SGI, ajoutez-les à votre watchlist,
+            ouvrez la profondeur ou préparez un ordre.
           </div>
         </div>
-        <Badge tone="gold">{rows.length} instrument(s)</Badge>
+        <Badge tone="gold">{rows.length} obligation(s)</Badge>
       </div>
 
       <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
         <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div className="flex items-end gap-4 flex-wrap">
-            <div>
-              <div
-                className="text-[10px] uppercase font-semibold mb-1"
-                style={{ color: C.sub }}
-              >
-                Type d'actif
-              </div>
-              <div className="flex gap-1.5">
-                {['Action', 'Obligation'].map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => changerType(type)}
-                    className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                    style={{
-                      background: typeActif === type ? C.navy : '#F0F1F5',
-                      color: typeActif === type ? '#fff' : C.sub,
-                    }}
-                  >
-                    {type === 'Action' ? 'Actions' : 'Obligations'}
-                  </button>
-                ))}
-              </div>
+          <div>
+            <div
+              className="text-[10px] uppercase font-semibold mb-1"
+              style={{ color: C.sub }}
+            >
+              Marché
             </div>
-            <div>
-              <div
-                className="text-[10px] uppercase font-semibold mb-1"
-                style={{ color: C.sub }}
-              >
-                Marché
-              </div>
-              <div className="flex gap-1.5">
-                {['Tous', 'BRVM', 'NGX', 'GSE'].map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => changerMarche(code)}
-                    className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                    style={{
-                      background: marche === code ? C.navy : '#F0F1F5',
-                      color: marche === code ? '#fff' : C.sub,
-                    }}
-                  >
-                    {code}
-                  </button>
-                ))}
-              </div>
+            <div className="flex gap-1.5">
+              {['Tous', 'BRVM', 'NGX', 'GSE'].map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setMarche(code)}
+                  className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                  style={{
+                    background: marche === code ? C.navy : '#F0F1F5',
+                    color: marche === code ? '#fff' : C.sub,
+                  }}
+                >
+                  {code}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 min-w-[390px]">
-            <div>
-              <label
-                className="text-[10px] uppercase font-semibold block mb-1"
-                style={{ color: C.sub }}
-              >
-                Secteur
-              </label>
-              <select
-                value={secteur}
-                onChange={(e) => setSecteur(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border text-xs"
-                style={{ borderColor: C.line, background: '#fff' }}
-              >
-                {secteurs.map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className="text-[10px] uppercase font-semibold block mb-1"
-                style={{ color: C.sub }}
-              >
-                Instrument
-              </label>
-              <div
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-                style={{ borderColor: C.line }}
-              >
-                <Search size={13} color={C.sub} />
-                <input
-                  value={recherche}
-                  onChange={(e) => setRecherche(e.target.value)}
-                  placeholder="Rechercher…"
-                  className="w-full text-xs outline-none"
-                />
-              </div>
+          <div className="min-w-[320px]">
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Obligation
+            </label>
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <Search size={13} color={C.sub} />
+              <input
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+                placeholder="Rechercher une obligation…"
+                className="w-full text-xs outline-none"
+              />
             </div>
           </div>
         </div>
@@ -13390,17 +14020,19 @@ function ClientMarkets({
 
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1450 }}>
+          <table className="w-full" style={{ minWidth: 1650 }}>
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>Instrument</Th>
-                <Th>Secteur</Th>
+                <Th>Émetteur</Th>
                 <Th>Marché</Th>
                 <Th>Cours</Th>
+                <Th>Coupon</Th>
+                <Th>Rendement indicatif</Th>
+                <Th>Échéance</Th>
+                <Th>Duration</Th>
                 <Th>Volume jour</Th>
                 <Th>Var %</Th>
-                <Th>Cours min</Th>
-                <Th>Cours max</Th>
                 <Th>SGI accessibles</Th>
                 <Th>Watchlist</Th>
                 <Th>Actions</Th>
@@ -13410,19 +14042,21 @@ function ClientMarkets({
               {rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={13}
                     className="text-center py-8 text-sm"
                     style={{ color: C.sub }}
                   >
-                    Aucun instrument ne correspond aux filtres sélectionnés.
+                    Aucune obligation ne correspond aux filtres sélectionnés.
                   </td>
                 </tr>
               )}
               {rows.map((item, index) => {
+                const meta = BOND_MARKET_META[item.nom] || {};
                 const compatibles = CLIENT_GESTION_LIBRE.portefeuilles.filter(
                   (pf) => pf.marche === item.marche
                 );
                 const suivi = watchlistTitles.includes(item.nom);
+
                 return (
                   <tr
                     key={item.nom}
@@ -13434,22 +14068,30 @@ function ClientMarkets({
                     <Td className="font-semibold whitespace-nowrap">
                       {item.nom}
                     </Td>
-                    <Td>{item.secteur}</Td>
+                    <Td>{meta.emetteur || '—'}</Td>
                     <Td>
                       <Badge tone="navy">{item.marche}</Badge>
                     </Td>
                     <Td mono className="whitespace-nowrap">
                       {fmtPrice(item.cours)} {item.devise}
                     </Td>
+                    <Td mono>
+                      {meta.coupon != null ? `${meta.coupon.toFixed(2)}%` : '—'}
+                    </Td>
+                    <Td mono>
+                      {meta.rendement != null
+                        ? `${meta.rendement.toFixed(2)}%`
+                        : '—'}
+                    </Td>
+                    <Td mono>{meta.echeance || '—'}</Td>
+                    <Td mono>
+                      {meta.duration != null
+                        ? `${meta.duration.toFixed(1)} an(s)`
+                        : '—'}
+                    </Td>
                     <Td mono>{fmt(item.volumeJour)}</Td>
                     <Td>
                       <Pct v={item.variation} />
-                    </Td>
-                    <Td mono>
-                      {fmtPrice(item.coursMin)} {item.devise}
-                    </Td>
-                    <Td mono>
-                      {fmtPrice(item.coursMax)} {item.devise}
                     </Td>
                     <Td>
                       <div className="font-semibold text-xs">
@@ -13489,6 +14131,7 @@ function ClientMarkets({
                             goClient('client-market-depth', {
                               instrument: item.nom,
                               marche: item.marche,
+                              source: 'obligations',
                             })
                           }
                           className="text-xs font-semibold"
@@ -13520,9 +14163,9 @@ function ClientMarkets({
       </Card>
 
       <div className="text-[10px]" style={{ color: C.sub }}>
-        Les cours et profondeurs sont des données de démonstration dans ce
-        prototype. L'accès à un instrument est déterminé par l'existence d'au
-        moins un compte SGI compatible avec son marché.
+        Les actions sont désormais consultées depuis « Vue des bourses Actions
+        ». Les cours, rendements et profondeurs obligataires restent des données
+        de démonstration dans ce prototype.
       </div>
     </div>
   );
@@ -13714,8 +14357,8 @@ function ClientWatchlist({
             disponibles sur les places accessibles via vos SGI.
           </div>
         </div>
-        <Btn tone="ghost" onClick={() => goClient('client-markets')}>
-          Ajouter depuis les marchés
+        <Btn tone="ghost" onClick={() => goClient('client-exchanges')}>
+          Ajouter depuis la vue des bourses
         </Btn>
       </div>
 
@@ -13730,9 +14373,9 @@ function ClientWatchlist({
               Votre sélection personnelle de titres à suivre dans la durée
             </div>
             <div className="text-xs mt-1" style={{ color: C.sub }}>
-              Elle est alimentée depuis « Marchés — Actions &amp; Obligations ».
-              Les titres restent enregistrés jusqu'à ce que vous décidiez de les
-              retirer.
+              Elle peut être alimentée directement depuis « Vue des bourses
+              Actions » ou depuis le marché obligataire. Les titres restent
+              enregistrés jusqu'à ce que vous décidiez de les retirer.
             </div>
           </div>
           <Badge tone="gold">{staticRows.length} valeur(s)</Badge>
@@ -17649,11 +18292,20 @@ export default function App() {
                   workspace === 'gestionnaire'
                     ? screen === n.id ||
                       (n.id === 'portefeuilles' && screen === 'client') ||
-                      (n.id === 'marches' && screen === 'profondeur') ||
+                      (n.id === 'vue-boursiere' &&
+                        screen === 'profondeur' &&
+                        ctx.source === 'vue-boursiere') ||
+                      (n.id === 'marches' &&
+                        screen === 'profondeur' &&
+                        ctx.source !== 'vue-boursiere') ||
                       (n.id === 'comite' && screen === 'decisions-comite')
                     : clientScreen === n.id ||
+                      (n.id === 'client-exchanges' &&
+                        clientScreen === 'client-market-depth' &&
+                        clientCtx.source === 'vue-boursiere') ||
                       (n.id === 'client-markets' &&
-                        clientScreen === 'client-market-depth');
+                        clientScreen === 'client-market-depth' &&
+                        clientCtx.source !== 'vue-boursiere');
                 return (
                   <button
                     key={n.id}
@@ -17741,6 +18393,14 @@ export default function App() {
                   <ProfondeurMarche ctx={ctx} go={go} />
                 )}
                 {screen === 'avis' && <Avis />}
+                {screen === 'vue-boursiere' && (
+                  <VueBourses
+                    mode="gestionnaire"
+                    go={go}
+                    watchlistTitles={watchlistTitles}
+                    onAddWatch={addToWatchlist}
+                  />
+                )}
                 {screen === 'marches' && (
                   <Marches
                     go={go}
@@ -17790,6 +18450,14 @@ export default function App() {
                 )}
                 {clientScreen === 'client-portfolios' && (
                   <ClientPortfolios devise={siteDevise} orders={clientOrders} />
+                )}
+                {clientScreen === 'client-exchanges' && (
+                  <VueBourses
+                    mode="client"
+                    goClient={goClient}
+                    watchlistTitles={clientWatchlistTitles}
+                    onAddWatch={addToClientWatchlist}
+                  />
                 )}
                 {clientScreen === 'client-markets' && (
                   <ClientMarkets
