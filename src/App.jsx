@@ -76,6 +76,824 @@ const fmtPrice = (n) =>
   }).format(Number(n));
 const toRef = (amount, devise) => Math.round(amount * FX[devise]);
 const convertCurrency = (amount, from, to) => (amount * FX[from]) / FX[to];
+
+/* -------------------- HISTORIQUE DE SITUATION DE LIQUIDITÉ -------------------- */
+const LIQUIDITY_HISTORY_MIN_DATE = '2025-09-01';
+
+const parseIsoLocalDate = (value) => {
+  const [year, month, day] = String(value || '')
+    .split('-')
+    .map(Number);
+  return new Date(year || 2026, Math.max(0, (month || 1) - 1), day || 1);
+};
+
+const formatIsoLocalDate = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    '0'
+  )}-${String(date.getDate()).padStart(2, '0')}`;
+
+const liquidityHistorySeed = (value) =>
+  String(value || '')
+    .split('')
+    .reduce(
+      (total, char, index) => total + char.charCodeAt(0) * (index + 1),
+      0
+    );
+
+const liquidityHistoryFactor = (key, dateSituation, dateReference) => {
+  const situation =
+    dateSituation instanceof Date
+      ? dateSituation
+      : parseIsoLocalDate(dateSituation);
+  const reference =
+    dateReference instanceof Date
+      ? dateReference
+      : parseIsoLocalDate(dateReference);
+  const daysBack = Math.max(0, (reference - situation) / 86_400_000);
+  if (daysBack < 0.5) return 1;
+
+  const monthsBack = daysBack / 30.4375;
+  const seed = liquidityHistorySeed(key);
+  const monthIndex = (date) => date.getFullYear() * 12 + date.getMonth();
+  const seasonal = (date) => {
+    const index = monthIndex(date);
+    return (
+      Math.sin((index + (seed % 17)) * 0.83) * 0.026 +
+      Math.cos((index + (seed % 11)) * 0.47) * 0.014 +
+      Math.sin((date.getDate() + (seed % 9)) * 0.22) * 0.006
+    );
+  };
+  const driftMonthly = 0.0045 + (seed % 6) * 0.0007;
+  const factor = Math.exp(
+    -driftMonthly * monthsBack + seasonal(situation) - seasonal(reference)
+  );
+  return Math.max(0.72, Math.min(1.18, factor));
+};
+
+const liquidityHistoricalAmount = (
+  amount,
+  key,
+  dateSituation,
+  dateReference,
+  sensitivity = 1
+) => {
+  const factor = liquidityHistoryFactor(key, dateSituation, dateReference);
+  const adjustedFactor = 1 + (factor - 1) * sensitivity;
+  return Math.max(0, Number(amount || 0) * adjustedFactor);
+};
+
+/* --------------------------- EXPORTS LIQUIDITÉ --------------------------- */
+/*
+ * Exports autonomes, sans dépendance externe :
+ * - PDF : rapport texte structuré réellement généré en .pdf côté navigateur.
+ * - Excel : classeur SpreadsheetML 2003 (.xls) avec 2 feuilles
+ *   "Synthèse" et "Rubriques 1-26", lisible nativement par Excel.
+ */
+const exportSafeFileName = (value) =>
+  String(value || 'export')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+    .slice(0, 80) || 'export';
+
+const exportDownloadBlob = (blob, fileName) => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+};
+
+const exportXmlEscape = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const exportFormatNumber = (value, digits = 2) =>
+  new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: digits,
+  }).format(Number(value || 0));
+
+const buildAnatomieExportPayload = ({
+  espace,
+  titulaire,
+  compte,
+  sgi,
+  pays,
+  marche,
+  profil,
+  statut,
+  devise,
+  liquiditeActuelle,
+  liquiditePrevisionnelle,
+  liquiditeBloquee,
+  autreLiquiditeAInvestir,
+  liquiditeDisponibleNette,
+  dateSituation,
+  dateDernierDepot,
+  montantDernierDepot,
+  origines = [],
+  affectations = [],
+  totalOrigines,
+  ecartActions,
+  ecartObligations,
+  montantCorrectionActions,
+  montantCorrectionObligations,
+  rendement,
+  ratioCible,
+  ratioPrevisionnel,
+}) => {
+  const totalOriginesCalcule =
+    Number(totalOrigines) ||
+    origines.reduce((somme, item) => somme + Number(item.montant || 0), 0);
+  const liquiditeActuelleNumerique = Number(liquiditeActuelle || 0);
+
+  const rowsOrigines = origines.map((item) => ({
+    numero: Number(item.numero),
+    section: 'Origines des fonds',
+    libelle: item.libelle,
+    detail: item.description || '',
+    responsable: item.responsable || '',
+    montant: Number(item.montant || 0),
+    devise,
+    indicateur:
+      totalOriginesCalcule > 0
+        ? `${((Number(item.montant || 0) / totalOriginesCalcule) * 100).toFixed(
+            1
+          )}%`
+        : '0,0%',
+  }));
+
+  const rowTotalOrigines = {
+    numero: 10,
+    section: 'Origines des fonds',
+    libelle: 'Total des origines de liquidité',
+    detail: 'Contrôle de cohérence des rubriques 1 à 9.',
+    responsable: 'Système',
+    montant: totalOriginesCalcule,
+    devise,
+    indicateur: totalOriginesCalcule > 0 ? '100,0%' : '0,0%',
+  };
+
+  const rowsAffectations = affectations.map((item) => ({
+    numero: Number(item.numero),
+    section: 'Affectations / blocages',
+    libelle: item.libelle,
+    detail: item.groupe || '',
+    responsable: item.responsable || '',
+    montant: Number(item.montant || 0),
+    devise,
+    indicateur:
+      liquiditeActuelleNumerique > 0
+        ? `${(
+            (Number(item.montant || 0) / liquiditeActuelleNumerique) *
+            100
+          ).toFixed(1)}%`
+        : '0,0%',
+  }));
+
+  const rowsProfil = [
+    {
+      numero: 22,
+      section: 'Écart allocation & rendement',
+      libelle: "Écart d'allocation — Actions",
+      detail:
+        Number(ecartActions || 0) > 0
+          ? 'Renforcement indicatif'
+          : Number(ecartActions || 0) < 0
+          ? 'Réduction indicative'
+          : 'Allocation alignée',
+      responsable: 'Système',
+      montant: null,
+      devise,
+      indicateur: `${Number(ecartActions || 0) > 0 ? '+' : ''}${Number(
+        ecartActions || 0
+      ).toFixed(1)} pts`,
+    },
+    {
+      numero: 23,
+      section: 'Écart allocation & rendement',
+      libelle: "Écart d'allocation — Obligations",
+      detail:
+        Number(ecartObligations || 0) > 0
+          ? 'Renforcement indicatif'
+          : Number(ecartObligations || 0) < 0
+          ? 'Réduction indicative'
+          : 'Allocation alignée',
+      responsable: 'Système',
+      montant: null,
+      devise,
+      indicateur: `${Number(ecartObligations || 0) > 0 ? '+' : ''}${Number(
+        ecartObligations || 0
+      ).toFixed(1)} pts`,
+    },
+    {
+      numero: 24,
+      section: 'Écart allocation & rendement',
+      libelle: 'Valeur de correction — Actions',
+      detail: "Montant correspondant à l'écart d'allocation Actions.",
+      responsable: 'Système',
+      montant: Number(montantCorrectionActions || 0),
+      devise,
+      indicateur: '',
+    },
+    {
+      numero: 25,
+      section: 'Écart allocation & rendement',
+      libelle: 'Valeur de correction — Obligations',
+      detail: "Montant correspondant à l'écart d'allocation Obligations.",
+      responsable: 'Système',
+      montant: Number(montantCorrectionObligations || 0),
+      devise,
+      indicateur: '',
+    },
+    {
+      numero: 26,
+      section: 'Écart allocation & rendement',
+      libelle: 'Rendement du portefeuille',
+      detail: 'Rendement associé au portefeuille dans la maquette.',
+      responsable: 'Système',
+      montant: null,
+      devise,
+      indicateur: `${Number(rendement || 0) >= 0 ? '+' : ''}${Number(
+        rendement || 0
+      ).toFixed(2)}%`,
+    },
+  ];
+
+  const metadata = [
+    ['Espace', espace],
+    ['Titulaire / Client', titulaire],
+    ['Compte / Portefeuille', compte || titulaire],
+    ...(sgi ? [['SGI', sgi]] : []),
+    ...(pays ? [['Pays', pays]] : []),
+    ['Marché', marche || '—'],
+    ...(profil ? [['Profil de risque', profil]] : []),
+    ...(statut ? [['Statut de liquidité', statut]] : []),
+    ['Devise native', devise],
+    ['Date de situation', dateSituation || '—'],
+    [
+      'Liquidité actuelle',
+      `${exportFormatNumber(liquiditeActuelleNumerique)} ${devise}`,
+    ],
+    [
+      'Liquidité prévisionnelle 30 j',
+      `${exportFormatNumber(Number(liquiditePrevisionnelle || 0))} ${devise}`,
+    ],
+    [
+      'Liquidité bloquée / réservée',
+      `${exportFormatNumber(Number(liquiditeBloquee || 0))} ${devise}`,
+    ],
+    [
+      'Autre liquidité à investir',
+      `${exportFormatNumber(Number(autreLiquiditeAInvestir || 0))} ${devise}`,
+    ],
+    [
+      'Liquidité disponible',
+      `${exportFormatNumber(Number(liquiditeDisponibleNette || 0))} ${devise}`,
+    ],
+    ['Date du dernier dépôt', dateDernierDepot || '—'],
+    [
+      'Montant du dernier dépôt',
+      `${exportFormatNumber(Number(montantDernierDepot || 0))} ${devise}`,
+    ],
+    ...(Number.isFinite(Number(ratioCible))
+      ? [['Liquidité cible', `${Number(ratioCible).toFixed(2)}%`]]
+      : []),
+    ...(Number.isFinite(Number(ratioPrevisionnel))
+      ? [
+          [
+            'Liquidité prévisionnelle / encours',
+            `${Number(ratioPrevisionnel).toFixed(2)}%`,
+          ],
+        ]
+      : []),
+  ];
+
+  return {
+    title: 'Anatomie de la liquidité',
+    subtitle: `${espace} · ${titulaire}${
+      dateSituation ? ` · Situation au ${dateSituation}` : ''
+    }`,
+    slug: exportSafeFileName(`${titulaire}-${compte || sgi || marche}`),
+    metadata,
+    rows: [
+      ...rowsOrigines,
+      rowTotalOrigines,
+      ...rowsAffectations,
+      ...rowsProfil,
+    ]
+      .filter((row) => Number.isFinite(row.numero))
+      .sort((a, b) => a.numero - b.numero),
+  };
+};
+
+const exportXlsxColumnName = (index) => {
+  let n = index;
+  let name = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+};
+
+const exportXlsxInlineCell = (row, col, value, style = 0) => {
+  const ref = `${exportXlsxColumnName(col)}${row}`;
+  return `<c r="${ref}" t="inlineStr"${
+    style ? ` s="${style}"` : ''
+  }><is><t xml:space="preserve">${exportXmlEscape(value)}</t></is></c>`;
+};
+
+const exportXlsxNumberCell = (row, col, value, style = 0) => {
+  const ref = `${exportXlsxColumnName(col)}${row}`;
+  return `<c r="${ref}"${style ? ` s="${style}"` : ''}><v>${Number(
+    value || 0
+  )}</v></c>`;
+};
+
+const exportZipCrc32 = (bytes) => {
+  const table = [];
+  for (let i = 0; i < 256; i += 1) {
+    let c = i;
+    for (let k = 0; k < 8; k += 1) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i += 1) {
+    crc = table[(crc ^ bytes[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+
+const exportZipPush16 = (target, value) => {
+  target.push(value & 0xff, (value >>> 8) & 0xff);
+};
+
+const exportZipPush32 = (target, value) => {
+  target.push(
+    value & 0xff,
+    (value >>> 8) & 0xff,
+    (value >>> 16) & 0xff,
+    (value >>> 24) & 0xff
+  );
+};
+
+const exportZipStore = (entries) => {
+  const encoder = new TextEncoder();
+  const output = [];
+  const centralDirectory = [];
+  const now = new Date();
+  const dosTime =
+    (now.getHours() << 11) |
+    (now.getMinutes() << 5) |
+    Math.floor(now.getSeconds() / 2);
+  const dosDate =
+    ((Math.max(1980, now.getFullYear()) - 1980) << 9) |
+    ((now.getMonth() + 1) << 5) |
+    now.getDate();
+  const utf8Flag = 0x0800;
+
+  entries.forEach(({ name, content }) => {
+    const nameBytes = encoder.encode(name);
+    const dataBytes =
+      content instanceof Uint8Array ? content : encoder.encode(String(content));
+    const crc = exportZipCrc32(dataBytes);
+    const localOffset = output.length;
+
+    exportZipPush32(output, 0x04034b50);
+    exportZipPush16(output, 20);
+    exportZipPush16(output, utf8Flag);
+    exportZipPush16(output, 0);
+    exportZipPush16(output, dosTime);
+    exportZipPush16(output, dosDate);
+    exportZipPush32(output, crc);
+    exportZipPush32(output, dataBytes.length);
+    exportZipPush32(output, dataBytes.length);
+    exportZipPush16(output, nameBytes.length);
+    exportZipPush16(output, 0);
+    output.push(...nameBytes, ...dataBytes);
+
+    centralDirectory.push({
+      nameBytes,
+      crc,
+      size: dataBytes.length,
+      localOffset,
+      dosTime,
+      dosDate,
+    });
+  });
+
+  const centralOffset = output.length;
+
+  centralDirectory.forEach((entry) => {
+    exportZipPush32(output, 0x02014b50);
+    exportZipPush16(output, 20);
+    exportZipPush16(output, 20);
+    exportZipPush16(output, utf8Flag);
+    exportZipPush16(output, 0);
+    exportZipPush16(output, entry.dosTime);
+    exportZipPush16(output, entry.dosDate);
+    exportZipPush32(output, entry.crc);
+    exportZipPush32(output, entry.size);
+    exportZipPush32(output, entry.size);
+    exportZipPush16(output, entry.nameBytes.length);
+    exportZipPush16(output, 0);
+    exportZipPush16(output, 0);
+    exportZipPush16(output, 0);
+    exportZipPush16(output, 0);
+    exportZipPush32(output, 0);
+    exportZipPush32(output, entry.localOffset);
+    output.push(...entry.nameBytes);
+  });
+
+  const centralSize = output.length - centralOffset;
+  exportZipPush32(output, 0x06054b50);
+  exportZipPush16(output, 0);
+  exportZipPush16(output, 0);
+  exportZipPush16(output, centralDirectory.length);
+  exportZipPush16(output, centralDirectory.length);
+  exportZipPush32(output, centralSize);
+  exportZipPush32(output, centralOffset);
+  exportZipPush16(output, 0);
+
+  return new Uint8Array(output);
+};
+
+const exportAnatomieExcel = (payload) => {
+  if (!payload) return;
+
+  const metaRows = [
+    `<row r="1" ht="24" customHeight="1">${exportXlsxInlineCell(
+      1,
+      1,
+      payload.title,
+      1
+    )}</row>`,
+    `<row r="2">${exportXlsxInlineCell(2, 1, payload.subtitle)}</row>`,
+    '<row r="3"></row>',
+    ...payload.metadata.map(
+      ([label, value], index) =>
+        `<row r="${index + 4}">${exportXlsxInlineCell(
+          index + 4,
+          1,
+          label,
+          3
+        )}${exportXlsxInlineCell(index + 4, 2, value)}</row>`
+    ),
+  ].join('');
+
+  const sheet1 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+ <sheetViews><sheetView workbookViewId="0"/></sheetViews>
+ <cols><col min="1" max="1" width="30" customWidth="1"/><col min="2" max="2" width="44" customWidth="1"/></cols>
+ <sheetData>${metaRows}</sheetData>
+ <mergeCells count="2"><mergeCell ref="A1:B1"/><mergeCell ref="A2:B2"/></mergeCells>
+</worksheet>`;
+
+  const headers = [
+    'N°',
+    'Section',
+    'Libellé',
+    'Détail / Groupe',
+    'Responsable',
+    'Montant',
+    'Devise',
+    'Indicateur',
+  ];
+  const headerCells = headers
+    .map((header, index) => exportXlsxInlineCell(1, index + 1, header, 2))
+    .join('');
+
+  const detailRows = payload.rows
+    .map((row, index) => {
+      const rowIndex = index + 2;
+      const cells = [
+        exportXlsxNumberCell(rowIndex, 1, row.numero, 5),
+        exportXlsxInlineCell(rowIndex, 2, row.section),
+        exportXlsxInlineCell(rowIndex, 3, row.libelle),
+        exportXlsxInlineCell(rowIndex, 4, row.detail),
+        exportXlsxInlineCell(rowIndex, 5, row.responsable),
+        row.montant == null
+          ? exportXlsxInlineCell(rowIndex, 6, '')
+          : exportXlsxNumberCell(rowIndex, 6, row.montant, 4),
+        exportXlsxInlineCell(rowIndex, 7, row.devise),
+        exportXlsxInlineCell(rowIndex, 8, row.indicateur),
+      ].join('');
+      return `<row r="${rowIndex}">${cells}</row>`;
+    })
+    .join('');
+
+  const sheet2 = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+ <sheetViews>
+  <sheetView workbookViewId="0">
+   <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+  </sheetView>
+ </sheetViews>
+ <cols>
+  <col min="1" max="1" width="7" customWidth="1"/>
+  <col min="2" max="2" width="25" customWidth="1"/>
+  <col min="3" max="3" width="36" customWidth="1"/>
+  <col min="4" max="4" width="52" customWidth="1"/>
+  <col min="5" max="5" width="28" customWidth="1"/>
+  <col min="6" max="6" width="18" customWidth="1"/>
+  <col min="7" max="7" width="12" customWidth="1"/>
+  <col min="8" max="8" width="18" customWidth="1"/>
+ </cols>
+ <sheetData>
+  <row r="1" ht="22" customHeight="1">${headerCells}</row>
+  ${detailRows}
+ </sheetData>
+ <autoFilter ref="A1:H${payload.rows.length + 1}"/>
+</worksheet>`;
+
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+ <numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>
+ <fonts count="4">
+  <font><sz val="10"/><name val="Arial"/></font>
+  <font><b/><sz val="16"/><color rgb="FF0F1B33"/><name val="Arial"/></font>
+  <font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
+  <font><b/><sz val="10"/><color rgb="FF5B6474"/><name val="Arial"/></font>
+ </fonts>
+ <fills count="4">
+  <fill><patternFill patternType="none"/></fill>
+  <fill><patternFill patternType="gray125"/></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="FF0F1B33"/><bgColor indexed="64"/></patternFill></fill>
+  <fill><patternFill patternType="solid"><fgColor rgb="FFF5F6F9"/><bgColor indexed="64"/></patternFill></fill>
+ </fills>
+ <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+ <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+ <cellXfs count="6">
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+  <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+  <xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment vertical="center"/></xf>
+  <xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
+  <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center"/></xf>
+ </cellXfs>
+ <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+ <bookViews><workbookView/></bookViews>
+ <sheets>
+  <sheet name="Synthèse" sheetId="1" r:id="rId1"/>
+  <sheet name="Rubriques 1-26" sheetId="2" r:id="rId2"/>
+ </sheets>
+</workbook>`;
+
+  const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+ <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+ <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+
+  const rootRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="xml" ContentType="application/xml"/>
+ <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+ <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+ <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+ <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+
+  const zipBytes = exportZipStore([
+    { name: '[Content_Types].xml', content: contentTypes },
+    { name: '_rels/.rels', content: rootRels },
+    { name: 'xl/workbook.xml', content: workbook },
+    { name: 'xl/_rels/workbook.xml.rels', content: workbookRels },
+    { name: 'xl/styles.xml', content: styles },
+    { name: 'xl/worksheets/sheet1.xml', content: sheet1 },
+    { name: 'xl/worksheets/sheet2.xml', content: sheet2 },
+  ]);
+
+  const date = new Date().toISOString().slice(0, 10);
+  exportDownloadBlob(
+    new Blob([zipBytes], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }),
+    `anatomie-liquidite-${payload.slug}-${date}.xlsx`
+  );
+};
+
+const exportPdfAscii = (value) =>
+  String(value ?? '')
+    .replace(/[’‘]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/\u00a0|\u202f/g, ' ')
+    .replace(/œ/g, 'oe')
+    .replace(/Œ/g, 'OE')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, '');
+
+const exportPdfEscape = (value) =>
+  exportPdfAscii(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)');
+
+const exportPdfWrap = (value, maxChars = 92) => {
+  const words = exportPdfAscii(value).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+  const lines = [];
+  let line = '';
+  words.forEach((word) => {
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length > maxChars && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+};
+
+const exportAnatomiePdf = (payload) => {
+  if (!payload) return;
+
+  const pageWidth = 595;
+  const pageHeight = 842;
+  const marginX = 42;
+  const topY = 800;
+  const bottomY = 48;
+  const pages = [];
+  let commands = [];
+  let y = topY;
+
+  const addPage = () => {
+    if (commands.length > 0) pages.push(commands);
+    commands = [];
+    y = topY;
+  };
+
+  const addText = (
+    text,
+    { size = 9, bold = false, x = marginX, leading } = {}
+  ) => {
+    const lineHeight = leading || size + 4;
+    if (y - lineHeight < bottomY) addPage();
+    commands.push(
+      `BT /${bold ? 'F2' : 'F1'} ${size} Tf 1 0 0 1 ${x} ${y.toFixed(
+        1
+      )} Tm (${exportPdfEscape(text)}) Tj ET`
+    );
+    y -= lineHeight;
+  };
+
+  const addWrapped = (
+    text,
+    { size = 9, bold = false, x = marginX, maxChars = 92, leading } = {}
+  ) => {
+    exportPdfWrap(text, maxChars).forEach((line) =>
+      addText(line, { size, bold, x, leading })
+    );
+  };
+
+  const addRule = () => {
+    if (y < bottomY + 12) addPage();
+    commands.push(
+      `0.87 G 0.7 w ${marginX} ${y.toFixed(1)} m ${
+        pageWidth - marginX
+      } ${y.toFixed(1)} l S`
+    );
+    y -= 10;
+  };
+
+  addText(payload.title.toUpperCase(), { size: 16, bold: true, leading: 22 });
+  addWrapped(payload.subtitle, { size: 10, bold: true, leading: 15 });
+  addText(
+    `Document genere le ${new Intl.DateTimeFormat('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date())}`,
+    { size: 8, leading: 14 }
+  );
+  addRule();
+
+  addText('SYNTHESE DU COMPTE', { size: 11, bold: true, leading: 18 });
+  payload.metadata.forEach(([label, value]) => {
+    addWrapped(`${label} : ${value}`, {
+      size: 8.5,
+      maxChars: 98,
+      leading: 12,
+    });
+  });
+  y -= 5;
+  addRule();
+
+  addText('RUBRIQUES 1 A 26', { size: 11, bold: true, leading: 18 });
+  payload.rows.forEach((row) => {
+    const montant =
+      row.montant == null
+        ? ''
+        : ` | Montant: ${exportFormatNumber(row.montant)} ${row.devise}`;
+    const indicateur = row.indicateur ? ` | ${row.indicateur}` : '';
+
+    addWrapped(
+      `${String(row.numero).padStart(2, '0')}. ${
+        row.libelle
+      }${montant}${indicateur}`,
+      { size: 8.7, bold: true, maxChars: 92, leading: 12 }
+    );
+    addWrapped(
+      `${row.section}${
+        row.responsable ? ` | Responsable: ${row.responsable}` : ''
+      }${row.detail ? ` | ${row.detail}` : ''}`,
+      { size: 7.7, x: marginX + 12, maxChars: 104, leading: 10.5 }
+    );
+    y -= 3;
+  });
+
+  if (commands.length > 0) pages.push(commands);
+
+  pages.forEach((pageCommands, index) => {
+    pageCommands.push(
+      `BT /F1 7 Tf 1 0 0 1 ${marginX} 24 Tm (Anatomie de la liquidite - page ${
+        index + 1
+      } / ${pages.length}) Tj ET`
+    );
+  });
+
+  const objects = {};
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+
+  const kids = [];
+  pages.forEach((pageCommands, index) => {
+    const contentNumber = 5 + index * 2;
+    const pageNumber = contentNumber + 1;
+    const stream = pageCommands.join('\n');
+    objects[
+      contentNumber
+    ] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`;
+    objects[
+      pageNumber
+    ] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentNumber} 0 R >>`;
+    kids.push(`${pageNumber} 0 R`);
+  });
+  objects[2] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${
+    pages.length
+  } >>`;
+
+  const maxObjectNumber = Math.max(...Object.keys(objects).map(Number));
+  let pdf = '%PDF-1.4\n';
+  const offsets = new Array(maxObjectNumber + 1).fill(0);
+
+  for (let i = 1; i <= maxObjectNumber; i += 1) {
+    offsets[i] = pdf.length;
+    pdf += `${i} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${maxObjectNumber + 1}\n`;
+  pdf += '0000000000 65535 f \n';
+  for (let i = 1; i <= maxObjectNumber; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${
+    maxObjectNumber + 1
+  } /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  const date = new Date().toISOString().slice(0, 10);
+  exportDownloadBlob(
+    new Blob([pdf], { type: 'application/pdf' }),
+    `anatomie-liquidite-${payload.slug}-${date}.pdf`
+  );
+};
+
 const VOLUME_JOUR = [
   { marche: 'BRVM', type: 'Action', volume: 1_250_000_000, devise: 'XOF' },
   { marche: 'BRVM', type: 'Obligation', volume: 430_000_000, devise: 'XOF' },
@@ -8638,9 +9456,13 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   const [clientLiquiditeSelectionneId, setClientLiquiditeSelectionneId] =
     useState(CLIENTS[0]?.id || '');
   const [vueLiquiditeDetail, setVueLiquiditeDetail] = useState('origines');
+  const [dateSituationLiquidite, setDateSituationLiquidite] =
+    useState('2026-08-07');
 
   const SEUIL_ECART_LIQUIDITE = 3;
-  const dateReference = new Date(2026, 7, 7);
+  const dateReferenceIso = '2026-08-07';
+  const dateReference = parseIsoLocalDate(dateReferenceIso);
+  const dateSituationObj = parseIsoLocalDate(dateSituationLiquidite);
   const finHorizon = new Date(dateReference);
   finHorizon.setDate(finHorizon.getDate() + 30);
 
@@ -9029,9 +9851,45 @@ function MoneyManagement({ go, devise = 'XOF' }) {
 
   const detailLiquiditeParClient = synthesePortefeuilles.map((ligne, index) => {
     const client = ligne.client;
-    const total = Math.max(0, ligne.liquiditeActuelle);
+    const total = liquidityHistoricalAmount(
+      ligne.liquiditeActuelle,
+      `${client.id}-liquidite`,
+      dateSituationObj,
+      dateReference,
+      1
+    );
+    const encaissementsSituation = liquidityHistoricalAmount(
+      ligne.encaissements30J,
+      `${client.id}-entrees`,
+      dateSituationObj,
+      dateReference,
+      0.55
+    );
+    const decaissementsSituation = liquidityHistoricalAmount(
+      ligne.decaissements30J,
+      `${client.id}-sorties`,
+      dateSituationObj,
+      dateReference,
+      0.7
+    );
+    const liquiditePrevisionnelleSituation =
+      total + encaissementsSituation - decaissementsSituation;
+    const ratioActuelSituation =
+      client.encours > 0 ? (total / client.encours) * 100 : 0;
+    const ratioPrevisionnelSituation =
+      client.encours > 0
+        ? (liquiditePrevisionnelleSituation / client.encours) * 100
+        : 0;
+    const ecartPtsSituation = ratioPrevisionnelSituation - ligne.ratioCible;
+    let statutSituation = 'Conforme';
+    if (ecartPtsSituation < -SEUIL_ECART_LIQUIDITE)
+      statutSituation = 'Critique';
+    else if (ecartPtsSituation < 0) statutSituation = 'Sous cible';
+    else if (ecartPtsSituation > SEUIL_ECART_LIQUIDITE)
+      statutSituation = 'Surplus';
+
     const decalageDepot = 6 + (index % 17);
-    const dateDernierDepot = new Date(dateReference);
+    const dateDernierDepot = new Date(dateSituationObj);
     dateDernierDepot.setDate(dateDernierDepot.getDate() - decalageDepot);
 
     const origines = repartitionMontants(total, [
@@ -9205,6 +10063,15 @@ function MoneyManagement({ go, devise = 'XOF' }) {
 
     return {
       ...ligne,
+      dateSituation: formatDateFR(dateSituationObj),
+      liquiditeActuelle: total,
+      encaissements30J: encaissementsSituation,
+      decaissements30J: decaissementsSituation,
+      liquiditePrevisionnelle: liquiditePrevisionnelleSituation,
+      ratioActuel: ratioActuelSituation,
+      ratioPrevisionnel: ratioPrevisionnelSituation,
+      ecartPts: ecartPtsSituation,
+      statut: statutSituation,
       dateDernierDepot: formatDateFR(dateDernierDepot),
       montantDernierDepot:
         origines.find((item) => item.numero === '2')?.montant || 0,
@@ -9235,6 +10102,42 @@ function MoneyManagement({ go, devise = 'XOF' }) {
     ) ||
     detailsFiltres[0] ||
     null;
+
+  const payloadExportAnatomieGestionnaire = detailLiquiditeSelectionne
+    ? buildAnatomieExportPayload({
+        espace: 'Gestion sous mandat',
+        titulaire: detailLiquiditeSelectionne.client.nom,
+        compte: detailLiquiditeSelectionne.client.nom,
+        pays: detailLiquiditeSelectionne.client.pays,
+        marche: detailLiquiditeSelectionne.client.marche,
+        profil: detailLiquiditeSelectionne.client.profilRisque,
+        statut: detailLiquiditeSelectionne.statut,
+        devise: detailLiquiditeSelectionne.client.devise,
+        liquiditeActuelle: detailLiquiditeSelectionne.liquiditeActuelle,
+        liquiditePrevisionnelle:
+          detailLiquiditeSelectionne.liquiditePrevisionnelle,
+        liquiditeBloquee: detailLiquiditeSelectionne.liquiditeBloquee,
+        autreLiquiditeAInvestir:
+          detailLiquiditeSelectionne.autreLiquiditeAInvestir,
+        liquiditeDisponibleNette:
+          detailLiquiditeSelectionne.liquiditeDisponibleNette,
+        dateSituation: detailLiquiditeSelectionne.dateSituation,
+        dateDernierDepot: detailLiquiditeSelectionne.dateDernierDepot,
+        montantDernierDepot: detailLiquiditeSelectionne.montantDernierDepot,
+        origines: detailLiquiditeSelectionne.origines,
+        affectations: detailLiquiditeSelectionne.affectations,
+        totalOrigines: detailLiquiditeSelectionne.totalOrigines,
+        ecartActions: detailLiquiditeSelectionne.ecartActions,
+        ecartObligations: detailLiquiditeSelectionne.ecartObligations,
+        montantCorrectionActions:
+          detailLiquiditeSelectionne.montantCorrectionActions,
+        montantCorrectionObligations:
+          detailLiquiditeSelectionne.montantCorrectionObligations,
+        rendement: detailLiquiditeSelectionne.rendement,
+        ratioCible: detailLiquiditeSelectionne.ratioCible,
+        ratioPrevisionnel: detailLiquiditeSelectionne.ratioPrevisionnel,
+      })
+    : null;
 
   const roleTone = (responsable) => {
     if (responsable.includes('Gestionnaire')) return 'navy';
@@ -9581,12 +10484,95 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             <div className="text-xs max-w-4xl" style={{ color: C.sub }}>
               Lecture opérationnelle inspirée de la fiche de suivi : origine des
               fonds, affectations / blocages, liquidité réellement mobilisable,
-              correction des écarts au profil et rendement du portefeuille.
+              correction des écarts au profil et rendement du portefeuille. Les
+              exports PDF et Excel portent sur le compte actuellement
+              sélectionné et reprennent la date de situation choisie. Les dates
+              antérieures sont simulées dans la maquette en attendant les
+              snapshots historiques réels du backend.
             </div>
           </div>
-          <Badge tone="gold">
-            Rubriques 1 à 26 · responsabilités intégrées
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line, background: '#fff' }}
+            >
+              <label
+                htmlFor="manager-liquidity-situation-date"
+                className="text-[11px] font-semibold whitespace-nowrap"
+                style={{ color: C.sub }}
+              >
+                Date de situation
+              </label>
+              <input
+                id="manager-liquidity-situation-date"
+                type="date"
+                min={LIQUIDITY_HISTORY_MIN_DATE}
+                max={dateReferenceIso}
+                value={dateSituationLiquidite}
+                onChange={(event) =>
+                  setDateSituationLiquidite(event.target.value)
+                }
+                className="px-2 py-1 rounded-lg border text-xs"
+                style={{ borderColor: C.line, color: C.ink, ...F_MONO }}
+              />
+              {dateSituationLiquidite !== dateReferenceIso && (
+                <button
+                  type="button"
+                  onClick={() => setDateSituationLiquidite(dateReferenceIso)}
+                  className="text-[10px] font-semibold whitespace-nowrap"
+                  style={{ color: C.navy }}
+                >
+                  Situation actuelle
+                </button>
+              )}
+            </div>
+            <Badge tone="navy">
+              Situation au {formatDateFR(dateSituationObj)}
+            </Badge>
+            <button
+              type="button"
+              disabled={!payloadExportAnatomieGestionnaire}
+              onClick={() =>
+                exportAnatomiePdf(payloadExportAnatomieGestionnaire)
+              }
+              className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                opacity: payloadExportAnatomieGestionnaire ? 1 : 0.45,
+                cursor: payloadExportAnatomieGestionnaire
+                  ? 'pointer'
+                  : 'not-allowed',
+              }}
+              title="Exporter l'anatomie complète du compte sélectionné en PDF"
+            >
+              Exporter PDF
+            </button>
+            <button
+              type="button"
+              disabled={!payloadExportAnatomieGestionnaire}
+              onClick={() =>
+                exportAnatomieExcel(payloadExportAnatomieGestionnaire)
+              }
+              className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
+              style={{
+                borderColor: C.line,
+                background: '#E4F5EF',
+                color: C.teal,
+                opacity: payloadExportAnatomieGestionnaire ? 1 : 0.45,
+                cursor: payloadExportAnatomieGestionnaire
+                  ? 'pointer'
+                  : 'not-allowed',
+              }}
+              title="Exporter les rubriques 1 à 26 du compte sélectionné vers Excel"
+            >
+              Exporter Excel
+            </button>
+            <Badge tone="gold">
+              Rubriques 1 à 26 · responsabilités intégrées
+            </Badge>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-4 items-start">
@@ -15498,8 +16484,14 @@ function ClientCashflows({ devise, orders = [] }) {
     setPortefeuilleLiquiditeSelectionneId,
   ] = useState(portefeuilles[0]?.id || '');
   const [vueLiquiditeDetail, setVueLiquiditeDetail] = useState('origines');
+  const [dateSituationLiquiditeClient, setDateSituationLiquiditeClient] =
+    useState('2026-08-13');
 
-  const dateReference = new Date(2026, 7, 13);
+  const dateReferenceIsoClient = '2026-08-13';
+  const dateReference = parseIsoLocalDate(dateReferenceIsoClient);
+  const dateSituationObjClient = parseIsoLocalDate(
+    dateSituationLiquiditeClient
+  );
   const finHorizon = new Date(dateReference);
   finHorizon.setDate(finHorizon.getDate() + 30);
 
@@ -15807,8 +16799,38 @@ function ClientCashflows({ devise, orders = [] }) {
 
   const detailsLiquidite = synthesePortefeuilles.map((ligne, index) => {
     const portefeuille = ligne.portefeuille;
-    const total = Math.max(0, ligne.liquiditeActuelle);
-    const dateDernierDepot = new Date(dateReference);
+    const total = liquidityHistoricalAmount(
+      ligne.liquiditeActuelle,
+      `${portefeuille.id}-liquidite`,
+      dateSituationObjClient,
+      dateReference,
+      1
+    );
+    const entreesSituation = liquidityHistoricalAmount(
+      ligne.entrees30J,
+      `${portefeuille.id}-entrees`,
+      dateSituationObjClient,
+      dateReference,
+      0.55
+    );
+    const sortiesSituation = liquidityHistoricalAmount(
+      ligne.sorties30J,
+      `${portefeuille.id}-sorties`,
+      dateSituationObjClient,
+      dateReference,
+      0.7
+    );
+    const liquiditePrevisionnelleSituation = Math.max(
+      0,
+      total + entreesSituation - sortiesSituation
+    );
+    const ratioLiquiditeSituation =
+      ligne.encours > 0 ? (total / ligne.encours) * 100 : 0;
+    const ratioPrevisionnelSituation =
+      ligne.encours > 0
+        ? (liquiditePrevisionnelleSituation / ligne.encours) * 100
+        : 0;
+    const dateDernierDepot = new Date(dateSituationObjClient);
     dateDernierDepot.setDate(dateDernierDepot.getDate() - (5 + (index % 19)));
 
     const origines = repartitionMontants(total, [
@@ -15886,7 +16908,8 @@ function ClientCashflows({ devise, orders = [] }) {
       (ordre) =>
         ordre.portefeuilleId === portefeuille.id &&
         ordre.sens === 'Achat' &&
-        CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut)
+        CLIENT_OPEN_ORDER_STATUSES.includes(ordre.statut) &&
+        (!ordre.date || parseFR(ordre.date) <= dateSituationObjClient)
     );
     const reserveActions = ordresAchatOuverts
       .filter(
@@ -16063,6 +17086,15 @@ function ClientCashflows({ devise, orders = [] }) {
 
     return {
       ...ligne,
+      dateSituation: formatDateFR(dateSituationObjClient),
+      liquiditeActuelle: total,
+      liquiditeReservee: reserveOrdres,
+      liquiditeDisponibleOrdres: Math.max(0, total - reserveOrdres),
+      entrees30J: entreesSituation,
+      sorties30J: sortiesSituation,
+      liquiditePrevisionnelle: liquiditePrevisionnelleSituation,
+      ratioLiquidite: ratioLiquiditeSituation,
+      ratioPrevisionnel: ratioPrevisionnelSituation,
       dateDernierDepot: formatDateFR(dateDernierDepot),
       montantDernierDepot:
         origines.find((item) => item.numero === '2')?.montant || 0,
@@ -16094,6 +17126,42 @@ function ClientCashflows({ devise, orders = [] }) {
     ) ||
     detailsFiltres[0] ||
     null;
+
+  const payloadExportAnatomieClient = detailSelectionne
+    ? buildAnatomieExportPayload({
+        espace: 'Gestion libre',
+        titulaire: CLIENT_GESTION_LIBRE.nom,
+        compte: detailSelectionne.portefeuille.nom,
+        sgi: detailSelectionne.portefeuille.sgi,
+        pays: detailSelectionne.portefeuille.pays,
+        marche: detailSelectionne.portefeuille.marche,
+        devise: detailSelectionne.portefeuille.devise,
+        liquiditeActuelle: detailSelectionne.liquiditeActuelle,
+        liquiditePrevisionnelle: detailSelectionne.liquiditePrevisionnelle,
+        liquiditeBloquee: detailSelectionne.liquiditeBloquee,
+        autreLiquiditeAInvestir: detailSelectionne.autreLiquiditeAInvestir,
+        liquiditeDisponibleNette: detailSelectionne.liquiditeDisponibleNette,
+        dateSituation: detailSelectionne.dateSituation,
+        dateDernierDepot: detailSelectionne.dateDernierDepot,
+        montantDernierDepot: detailSelectionne.montantDernierDepot,
+        origines: detailSelectionne.origines,
+        affectations: detailSelectionne.affectations,
+        totalOrigines: detailSelectionne.totalOrigines,
+        ecartActions: detailSelectionne.ecartActions,
+        ecartObligations: detailSelectionne.ecartObligations,
+        montantCorrectionActions: detailSelectionne.montantCorrectionActions,
+        montantCorrectionObligations:
+          detailSelectionne.montantCorrectionObligations,
+        rendement: detailSelectionne.rendement,
+        ratioCible: detailSelectionne.cibleIndicative?.Liquidite,
+        ratioPrevisionnel:
+          detailSelectionne.liquiditeActuelle > 0
+            ? (detailSelectionne.liquiditePrevisionnelle /
+                detailSelectionne.liquiditeActuelle) *
+              100
+            : 0,
+      })
+    : null;
 
   const roleTone = (responsable) => {
     if (responsable.includes('Client')) return 'gold';
@@ -16350,12 +17418,88 @@ function ClientCashflows({ devise, orders = [] }) {
             <div className="text-xs max-w-4xl" style={{ color: C.sub }}>
               Origine des fonds, sommes réservées ou à investir, liquidité
               réellement mobilisable et lecture indicative de l’écart
-              d’allocation de chaque portefeuille.
+              d’allocation de chaque portefeuille. Les exports PDF et Excel
+              portent sur le compte SGI actuellement sélectionné et reprennent
+              la date de situation choisie. Les dates antérieures sont simulées
+              dans la maquette en attendant les snapshots réels des SGI.
             </div>
           </div>
-          <Badge tone="gold">
-            Rubriques 1 à 26 adaptées à la gestion libre
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line, background: '#fff' }}
+            >
+              <label
+                htmlFor="client-liquidity-situation-date"
+                className="text-[11px] font-semibold whitespace-nowrap"
+                style={{ color: C.sub }}
+              >
+                Date de situation
+              </label>
+              <input
+                id="client-liquidity-situation-date"
+                type="date"
+                min={LIQUIDITY_HISTORY_MIN_DATE}
+                max={dateReferenceIsoClient}
+                value={dateSituationLiquiditeClient}
+                onChange={(event) =>
+                  setDateSituationLiquiditeClient(event.target.value)
+                }
+                className="px-2 py-1 rounded-lg border text-xs"
+                style={{ borderColor: C.line, color: C.ink, ...F_MONO }}
+              />
+              {dateSituationLiquiditeClient !== dateReferenceIsoClient && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDateSituationLiquiditeClient(dateReferenceIsoClient)
+                  }
+                  className="text-[10px] font-semibold whitespace-nowrap"
+                  style={{ color: C.navy }}
+                >
+                  Situation actuelle
+                </button>
+              )}
+            </div>
+            <Badge tone="navy">
+              Situation au {formatDateFR(dateSituationObjClient)}
+            </Badge>
+            <button
+              type="button"
+              disabled={!payloadExportAnatomieClient}
+              onClick={() => exportAnatomiePdf(payloadExportAnatomieClient)}
+              className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                opacity: payloadExportAnatomieClient ? 1 : 0.45,
+                cursor: payloadExportAnatomieClient ? 'pointer' : 'not-allowed',
+              }}
+              title="Exporter l'anatomie complète du compte SGI sélectionné en PDF"
+            >
+              Exporter PDF
+            </button>
+            <button
+              type="button"
+              disabled={!payloadExportAnatomieClient}
+              onClick={() => exportAnatomieExcel(payloadExportAnatomieClient)}
+              className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
+              style={{
+                borderColor: C.line,
+                background: '#E4F5EF',
+                color: C.teal,
+                opacity: payloadExportAnatomieClient ? 1 : 0.45,
+                cursor: payloadExportAnatomieClient ? 'pointer' : 'not-allowed',
+              }}
+              title="Exporter les rubriques 1 à 26 du compte SGI sélectionné vers Excel"
+            >
+              Exporter Excel
+            </button>
+            <Badge tone="gold">
+              Rubriques 1 à 26 adaptées à la gestion libre
+            </Badge>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-4 items-start">
