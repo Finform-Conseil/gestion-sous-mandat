@@ -8198,8 +8198,9 @@ function RecoAlloc({ go }) {
                     {Math.abs(ecart) > 3 && (
                       <button
                         onClick={() =>
-                          go('alloc-criteres', {
-                            sens: ecart > 0 ? 'Vente' : 'Achat',
+                          go('reequilibrage', {
+                            client: c.id,
+                            actif: 'Actions',
                           })
                         }
                         className="text-xs font-semibold"
