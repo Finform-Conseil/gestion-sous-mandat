@@ -5709,10 +5709,172 @@ const buildRepartitionEtatsInvestissement = (client, categorie) => {
     }));
 };
 
+const formatDateFluxClient = (date) =>
+  new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+
+const dateFluxClientEntre = (dateDebut, dateFin, ratio) => {
+  const debut = dateDebut.getTime();
+  const fin = dateFin.getTime();
+  return new Date(debut + Math.max(0, Math.min(1, ratio)) * (fin - debut));
+};
+
+const repartirMontantFluxClient = (montantTotal, poids) => {
+  const total = Math.max(0, Math.round(Number(montantTotal || 0)));
+  if (poids.length === 0) return [];
+
+  let reste = total;
+  return poids.map((poidsCourant, index) => {
+    if (index === poids.length - 1) return reste;
+    const montant = Math.min(
+      reste,
+      Math.round(total * Number(poidsCourant || 0))
+    );
+    reste -= montant;
+    return montant;
+  });
+};
+
+/*
+ * Maquette : historique de flux construit de manière déterministe à partir du
+ * portefeuille. En production, remplacer cette fonction par les dépôts et
+ * retraits réellement enregistrés en base.
+ *
+ * Plus / moins-value cumulée = encours actuel + retraits cumulés - dépôts cumulés
+ * % représentatif = plus / moins-value cumulée / dépôts cumulés
+ */
+const buildSituationDepuisOuverture = (client) => {
+  const encoursActuel = Math.max(0, Number(client.encours || 0));
+  const dateOuverture = parseIsoLocalDate(
+    client.dateEntree || formatIsoLocalDate(new Date())
+  );
+  const dateReference = new Date();
+  const joursOuverts = Math.max(
+    1,
+    Math.round((dateReference - dateOuverture) / 86_400_000)
+  );
+  const anneesOuvertes = Math.max(14 / 365.25, joursOuverts / 365.25);
+  const seed = seedPortefeuille(client);
+
+  // Le taux existant du portefeuille sert uniquement à produire une
+  // démonstration cohérente depuis l'ouverture.
+  const rendementAnnuelDemo =
+    Number(client.rentabilite ?? client.perf ?? 0) / 100;
+  const rendementCumuleDemo = Math.max(
+    -0.35,
+    Math.min(
+      0.75,
+      Math.pow(Math.max(0.2, 1 + rendementAnnuelDemo), anneesOuvertes) - 1
+    )
+  );
+
+  let ratioRetraits = 0;
+  if (joursOuverts >= 365) {
+    ratioRetraits = 0.035 + (seed % 5) * 0.009;
+  } else if (joursOuverts >= 120 && seed % 2 === 0) {
+    ratioRetraits = 0.02 + (seed % 3) * 0.006;
+  }
+
+  const totalRetraits = Math.round(encoursActuel * ratioRetraits);
+  const totalDepots = Math.max(
+    1,
+    Math.round(
+      (encoursActuel + totalRetraits) / Math.max(0.2, 1 + rendementCumuleDemo)
+    )
+  );
+
+  const poidsDepots =
+    joursOuverts >= 365
+      ? [0.72, 0.18, 0.1]
+      : joursOuverts >= 90
+      ? [0.82, 0.18]
+      : [1];
+  const ratiosDatesDepots =
+    poidsDepots.length === 3
+      ? [0, 0.34, 0.69]
+      : poidsDepots.length === 2
+      ? [0, 0.58]
+      : [0];
+  const montantsDepots = repartirMontantFluxClient(totalDepots, poidsDepots);
+
+  const flux = montantsDepots.map((montant, index) => ({
+    id: `${client.id}-DEP-${index + 1}`,
+    type: 'Dépôt',
+    libelle:
+      index === 0
+        ? "Versement initial à l'ouverture"
+        : index === 1
+        ? 'Versement complémentaire'
+        : 'Renforcement du capital',
+    date: dateFluxClientEntre(
+      dateOuverture,
+      dateReference,
+      ratiosDatesDepots[index] || 0
+    ),
+    montant,
+    devise: client.devise,
+  }));
+
+  if (totalRetraits > 0) {
+    const poidsRetraits = joursOuverts >= 540 ? [0.62, 0.38] : [1];
+    const ratiosDatesRetraits =
+      poidsRetraits.length === 2 ? [0.55, 0.83] : [0.74];
+    const montantsRetraits = repartirMontantFluxClient(
+      totalRetraits,
+      poidsRetraits
+    );
+
+    montantsRetraits.forEach((montant, index) => {
+      flux.push({
+        id: `${client.id}-RET-${index + 1}`,
+        type: 'Retrait',
+        libelle:
+          index === 0 ? 'Retrait partiel du client' : 'Retrait complémentaire',
+        date: dateFluxClientEntre(
+          dateOuverture,
+          dateReference,
+          ratiosDatesRetraits[index] || 0.74
+        ),
+        montant,
+        devise: client.devise,
+      });
+    });
+  }
+
+  flux.sort((a, b) => a.date - b.date);
+
+  const capitalNetVerse = totalDepots - totalRetraits;
+  const plusMoinsValue = encoursActuel + totalRetraits - totalDepots;
+  const pourcentagePlusMoinsValue =
+    totalDepots > 0 ? (plusMoinsValue / totalDepots) * 100 : 0;
+
+  return {
+    dateOuverture,
+    encoursActuel,
+    totalDepots,
+    totalRetraits,
+    capitalNetVerse,
+    plusMoinsValue,
+    pourcentagePlusMoinsValue,
+    flux,
+  };
+};
+
 function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
+  const [detailFluxOuvert, setDetailFluxOuvert] = useState(false);
+  const situationDepuisOuverture = buildSituationDepuisOuverture(client);
+  const plusValuePositive = situationDepuisOuverture.plusMoinsValue >= 0;
+
   const data = Object.entries(client.alloc).map(([name, value]) => ({
     name,
     value,
+    montant: Math.round(
+      (Number(client.encours || 0) * Number(value || 0)) / 100
+    ),
+    devise: client.devise,
   }));
   const besoinsReequilibrage = besoinsReequilibrageClient(client);
   const historiqueClassesActifs = buildHistoriqueClassesActifs(client);
@@ -5767,6 +5929,268 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           <Btn onClick={() => onGenerateReport(client.id)}>Générer rapport</Btn>
         </div>
       </div>
+
+      <Card
+        className="p-5"
+        style={{
+          borderColor: plusValuePositive ? '#CDE9DF' : '#F1CFCB',
+          background: plusValuePositive ? '#FBFEFC' : '#FFFCFC',
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Performance depuis l'ouverture du compte</Eyebrow>
+            <div
+              className="text-base font-bold"
+              style={{ ...F_DISPLAY, color: C.ink }}
+            >
+              Plus / moins-value cumulée, nette des dépôts et retraits
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub, ...F_BODY }}>
+              Compte ouvert le{' '}
+              {formatDateFluxClient(situationDepuisOuverture.dateOuverture)}. Le
+              calcul neutralise les flux externes du client afin de ne pas
+              confondre un dépôt avec une performance ni un retrait avec une
+              perte.
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDetailFluxOuvert((ouvert) => !ouvert)}
+            className="px-3.5 py-2 rounded-xl text-xs font-semibold"
+            style={{
+              background: detailFluxOuvert ? '#EEF0F4' : C.navy,
+              color: detailFluxOuvert ? C.navy : '#fff',
+              ...F_BODY,
+            }}
+          >
+            {detailFluxOuvert
+              ? 'Masquer les dépôts & retraits'
+              : 'Voir les dépôts & retraits'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-5 gap-3 mt-4">
+          <div
+            className="p-3 rounded-xl border"
+            style={{ borderColor: C.line, background: '#fff' }}
+          >
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Encours actuel
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{ color: C.ink, ...F_MONO }}
+            >
+              {fmt(situationDepuisOuverture.encoursActuel)} {client.devise}
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl border"
+            style={{ borderColor: C.line, background: '#fff' }}
+          >
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Total investi
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{ color: C.ink, ...F_MONO }}
+            >
+              {fmt(situationDepuisOuverture.totalDepots)} {client.devise}
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              Somme de tous les dépôts
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl border"
+            style={{ borderColor: C.line, background: '#fff' }}
+          >
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Retraits cumulés
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{ color: C.ink, ...F_MONO }}
+            >
+              {fmt(situationDepuisOuverture.totalRetraits)} {client.devise}
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              Flux sortis du compte
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl border"
+            style={{ borderColor: C.line, background: '#fff' }}
+          >
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Capital net versé
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{ color: C.ink, ...F_MONO }}
+            >
+              {fmt(situationDepuisOuverture.capitalNetVerse)} {client.devise}
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              Dépôts − retraits
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl border"
+            style={{
+              borderColor: plusValuePositive ? '#B8DFD2' : '#ECC2BD',
+              background: plusValuePositive ? '#EAF7F2' : '#FDECEA',
+            }}
+          >
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: plusValuePositive ? C.teal : C.coral }}
+            >
+              {plusValuePositive ? 'Plus-value' : 'Moins-value'} cumulée
+            </div>
+            <div
+              className="text-base font-bold mt-1"
+              style={{
+                color: plusValuePositive ? C.teal : C.coral,
+                ...F_MONO,
+              }}
+            >
+              {plusValuePositive ? '+' : '-'}
+              {fmt(Math.abs(situationDepuisOuverture.plusMoinsValue))}{' '}
+              {client.devise}
+            </div>
+            <div className="mt-1">
+              <span
+                className="inline-flex items-center gap-1 text-xs font-bold"
+                style={{
+                  color: plusValuePositive ? C.teal : C.coral,
+                  ...F_MONO,
+                }}
+              >
+                {plusValuePositive ? (
+                  <ArrowUpRight size={13} />
+                ) : (
+                  <ArrowDownRight size={13} />
+                )}
+                {Math.abs(
+                  situationDepuisOuverture.pourcentagePlusMoinsValue
+                ).toFixed(2)}
+                % du total investi
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="mt-3 p-3 rounded-xl text-[10px]"
+          style={{ background: '#F7F8FA', color: C.sub, ...F_BODY }}
+        >
+          <b style={{ color: C.ink }}>Méthode :</b> plus / moins-value = encours
+          actuel + retraits cumulés − dépôts cumulés. Le pourcentage affiché
+          rapporte cette plus / moins-value à la somme de tous les dépôts
+          effectués depuis l'ouverture. Il s'agit donc d'un indicateur cumulé
+          simple, non annualisé.
+        </div>
+
+        {detailFluxOuvert && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <div>
+                <div className="text-xs font-semibold" style={{ color: C.ink }}>
+                  Historique des apports et retraits
+                </div>
+                <div className="text-[10px]" style={{ color: C.sub }}>
+                  Flux externes pris en compte depuis l'ouverture du compte.
+                </div>
+              </div>
+              <Badge tone="navy">
+                {situationDepuisOuverture.flux.length} mouvement(s)
+              </Badge>
+            </div>
+
+            <div
+              className="overflow-x-auto rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <table className="w-full">
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Date</Th>
+                    <Th>Nature</Th>
+                    <Th>Libellé</Th>
+                    <Th>Montant</Th>
+                    <Th>Impact capital</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {situationDepuisOuverture.flux.map((flux, index) => {
+                    const depot = flux.type === 'Dépôt';
+                    return (
+                      <tr
+                        key={flux.id}
+                        style={{
+                          borderTop:
+                            index === 0 ? 'none' : `1px solid ${C.line}`,
+                        }}
+                      >
+                        <Td mono>{formatDateFluxClient(flux.date)}</Td>
+                        <Td>
+                          <Badge tone={depot ? 'teal' : 'gold'}>
+                            {flux.type}
+                          </Badge>
+                        </Td>
+                        <Td>{flux.libelle}</Td>
+                        <Td mono>
+                          {fmt(flux.montant)} {flux.devise}
+                        </Td>
+                        <Td>
+                          <span
+                            className="text-xs font-semibold"
+                            style={{
+                              color: depot ? C.teal : C.coral,
+                              ...F_MONO,
+                            }}
+                          >
+                            {depot ? '+' : '-'}
+                            {fmt(flux.montant)} {flux.devise}
+                          </span>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              className="text-[10px] mt-2"
+              style={{ color: C.sub, ...F_BODY }}
+            >
+              Données de démonstration dans cette maquette. En production, cet
+              historique devra provenir des mouvements espèces réellement
+              enregistrés pour le compte du client.
+            </div>
+          </div>
+        )}
+      </Card>
 
       {reportOpen.notice && (
         <Card className="p-4" style={{ borderColor: C.gold }}>
