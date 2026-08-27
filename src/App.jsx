@@ -931,6 +931,17 @@ const buildMoneyManagementConsolidatedExportPayload = (details = []) => {
       (encours * Number(detail.ecartObligations || 0)) / 100
     );
 
+    // Le modèle papier ventile la poche ESV en deux sous-ensembles :
+    // - les amortissements / intérêts numérotés (3) et (4) ;
+    // - OAT-TG % 26-29 avec deux colonnes non numérotées.
+    // La maquette ne stockant pas encore ces deux poches séparément, on ventile
+    // le montant ESV existant sans modifier le total de liquidité (10).
+    const amortissementsEsvTotal = montantRubrique(detail.origines, 3);
+    const interetsEsvTotal = montantRubrique(detail.origines, 4);
+    const partOatTg = 0.35;
+    const oatTgAmortissement = Math.round(amortissementsEsvTotal * partOatTg);
+    const oatTgInteret = Math.round(interetsEsvTotal * partOatTg);
+
     return {
       numeroCompte: getNumeroCompte(client, index),
       nom: client?.nom || '—',
@@ -941,8 +952,10 @@ const buildMoneyManagementConsolidatedExportPayload = (details = []) => {
 
       r1: montantRubrique(detail.origines, 1),
       r2: montantRubrique(detail.origines, 2),
-      r3: montantRubrique(detail.origines, 3),
-      r4: montantRubrique(detail.origines, 4),
+      r3: Math.max(0, amortissementsEsvTotal - oatTgAmortissement),
+      r4: Math.max(0, interetsEsvTotal - oatTgInteret),
+      oatTgAmortissement,
+      oatTgInteret,
       r5: montantRubrique(detail.origines, 5),
       r6: montantRubrique(detail.origines, 6),
       r7: montantRubrique(detail.origines, 7),
@@ -994,6 +1007,12 @@ const exportMoneyManagementExcel = (payload) => {
     { key: 'r2', label: 'Dernier dépôt (2)', type: 'money' },
     { key: 'r3', label: 'Amortissements (3)', type: 'money' },
     { key: 'r4', label: 'Intérêts (4)', type: 'money' },
+    {
+      key: 'oatTgAmortissement',
+      label: 'Amortissement',
+      type: 'money',
+    },
+    { key: 'oatTgInteret', label: 'Intérêt', type: 'money' },
     { key: 'r5', label: 'Dividendes (5)', type: 'money' },
     { key: 'r6', label: 'Retrait (6)', type: 'money' },
     { key: 'r7', label: 'Réinvestissement (7)', type: 'money' },
@@ -1036,11 +1055,13 @@ const exportMoneyManagementExcel = (payload) => {
     return exportXlsxInlineCell(rowIndex, colIndex, value, style);
   };
 
-  // Chaque tableau démarre au même emplacement, mais sur une feuille distincte.
+  // Les deux feuilles sont distinctes. La vue 1-10 dispose d'un niveau
+  // d'en-tête supplémentaire pour les deux sous-poches ESV.
   const headerStart = 4;
-  const dataStart = 7;
+  const topDataStart = 8;
+  const bottomDataStart = 7;
 
-  const buildDataRows = (columns) =>
+  const buildDataRows = (columns, dataStart) =>
     payload.rows
       .map((row, rowOffset) => {
         const rowIndex = dataStart + rowOffset;
@@ -1066,8 +1087,8 @@ const exportMoneyManagementExcel = (payload) => {
       })
       .join('');
 
-  const topRows = buildDataRows(topColumns);
-  const bottomRows = buildDataRows(bottomColumns);
+  const topRows = buildDataRows(topColumns, topDataStart);
+  const bottomRows = buildDataRows(bottomColumns, bottomDataStart);
 
   const topHeaderRows = `
     <row r="${headerStart}" ht="22" customHeight="1">
@@ -1086,31 +1107,37 @@ const exportMoneyManagementExcel = (payload) => {
     <row r="${headerStart + 1}" ht="22" customHeight="1">
       ${exportXlsxInlineCell(headerStart + 1, 6, 'Dépôt', 3)}
       ${exportXlsxInlineCell(headerStart + 1, 8, 'ESV', 3)}
-      ${exportXlsxInlineCell(headerStart + 1, 10, 'Dividendes (5)', 3)}
-      ${exportXlsxInlineCell(headerStart + 1, 11, 'Cession de titre', 3)}
+      ${exportXlsxInlineCell(headerStart + 1, 12, 'Dividendes (5)', 3)}
+      ${exportXlsxInlineCell(headerStart + 1, 13, 'Cession de titre', 3)}
       ${exportXlsxInlineCell(
         headerStart + 1,
-        13,
+        15,
         '% portefeuille à ne pas réinvestir (8)',
         3
       )}
       ${exportXlsxInlineCell(
         headerStart + 1,
-        14,
+        16,
         'Dépôt pour opération primaire (9)',
         3
       )}
-      ${exportXlsxInlineCell(headerStart + 1, 15, 'Total (10)', 3)}
+      ${exportXlsxInlineCell(headerStart + 1, 17, 'Total (10)', 3)}
     </row>
-    <row r="${headerStart + 2}" ht="34" customHeight="1">
-      ${exportXlsxInlineCell(headerStart + 2, 6, 'Ouverture (1)', 3)}
-      ${exportXlsxInlineCell(headerStart + 2, 7, 'Dernier dépôt (2)', 3)}
-      ${exportXlsxInlineCell(headerStart + 2, 8, 'Amortissements (3)', 3)}
-      ${exportXlsxInlineCell(headerStart + 2, 9, 'Intérêts (4)', 3)}
-      ${exportXlsxInlineCell(headerStart + 2, 11, 'Retrait (6)', 3)}
+    <row r="${headerStart + 2}" ht="22" customHeight="1">
+      ${exportXlsxInlineCell(headerStart + 2, 8, 'TPBJ 6,5% 2020-2028', 3)}
+      ${exportXlsxInlineCell(headerStart + 2, 10, 'OAT-TG % 26-29', 3)}
+    </row>
+    <row r="${headerStart + 3}" ht="34" customHeight="1">
+      ${exportXlsxInlineCell(headerStart + 3, 6, 'Ouverture (1)', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 7, 'Dernier dépôt (2)', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 8, 'Amortissements (3)', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 9, 'Intérêts (4)', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 10, 'Amortissement', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 11, 'Intérêt', 3)}
+      ${exportXlsxInlineCell(headerStart + 3, 13, 'Retrait (6)', 3)}
       ${exportXlsxInlineCell(
-        headerStart + 2,
-        12,
+        headerStart + 3,
+        14,
         'Réinvestissement (7)',
         3
       )}
@@ -1202,7 +1229,7 @@ const exportMoneyManagementExcel = (payload) => {
  <sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>
  <sheetViews>
   <sheetView workbookViewId="0">
-   <pane ySplit="6" topLeftCell="A7" activePane="bottomLeft" state="frozen"/>
+   <pane ySplit="7" topLeftCell="A8" activePane="bottomLeft" state="frozen"/>
   </sheetView>
  </sheetViews>
  <cols>
@@ -1211,7 +1238,7 @@ const exportMoneyManagementExcel = (payload) => {
   <col min="3" max="3" width="18" customWidth="1"/>
   <col min="4" max="4" width="16" customWidth="1"/>
   <col min="5" max="5" width="15" customWidth="1"/>
-  <col min="6" max="15" width="16" customWidth="1"/>
+  <col min="6" max="17" width="16" customWidth="1"/>
  </cols>
  <sheetData>
   <row r="1" ht="28" customHeight="1">${exportXlsxInlineCell(
@@ -1230,15 +1257,17 @@ const exportMoneyManagementExcel = (payload) => {
   ${topHeaderRows}
   ${topRows}
  </sheetData>
- <mergeCells count="15">
-  <mergeCell ref="A1:O1"/>
-  <mergeCell ref="A2:O2"/>
-  <mergeCell ref="A4:A6"/><mergeCell ref="B4:B6"/><mergeCell ref="C4:C6"/>
-  <mergeCell ref="D4:D6"/><mergeCell ref="E4:E6"/>
-  <mergeCell ref="F4:O4"/>
-  <mergeCell ref="F5:G5"/><mergeCell ref="H5:I5"/>
-  <mergeCell ref="J5:J6"/><mergeCell ref="K5:L5"/>
-  <mergeCell ref="M5:M6"/><mergeCell ref="N5:N6"/><mergeCell ref="O5:O6"/>
+ <mergeCells count="19">
+  <mergeCell ref="A1:Q1"/>
+  <mergeCell ref="A2:Q2"/>
+  <mergeCell ref="A4:A7"/><mergeCell ref="B4:B7"/><mergeCell ref="C4:C7"/>
+  <mergeCell ref="D4:D7"/><mergeCell ref="E4:E7"/>
+  <mergeCell ref="F4:Q4"/>
+  <mergeCell ref="F5:G5"/><mergeCell ref="H5:K5"/>
+  <mergeCell ref="L5:L7"/><mergeCell ref="M5:N5"/>
+  <mergeCell ref="O5:O7"/><mergeCell ref="P5:P7"/><mergeCell ref="Q5:Q7"/>
+  <mergeCell ref="F6:G6"/><mergeCell ref="H6:I6"/><mergeCell ref="J6:K6"/>
+  <mergeCell ref="M6:N6"/>
  </mergeCells>
  <pageMargins left="0.2" right="0.2" top="0.4" bottom="0.4" header="0.2" footer="0.2"/>
  <pageSetup orientation="landscape" paperSize="9" fitToWidth="1" fitToHeight="0"/>
