@@ -5263,6 +5263,7 @@ function Accueil({
 }) {
   const [dim, setDim] = useState('Profil de risque');
   const [genClient, setGenClient] = useState(CLIENTS[0].id);
+  const [reportPeriod, setReportPeriod] = useState('Trimestre en cours');
   const [allReports, setAllReports] = useState(false);
   const [devBourse, setDevBourse] = useState({
     BRVM: 'XOF',
@@ -6085,6 +6086,8 @@ function Accueil({
             Période
           </label>
           <select
+            value={reportPeriod}
+            onChange={(e) => setReportPeriod(e.target.value)}
             className="w-full mb-4 px-3 py-2 rounded-xl border text-sm"
             style={{ borderColor: C.line, ...F_BODY }}
           >
@@ -6093,7 +6096,7 @@ function Accueil({
             <option>Personnalisée</option>
           </select>
           <div className="flex items-center gap-2">
-            <Btn onClick={() => openClient(genClient, true)}>
+            <Btn onClick={() => openClient(genClient, true, reportPeriod)}>
               Générer le rapport
             </Btn>
           </div>
@@ -6676,6 +6679,13 @@ const buildSituationDepuisOuverture = (client) => {
 
 function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
   const [detailFluxOuvert, setDetailFluxOuvert] = useState(false);
+  const [reportPeriod, setReportPeriod] = useState(
+    reportOpen?.period || 'Trimestre en cours'
+  );
+
+  useEffect(() => {
+    setReportPeriod(reportOpen?.period || 'Trimestre en cours');
+  }, [client.id, reportOpen?.period]);
   const situationDepuisOuverture = buildSituationDepuisOuverture(client);
   const plusValuePositive = situationDepuisOuverture.plusMoinsValue >= 0;
 
@@ -6737,7 +6747,23 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           ) : (
             <Badge tone="teal">Allocation conforme — aucun rééquilibrage</Badge>
           )}
-          <Btn onClick={() => onGenerateReport(client.id)}>Générer rapport</Btn>
+          <div className="flex items-center gap-2">
+            <select
+              value={reportPeriod}
+              onChange={(e) => setReportPeriod(e.target.value)}
+              className="px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, ...F_BODY }}
+              aria-label="Période du rapport du portefeuille"
+              title="Définir la période du rapport"
+            >
+              <option>Trimestre en cours</option>
+              <option>Année en cours</option>
+              <option>Personnalisée</option>
+            </select>
+            <Btn onClick={() => onGenerateReport(client.id, reportPeriod)}>
+              Générer rapport
+            </Btn>
+          </div>
         </div>
       </div>
 
@@ -7005,7 +7031,9 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
       {reportOpen.notice && (
         <Card className="p-4" style={{ borderColor: C.gold }}>
-          <Eyebrow>Rapport d'analyse — {client.nom}</Eyebrow>
+          <Eyebrow>
+            Rapport d'analyse — {client.nom} · {reportOpen.period || 'Trimestre en cours'}
+          </Eyebrow>
           <div className="grid grid-cols-3 gap-4 text-sm mt-2" style={F_BODY}>
             <div>
               <div className="text-xs" style={{ color: C.sub }}>
@@ -20507,13 +20535,17 @@ export default function App() {
     setCtx(params);
     remonterEnHaut();
   };
-  const openClient = (id, showReport = false) => {
+  const openClient = (id, showReport = false, period = 'Trimestre en cours') => {
     setScreen('client');
     setCtx({ clientId: id });
-    setReportOpen({ notice: showReport });
+    setReportOpen({ notice: showReport, period });
     remonterEnHaut();
   };
-  const report = () => setReportOpen({ notice: true });
+  const report = (_clientId, period = 'Trimestre en cours') =>
+    setReportOpen({
+      notice: true,
+      period,
+    });
 
   const goClient = (id, params = {}) => {
     setClientScreen(id);
