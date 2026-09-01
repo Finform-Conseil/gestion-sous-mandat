@@ -894,7 +894,6 @@ const exportAnatomiePdf = (payload) => {
   );
 };
 
-
 /* ---------------- EXPORT CONSOLIDÉ — LIQUIDITÉ DES COMPTES GÉRÉS ---------------- */
 /*
  * Format inspiré du tableau papier fourni :
@@ -914,9 +913,8 @@ const buildMoneyManagementConsolidatedExportPayload = (details = []) => {
 
   const montantRubrique = (liste, numero) =>
     Number(
-      (liste || []).find(
-        (item) => Number(item?.numero) === Number(numero)
-      )?.montant || 0
+      (liste || []).find((item) => Number(item?.numero) === Number(numero))
+        ?.montant || 0
     );
 
   const rows = details.map((detail, index) => {
@@ -1050,7 +1048,12 @@ const exportMoneyManagementExcel = (payload) => {
       styleOverride ??
       (type === 'money' ? 6 : type === 'pct' ? 7 : type === 'center' ? 5 : 4);
     if (type === 'money' || type === 'pct') {
-      return exportXlsxNumberCell(rowIndex, colIndex, Number(value || 0), style);
+      return exportXlsxNumberCell(
+        rowIndex,
+        colIndex,
+        Number(value || 0),
+        style
+      );
     }
     return exportXlsxInlineCell(rowIndex, colIndex, value, style);
   };
@@ -1135,12 +1138,7 @@ const exportMoneyManagementExcel = (payload) => {
       ${exportXlsxInlineCell(headerStart + 3, 10, 'Amortissement', 3)}
       ${exportXlsxInlineCell(headerStart + 3, 11, 'Intérêt', 3)}
       ${exportXlsxInlineCell(headerStart + 3, 13, 'Retrait (6)', 3)}
-      ${exportXlsxInlineCell(
-        headerStart + 3,
-        14,
-        'Réinvestissement (7)',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 3, 14, 'Réinvestissement (7)', 3)}
     </row>`;
 
   const bottomHeaderRows = `
@@ -1158,40 +1156,15 @@ const exportMoneyManagementExcel = (payload) => {
         3
       )}
       ${exportXlsxInlineCell(headerStart, 8, 'Liquidité Bloquée', 2)}
-      ${exportXlsxInlineCell(
-        headerStart,
-        16,
-        'Liquidité disponible (21)',
-        3
-      )}
-      ${exportXlsxInlineCell(
-        headerStart,
-        17,
-        'Correction écart sur profil',
-        2
-      )}
+      ${exportXlsxInlineCell(headerStart, 16, 'Liquidité disponible (21)', 3)}
+      ${exportXlsxInlineCell(headerStart, 17, 'Correction écart sur profil', 2)}
       ${exportXlsxInlineCell(headerStart, 21, 'Rendement (26)', 3)}
     </row>
     <row r="${headerStart + 1}" ht="22" customHeight="1">
-      ${exportXlsxInlineCell(
-        headerStart + 1,
-        8,
-        'Achat Marché Monétaire',
-        3
-      )}
-      ${exportXlsxInlineCell(
-        headerStart + 1,
-        10,
-        'Achat Marché financier',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 1, 8, 'Achat Marché Monétaire', 3)}
+      ${exportXlsxInlineCell(headerStart + 1, 10, 'Achat Marché financier', 3)}
       ${exportXlsxInlineCell(headerStart + 1, 12, 'ESV', 3)}
-      ${exportXlsxInlineCell(
-        headerStart + 1,
-        15,
-        'Ne pas réinvestir (20)',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 1, 15, 'Ne pas réinvestir (20)', 3)}
       ${exportXlsxInlineCell(headerStart + 1, 17, '%', 3)}
       ${exportXlsxInlineCell(headerStart + 1, 19, 'Valeur', 3)}
     </row>
@@ -1200,28 +1173,13 @@ const exportMoneyManagementExcel = (payload) => {
       ${exportXlsxInlineCell(headerStart + 2, 9, 'BAT (14)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 10, 'OPV / APE (15)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 11, 'Actions (16)', 3)}
-      ${exportXlsxInlineCell(
-        headerStart + 2,
-        12,
-        'Amortissements (17)',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 2, 12, 'Amortissements (17)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 13, 'Intérêts (18)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 14, 'Dividendes (19)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 17, 'Actions (22)', 3)}
-      ${exportXlsxInlineCell(
-        headerStart + 2,
-        18,
-        'Obligations (23)',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 2, 18, 'Obligations (23)', 3)}
       ${exportXlsxInlineCell(headerStart + 2, 19, 'Action (24)', 3)}
-      ${exportXlsxInlineCell(
-        headerStart + 2,
-        20,
-        'Obligation (25)',
-        3
-      )}
+      ${exportXlsxInlineCell(headerStart + 2, 20, 'Obligation (25)', 3)}
     </row>`;
 
   const topSheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1438,9 +1396,19 @@ const exportMoneyManagementPdf = (payload) => {
   const topColumns = [
     { key: 'numeroCompte', label: 'N° Compte', width: 58, align: 'center' },
     { key: 'nom', label: 'Prénom & Nom', width: 145 },
-    { key: 'valorisationTitres', label: 'Valorisation Titres', width: 95, type: 'money' },
+    {
+      key: 'valorisationTitres',
+      label: 'Valorisation Titres',
+      width: 95,
+      type: 'money',
+    },
     { key: 'profil', label: 'Profil', width: 70, align: 'center' },
-    { key: 'dernierDepotDate', label: 'Dernier Dépôt', width: 76, align: 'center' },
+    {
+      key: 'dernierDepotDate',
+      label: 'Dernier Dépôt',
+      width: 76,
+      align: 'center',
+    },
     { key: 'r1', label: 'Ouverture (1)', width: 70, type: 'money' },
     { key: 'r2', label: 'Dernier dépôt (2)', width: 74, type: 'money' },
     { key: 'r3', label: 'Amortissements (3)', width: 70, type: 'money' },
@@ -1456,9 +1424,19 @@ const exportMoneyManagementPdf = (payload) => {
   const bottomColumns = [
     { key: 'numeroCompte', label: 'N° Compte', width: 44, align: 'center' },
     { key: 'nom', label: 'Prénom & Nom', width: 110 },
-    { key: 'valorisationTitres', label: 'Valorisation', width: 70, type: 'money' },
+    {
+      key: 'valorisationTitres',
+      label: 'Valorisation',
+      width: 70,
+      type: 'money',
+    },
     { key: 'profil', label: 'Profil', width: 54, align: 'center' },
-    { key: 'dernierDepotDate', label: 'Dernier dépôt', width: 58, align: 'center' },
+    {
+      key: 'dernierDepotDate',
+      label: 'Dernier dépôt',
+      width: 58,
+      align: 'center',
+    },
     { key: 'r11', label: 'Retrait (11)', width: 48, type: 'money' },
     { key: 'r12', label: 'À investir (12)', width: 56, type: 'money' },
     { key: 'r13', label: 'OAT (13)', width: 46, type: 'money' },
@@ -1488,9 +1466,7 @@ const exportMoneyManagementPdf = (payload) => {
   const formatCell = (row, column) => {
     const value = row[column.key];
     if (column.type === 'money') {
-      return `${exportFormatNumber(Number(value || 0), 0)} ${
-        row.devise || ''
-      }`;
+      return `${exportFormatNumber(Number(value || 0), 0)} ${row.devise || ''}`;
     }
     if (column.type === 'pct') {
       const numeric = Number(value || 0);
@@ -1545,9 +1521,9 @@ const exportMoneyManagementPdf = (payload) => {
         } re f`
       );
       commands.push(
-        `0.65 G 0.45 w ${x} ${
-          tableTop - groupHeight - headerHeight
-        } ${column.width} ${groupHeight + headerHeight} re S`
+        `0.65 G 0.45 w ${x} ${tableTop - groupHeight - headerHeight} ${
+          column.width
+        } ${groupHeight + headerHeight} re S`
       );
       x += column.width;
     });
@@ -1562,10 +1538,14 @@ const exportMoneyManagementPdf = (payload) => {
         .slice(group.start, group.end + 1)
         .reduce((sum, column) => sum + column.width, 0);
       commands.push(
-        `0.08 0.14 0.25 rg ${startX} ${tableTop - groupHeight} ${width} ${groupHeight} re f`
+        `0.08 0.14 0.25 rg ${startX} ${
+          tableTop - groupHeight
+        } ${width} ${groupHeight} re f`
       );
       commands.push(
-        `0.65 G 0.45 w ${startX} ${tableTop - groupHeight} ${width} ${groupHeight} re S`
+        `0.65 G 0.45 w ${startX} ${
+          tableTop - groupHeight
+        } ${width} ${groupHeight} re S`
       );
       const label = fitText(group.label, width - 4, 6.2);
       commands.push(
@@ -1590,9 +1570,7 @@ const exportMoneyManagementPdf = (payload) => {
     rows.forEach((row, rowIndex) => {
       y -= rowHeight;
       if (rowIndex % 2 === 1) {
-        commands.push(
-          `0.975 g ${tableX} ${y} ${totalWidth} ${rowHeight} re f`
-        );
+        commands.push(`0.975 g ${tableX} ${y} ${totalWidth} ${rowHeight} re f`);
       }
 
       let cellX = tableX;
@@ -1611,9 +1589,9 @@ const exportMoneyManagementPdf = (payload) => {
             ? cellX + Math.max(2, column.width - estimatedWidth - 2)
             : cellX + 2;
         commands.push(
-          `BT /F1 ${size} Tf 0.08 0.10 0.15 rg 1 0 0 1 ${textX.toFixed(
-            1
-          )} ${(y + 6.2).toFixed(1)} Tm (${exportPdfEscape(cellText)}) Tj ET`
+          `BT /F1 ${size} Tf 0.08 0.10 0.15 rg 1 0 0 1 ${textX.toFixed(1)} ${(
+            y + 6.2
+          ).toFixed(1)} Tm (${exportPdfEscape(cellText)}) Tj ET`
         );
         cellX += column.width;
       });
@@ -1642,7 +1620,8 @@ const exportMoneyManagementPdf = (payload) => {
 
   drawTablePage({
     sectionTitle: 'AFFECTATIONS, BLOCAGES ET CORRECTION - RUBRIQUES 11 À 26',
-    sectionSubtitle: 'Liquidité bloquée / disponible et correction écart sur profil',
+    sectionSubtitle:
+      'Liquidité bloquée / disponible et correction écart sur profil',
     columns: bottomColumns,
     rows: payload.rows,
     groups: [
@@ -1659,9 +1638,9 @@ const exportMoneyManagementPdf = (payload) => {
   const kids = [];
   pages.forEach((pageCommands, index) => {
     pageCommands.push(
-      `BT /F1 6 Tf 1 0 0 1 ${pageWidth - 96} 18 Tm (Page ${
-        index + 1
-      } / ${pages.length}) Tj ET`
+      `BT /F1 6 Tf 1 0 0 1 ${pageWidth - 96} 18 Tm (Page ${index + 1} / ${
+        pages.length
+      }) Tj ET`
     );
     const contentNumber = 5 + index * 2;
     const pageNumber = contentNumber + 1;
@@ -4044,25 +4023,127 @@ const SECTOR_CONTRIB = [
   { name: 'Assurance', valeur: 505, pct: 10 },
   { name: 'Distribution', valeur: 300, pct: 6 },
 ];
-const HISTORY = Array.from({ length: 12 }).map((_, i) => ({
-  mois: [
-    'Août',
-    'Sept',
-    'Oct',
-    'Nov',
-    'Déc',
-    'Jan',
-    'Fév',
-    'Mar',
-    'Avr',
-    'Mai',
-    'Juin',
-    'Juil',
-  ][i],
-  encours: 100 + i * 1.6 + Math.sin(i) * 2.2,
-  brvm: 100 + i * 1.1 + Math.cos(i) * 2.5,
-  ngxAsi: 100 + i * 0.6 + Math.sin(i * 1.3) * 3,
-}));
+/*
+ * HISTORIQUE COMPARATIF — PERFORMANCE HORS FLUX CLIENTS
+ *
+ * La courbe de la gestion n'est plus une variation brute d'encours : elle est
+ * calculée en Time-Weighted Return (TWR), base 100. Les dépôts et retraits sont
+ * neutralisés avant de calculer chaque rendement de sous-période :
+ *
+ *   r(t) = (Encours fin(t) - Flux net client(t)) / Encours début(t) - 1
+ *   Indice TWR(t) = Indice TWR(t-1) × (1 + r(t))
+ *
+ * Dans cette maquette, les valorisations mensuelles suivent la trajectoire
+ * historique déjà présente dans le prototype, tandis que les flux proviennent
+ * des historiques déterministes de dépôts/retraits des clients. En production,
+ * il faudra découper exactement la période à chaque flux réel enregistré.
+ */
+const HISTORY_PERIODS = [
+  { date: '2025-09-30', mois: 'Sept 25' },
+  { date: '2025-10-31', mois: 'Oct' },
+  { date: '2025-11-30', mois: 'Nov' },
+  { date: '2025-12-31', mois: 'Déc' },
+  { date: '2026-01-31', mois: 'Jan 26' },
+  { date: '2026-02-28', mois: 'Fév' },
+  { date: '2026-03-31', mois: 'Mar' },
+  { date: '2026-04-30', mois: 'Avr' },
+  { date: '2026-05-31', mois: 'Mai' },
+  { date: '2026-06-30', mois: 'Juin' },
+  { date: '2026-07-31', mois: 'Juil' },
+  { date: '2026-08-31', mois: 'Août' },
+];
+
+const HISTORY_GESTION_REFERENCE = HISTORY_PERIODS.map(
+  (_, index) => 100 + index * 1.6 + Math.sin(index) * 2.2
+);
+const HISTORY_BRVM_REFERENCE = HISTORY_PERIODS.map(
+  (_, index) => 100 + index * 1.1 + Math.cos(index) * 2.5
+);
+const HISTORY_NGX_REFERENCE = HISTORY_PERIODS.map(
+  (_, index) => 100 + index * 0.6 + Math.sin(index * 1.3) * 3
+);
+
+const buildHistoryTwr = (encoursActuel, deviseAffichage) => {
+  const periods = HISTORY_PERIODS.map((period, index) => ({
+    ...period,
+    rendementGestion:
+      index === 0
+        ? 0
+        : HISTORY_GESTION_REFERENCE[index] /
+            HISTORY_GESTION_REFERENCE[index - 1] -
+          1,
+    brvm: (HISTORY_BRVM_REFERENCE[index] / HISTORY_BRVM_REFERENCE[0]) * 100,
+    ngxAsi: (HISTORY_NGX_REFERENCE[index] / HISTORY_NGX_REFERENCE[0]) * 100,
+    depots: 0,
+    retraits: 0,
+    fluxNet: 0,
+  }));
+
+  // Agrégation des mouvements de capital par mois. Les dépôts sont positifs,
+  // les retraits négatifs. Ils sont convertis dans la devise d'affichage.
+  CLIENTS.forEach((client) => {
+    const situation = buildSituationDepuisOuverture(client);
+    situation.flux.forEach((flux) => {
+      const dateFlux =
+        flux.date instanceof Date ? flux.date : new Date(flux.date);
+      const index = periods.findIndex((period, periodIndex) => {
+        if (periodIndex === 0) return false;
+        const debut = parseIsoLocalDate(periods[periodIndex - 1].date);
+        const fin = parseIsoLocalDate(period.date);
+        return dateFlux > debut && dateFlux <= fin;
+      });
+      if (index < 0) return;
+
+      const montant = convertCurrency(
+        Number(flux.montant || 0),
+        flux.devise || client.devise,
+        deviseAffichage
+      );
+      if (flux.type === 'Retrait') {
+        periods[index].retraits += montant;
+        periods[index].fluxNet -= montant;
+      } else {
+        periods[index].depots += montant;
+        periods[index].fluxNet += montant;
+      }
+    });
+  });
+
+  // Reconstruction à rebours de l'encours brut pour que le dernier point soit
+  // égal à l'encours consolidé actuel. Cette série sert uniquement au contrôle
+  // et au tooltip ; la courbe comparée aux indices utilise exclusivement le TWR.
+  const encoursBrut = new Array(periods.length).fill(0);
+  encoursBrut[encoursBrut.length - 1] = Math.max(1, Number(encoursActuel || 0));
+
+  for (let index = periods.length - 1; index > 0; index -= 1) {
+    const rendement = periods[index].rendementGestion;
+    const valeurHorsFlux = encoursBrut[index] - periods[index].fluxNet;
+    encoursBrut[index - 1] = Math.max(
+      1,
+      valeurHorsFlux / Math.max(0.01, 1 + rendement)
+    );
+  }
+
+  let indiceTwr = 100;
+  return periods.map((period, index) => {
+    if (index > 0) {
+      const encoursDebut = encoursBrut[index - 1];
+      const rendementHorsFlux =
+        encoursDebut > 0
+          ? (encoursBrut[index] - period.fluxNet) / encoursDebut - 1
+          : 0;
+      indiceTwr *= 1 + rendementHorsFlux;
+    }
+
+    return {
+      ...period,
+      gestionTwr: Number(indiceTwr.toFixed(3)),
+      brvm: Number(period.brvm.toFixed(3)),
+      ngxAsi: Number(period.ngxAsi.toFixed(3)),
+      encoursBrut: encoursBrut[index],
+    };
+  });
+};
 const HISTORIQUE_TRIMESTRIEL_PORTEFEUILLES = [
   { trimestre: 'T4 2024', fin: '2024-12-31' },
   { trimestre: 'T1 2025', fin: '2025-03-31' },
@@ -5153,7 +5234,11 @@ function Breadcrumb({ items }) {
 }
 
 const HISTORY_SERIES = [
-  { dataKey: 'encours', label: 'Encours général', color: C.navy },
+  {
+    dataKey: 'gestionTwr',
+    label: 'Gestion globale (TWR)',
+    color: C.navy,
+  },
   { dataKey: 'brvm', label: 'BRVM Composite', color: C.gold },
   { dataKey: 'ngxAsi', label: 'NGX ASI', color: C.teal },
 ];
@@ -5276,7 +5361,7 @@ function Accueil({
   const [profilHistoriquePortefeuilles, setProfilHistoriquePortefeuilles] =
     useState('Global');
   const [historyVisibility, setHistoryVisibility] = useState({
-    encours: true,
+    gestionTwr: true,
     brvm: true,
     ngxAsi: true,
   });
@@ -5397,6 +5482,18 @@ function Accueil({
           0
         ) / totalRef
       : 0;
+
+  const historiquePerformance = buildHistoryTwr(totalRef, devise);
+  const dernierHistorique =
+    historiquePerformance[historiquePerformance.length - 1] || {};
+  const performanceGestionTwr =
+    Number(dernierHistorique.gestionTwr || 100) - 100;
+  const performanceBrvm = Number(dernierHistorique.brvm || 100) - 100;
+  const performanceNgx = Number(dernierHistorique.ngxAsi || 100) - 100;
+  const fluxNetHistorique = historiquePerformance.reduce(
+    (somme, point) => somme + Number(point.fluxNet || 0),
+    0
+  );
 
   const typesAlertesAccueil = ['Rendement', 'Risque', 'Allocation'];
   const statistiquesAlertesAccueil = typesAlertesAccueil.map((type) => ({
@@ -5988,14 +6085,107 @@ function Accueil({
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="col-span-2 p-5">
-          <div className="flex items-center justify-between mb-2">
-            <Eyebrow>Historique de l'encours</Eyebrow>
-            <span className="text-xs" style={{ color: C.sub }}>
-              Base 100 · comparaison indices
+          <div className="flex items-start justify-between mb-3 gap-3 flex-wrap">
+            <div>
+              <Eyebrow>Historique de l'encours</Eyebrow>
+              <div className="text-xs" style={{ color: C.sub }}>
+                Performance de la gestion neutralisée des dépôts et retraits
+              </div>
+            </div>
+            <Badge tone="navy">Base 100 · méthode TWR</Badge>
+          </div>
+
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {[
+              {
+                label: 'Gestion TWR',
+                value: `${
+                  performanceGestionTwr >= 0 ? '+' : ''
+                }${performanceGestionTwr.toFixed(1)}%`,
+                color: performanceGestionTwr >= 0 ? C.teal : C.coral,
+              },
+              {
+                label: 'BRVM Composite',
+                value: `${
+                  performanceBrvm >= 0 ? '+' : ''
+                }${performanceBrvm.toFixed(1)}%`,
+                color: C.gold,
+              },
+              {
+                label: 'NGX ASI',
+                value: `${
+                  performanceNgx >= 0 ? '+' : ''
+                }${performanceNgx.toFixed(1)}%`,
+                color: C.teal,
+              },
+              {
+                label: 'Flux clients nets',
+                value: `${fluxNetHistorique >= 0 ? '+' : '-'}${fmt(
+                  Math.abs(fluxNetHistorique)
+                )} ${devise}`,
+                color: C.sub,
+              },
+            ].map((stat) => (
+              <div
+                key={stat.label}
+                className="rounded-xl border p-2.5"
+                style={{ borderColor: C.line, background: '#FAFAFC' }}
+              >
+                <div
+                  className="text-[9px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  {stat.label}
+                </div>
+                <div
+                  className="text-sm font-bold mt-1"
+                  style={{ color: stat.color, ...F_MONO }}
+                >
+                  {stat.value}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="flex items-center gap-3 flex-wrap mb-3 text-[10px]"
+            style={{ color: C.sub }}
+          >
+            <span>
+              Écart vs BRVM :{' '}
+              <b
+                style={{
+                  color:
+                    performanceGestionTwr - performanceBrvm >= 0
+                      ? C.teal
+                      : C.coral,
+                  ...F_MONO,
+                }}
+              >
+                {performanceGestionTwr - performanceBrvm >= 0 ? '+' : ''}
+                {(performanceGestionTwr - performanceBrvm).toFixed(1)} pt
+              </b>
+            </span>
+            <span>·</span>
+            <span>
+              Écart vs NGX :{' '}
+              <b
+                style={{
+                  color:
+                    performanceGestionTwr - performanceNgx >= 0
+                      ? C.teal
+                      : C.coral,
+                  ...F_MONO,
+                }}
+              >
+                {performanceGestionTwr - performanceNgx >= 0 ? '+' : ''}
+                {(performanceGestionTwr - performanceNgx).toFixed(1)} pt
+              </b>
             </span>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={HISTORY}>
+
+          <ResponsiveContainer width="100%" height={230}>
+            <LineChart data={historiquePerformance}>
               <CartesianGrid stroke={C.line} vertical={false} />
               <XAxis
                 dataKey="mois"
@@ -6007,21 +6197,84 @@ function Accueil({
                 tick={{ fontSize: 11, fill: C.sub }}
                 axisLine={false}
                 tickLine={false}
+                domain={['dataMin - 2', 'dataMax + 2']}
+                tickFormatter={(value) => Number(value).toFixed(0)}
               />
               <Tooltip
-                contentStyle={{
-                  borderRadius: 10,
-                  fontSize: 12,
-                  border: `1px solid ${C.line}`,
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const point = payload[0]?.payload;
+                  if (!point) return null;
+                  const fluxLabel =
+                    point.fluxNet > 0
+                      ? 'Dépôt net'
+                      : point.fluxNet < 0
+                      ? 'Retrait net'
+                      : 'Flux client';
+                  return (
+                    <div
+                      className="rounded-xl border p-3 text-xs shadow-sm"
+                      style={{
+                        background: '#fff',
+                        borderColor: C.line,
+                        ...F_BODY,
+                      }}
+                    >
+                      <div className="font-bold mb-2" style={{ color: C.ink }}>
+                        {label}
+                      </div>
+                      <div className="space-y-1" style={{ color: C.sub }}>
+                        <div>
+                          Gestion TWR :{' '}
+                          <b style={{ color: C.navy, ...F_MONO }}>
+                            {Number(point.gestionTwr).toFixed(2)}
+                          </b>
+                        </div>
+                        <div>
+                          BRVM Composite :{' '}
+                          <b style={{ color: C.gold, ...F_MONO }}>
+                            {Number(point.brvm).toFixed(2)}
+                          </b>
+                        </div>
+                        <div>
+                          NGX ASI :{' '}
+                          <b style={{ color: C.teal, ...F_MONO }}>
+                            {Number(point.ngxAsi).toFixed(2)}
+                          </b>
+                        </div>
+                        <div
+                          className="pt-1 mt-1"
+                          style={{ borderTop: `1px solid ${C.line}` }}
+                        >
+                          Encours brut :{' '}
+                          <b style={{ color: C.ink, ...F_MONO }}>
+                            {fmt(point.encoursBrut)} {devise}
+                          </b>
+                        </div>
+                        <div>
+                          {fluxLabel} :{' '}
+                          <b
+                            style={{
+                              color: point.fluxNet >= 0 ? C.teal : C.coral,
+                              ...F_MONO,
+                            }}
+                          >
+                            {point.fluxNet >= 0 ? '+' : '-'}
+                            {fmt(Math.abs(point.fluxNet))} {devise}
+                          </b>
+                        </div>
+                      </div>
+                    </div>
+                  );
                 }}
               />
-              {historyVisibility.encours && (
+              {historyVisibility.gestionTwr && (
                 <Line
                   type="monotone"
-                  dataKey="encours"
-                  name="Encours général"
+                  dataKey="gestionTwr"
+                  name="Gestion globale (TWR)"
                   stroke={C.navy}
-                  strokeWidth={2.5}
+                  strokeWidth={2.8}
                   dot={false}
                 />
               )}
@@ -6053,6 +6306,17 @@ function Accueil({
             visibility={historyVisibility}
             onToggle={toggleHistorySeries}
           />
+          <div
+            className="mt-3 rounded-xl px-3 py-2 text-[10px]"
+            style={{ background: '#F7F8FB', color: C.sub, ...F_BODY }}
+          >
+            <b style={{ color: C.ink }}>Lecture :</b> la courbe « Gestion
+            globale (TWR) » mesure uniquement la performance de gestion. Un
+            dépôt ou un retrait modifie l'encours brut affiché dans l'infobulle,
+            mais son montant est neutralisé avant le calcul du rendement de la
+            période. En production, le TWR sera chaîné à chaque mouvement de
+            capital réel.
+          </div>
         </Card>
 
         <Card className="p-5">
@@ -7032,7 +7296,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
       {reportOpen.notice && (
         <Card className="p-4" style={{ borderColor: C.gold }}>
           <Eyebrow>
-            Rapport d'analyse — {client.nom} · {reportOpen.period || 'Trimestre en cours'}
+            Rapport d'analyse — {client.nom} ·{' '}
+            {reportOpen.period || 'Trimestre en cours'}
           </Eyebrow>
           <div className="grid grid-cols-3 gap-4 text-sm mt-2" style={F_BODY}>
             <div>
@@ -11370,7 +11635,6 @@ function MoneyManagement({ go, devise = 'XOF' }) {
   const payloadExportLiquiditeComptesGeres =
     buildMoneyManagementConsolidatedExportPayload(detailLiquiditeParClient);
 
-
   const roleTone = (responsable) => {
     if (responsable.includes('Gestionnaire')) return 'navy';
     if (responsable.includes('Chargé')) return 'gold';
@@ -11799,9 +12063,7 @@ function MoneyManagement({ go, devise = 'XOF' }) {
             <Badge tone="teal">
               Export consolidé · {detailLiquiditeParClient.length} compte(s)
             </Badge>
-            <Badge tone="gold">
-              Excel : 2 feuilles · rubriques 1 à 26
-            </Badge>
+            <Badge tone="gold">Excel : 2 feuilles · rubriques 1 à 26</Badge>
           </div>
         </div>
 
@@ -20535,7 +20797,11 @@ export default function App() {
     setCtx(params);
     remonterEnHaut();
   };
-  const openClient = (id, showReport = false, period = 'Trimestre en cours') => {
+  const openClient = (
+    id,
+    showReport = false,
+    period = 'Trimestre en cours'
+  ) => {
     setScreen('client');
     setCtx({ clientId: id });
     setReportOpen({ notice: showReport, period });
