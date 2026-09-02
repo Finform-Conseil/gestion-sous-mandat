@@ -3006,6 +3006,15 @@ function VueBourses({
     go?.('profondeur', params);
   };
 
+  const ouvrirAnalyseInstrument = (instrument) => {
+    if (espaceClient) return;
+    go?.('instrument-analysis', {
+      marche: snapshot.code,
+      instrument: instrument.nom,
+      source: 'vue-boursiere',
+    });
+  };
+
   const ajouterWatchlist = (instrument) => {
     if (!watchlistTitles.includes(instrument.nom)) {
       onAddWatch?.(instrument.nom);
@@ -3406,7 +3415,19 @@ function VueBourses({
                     }}
                   >
                     <Td className="font-semibold whitespace-nowrap">
-                      {instrument.nom}
+                      {espaceClient ? (
+                        instrument.nom
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => ouvrirAnalyseInstrument(instrument)}
+                          className="font-semibold text-left hover:underline underline-offset-4"
+                          style={{ color: C.indigo }}
+                          title={`Analyser ${instrument.nom}`}
+                        >
+                          {instrument.nom}
+                        </button>
+                      )}
                     </Td>
                     <Td>{instrument.secteur}</Td>
                     <Td mono className="whitespace-nowrap">
@@ -3501,6 +3522,1067 @@ function VueBourses({
         sont générés localement et ne doivent pas être interprétés comme des
         données officielles de la BRVM, de la NGX ou de la GSE.
       </div>
+    </div>
+  );
+}
+
+/* --------------------- ANALYSE D'UN INSTRUMENT ACTION --------------------- */
+/*
+ * Page d'analyse ouverte depuis Marchés Actions > Cotation.
+ * Les données de marché et fondamentales restent des données de démonstration
+ * cohérentes avec la maquette. En production, les séries OHLCV, indicateurs et
+ * ratios devront provenir des API/ORM réels de la plateforme.
+ */
+const technicalSeed = (value) =>
+  String(value || '')
+    .split('')
+    .reduce(
+      (total, char, index) => total + char.charCodeAt(0) * (index + 3),
+      0
+    );
+
+const seededUnit = (seed, index) => {
+  const x = Math.sin(seed * 12.9898 + index * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+};
+
+const buildTechnicalSeries = (instrument, points = 240) => {
+  const current = Math.max(0.01, Number(instrument?.cours || 100));
+  const seed = technicalSeed(`${instrument?.marche}-${instrument?.nom}`);
+  const rows = [];
+  let close = current * (0.82 + (seed % 14) / 100);
+  let cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  cursor.setDate(cursor.getDate() - Math.ceil(points * 1.45));
+
+  for (let index = 0; rows.length < points; index += 1) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() === 0 || cursor.getDay() === 6) continue;
+
+    const noise = seededUnit(seed, index) - 0.48;
+    const cycle = Math.sin((index + (seed % 17)) * 0.16) * 0.0028;
+    const drift = 0.00045 + ((seed % 7) - 3) * 0.00003;
+    const gap = (seededUnit(seed + 13, index) - 0.5) * 0.006;
+    const open = Math.max(0.01, close * (1 + gap));
+    const nextClose = Math.max(
+      0.01,
+      open * (1 + drift + cycle + noise * 0.017)
+    );
+    const amplitude = 0.004 + seededUnit(seed + 29, index) * 0.014;
+    const high = Math.max(open, nextClose) * (1 + amplitude);
+    const low = Math.min(open, nextClose) * (1 - amplitude * 0.86);
+    const volume = Math.round(
+      Number(instrument?.volumeJour || instrument?.volume || 100000) *
+        (0.55 + seededUnit(seed + 61, index) * 1.05)
+    );
+
+    rows.push({
+      date: cursor.toISOString().slice(0, 10),
+      label: cursor.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: 'short',
+      }),
+      open,
+      high,
+      low,
+      close: nextClose,
+      volume,
+    });
+    close = nextClose;
+  }
+
+  const scale = current / rows[rows.length - 1].close;
+  const scaled = rows.map((row) => ({
+    ...row,
+    open: row.open * scale,
+    high: row.high * scale,
+    low: row.low * scale,
+    close: row.close * scale,
+  }));
+
+  const rollingAverage = (index, period) => {
+    if (index + 1 < period) return null;
+    const sample = scaled.slice(index - period + 1, index + 1);
+    return sample.reduce((sum, row) => sum + row.close, 0) / sample.length;
+  };
+
+  return scaled.map((row, index) => ({
+    ...row,
+    sma20: rollingAverage(index, 20),
+    sma50: rollingAverage(index, 50),
+  }));
+};
+
+const technicalRsi = (rows, period = 14) => {
+  if (!rows?.length || rows.length <= period) return 50;
+  let gains = 0;
+  let losses = 0;
+  const start = rows.length - period;
+  for (let index = start; index < rows.length; index += 1) {
+    const previous = rows[index - 1]?.close ?? rows[index].close;
+    const delta = rows[index].close - previous;
+    if (delta >= 0) gains += delta;
+    else losses += Math.abs(delta);
+  }
+  if (losses === 0) return 100;
+  const rs = gains / Math.max(losses, 1e-9);
+  return 100 - 100 / (1 + rs);
+};
+
+const technicalEma = (values, period) => {
+  if (!values.length) return [];
+  const multiplier = 2 / (period + 1);
+  const output = [values[0]];
+  for (let index = 1; index < values.length; index += 1) {
+    output.push(
+      values[index] * multiplier + output[index - 1] * (1 - multiplier)
+    );
+  }
+  return output;
+};
+
+const technicalMacd = (rows) => {
+  const closes = rows.map((row) => row.close);
+  const ema12 = technicalEma(closes, 12);
+  const ema26 = technicalEma(closes, 26);
+  const macd = closes.map((_, index) => ema12[index] - ema26[index]);
+  const signal = technicalEma(macd, 9);
+  return {
+    macd: macd[macd.length - 1] || 0,
+    signal: signal[signal.length - 1] || 0,
+    histogram: (macd[macd.length - 1] || 0) - (signal[signal.length - 1] || 0),
+  };
+};
+
+const technicalVolatility = (rows, period = 20) => {
+  const sample = rows.slice(-Math.max(2, period + 1));
+  const returns = sample.slice(1).map((row, index) => {
+    const previous = sample[index].close;
+    return previous > 0 ? row.close / previous - 1 : 0;
+  });
+  if (!returns.length) return 0;
+  const average =
+    returns.reduce((sum, value) => sum + value, 0) / returns.length;
+  const variance =
+    returns.reduce((sum, value) => sum + (value - average) ** 2, 0) /
+    returns.length;
+  return Math.sqrt(variance) * Math.sqrt(252) * 100;
+};
+
+const buildFundamentalSnapshot = (instrument) => {
+  const seed = technicalSeed(`${instrument?.marche}-${instrument?.nom}`);
+  const reco = RECOS.find((item) => item.titre === instrument?.nom);
+  const secteur = instrument?.secteur || reco?.secteur || 'Autres';
+  const isBank = /banque|bank/i.test(secteur);
+
+  return {
+    per: Number(
+      (reco?.fondamentale?.per ?? 7.5 + ((seed * 7) % 135) / 10).toFixed(1)
+    ),
+    roe: Number((9 + ((seed * 11) % 210) / 10).toFixed(1)),
+    roa: Number(
+      (isBank
+        ? 0.8 + ((seed * 13) % 260) / 100
+        : 3.8 + ((seed * 13) % 105) / 10
+      ).toFixed(1)
+    ),
+    margeNette: Number((6 + ((seed * 17) % 190) / 10).toFixed(1)),
+    detteFondsPropres: Number((0.18 + ((seed * 19) % 125) / 100).toFixed(2)),
+    croissanceCA: Number((1.5 + ((seed * 23) % 145) / 10).toFixed(1)),
+    croissanceBpa: Number((1 + ((seed * 29) % 190) / 10).toFixed(1)),
+    rendementDividende: Number((1.2 + ((seed * 31) % 70) / 10).toFixed(1)),
+    priceBook: Number((0.8 + ((seed * 37) % 38) / 10).toFixed(1)),
+    secteur,
+  };
+};
+
+const fundamentalRatioExplanation = (key, value, secteur) => {
+  if (key === 'per') {
+    const lecture =
+      value < 9
+        ? 'Multiple de bénéfices relativement faible : le marché paie peu chaque unité de bénéfice, ce qui peut refléter une décote ou un risque perçu.'
+        : value <= 16
+        ? 'Multiple intermédiaire : la valorisation paraît modérée, à comparer aux pairs du même secteur et à la croissance attendue.'
+        : 'Multiple élevé : le cours intègre davantage d’anticipations de croissance ; la qualité des bénéfices devient particulièrement importante.';
+    return {
+      definition:
+        'Le PER rapporte le cours de l’action au bénéfice par action. Il mesure le prix payé pour une unité de bénéfice.',
+      lecture,
+    };
+  }
+  if (key === 'roe') {
+    return {
+      definition:
+        'Le ROE mesure la rentabilité générée sur les capitaux propres apportés par les actionnaires.',
+      lecture:
+        value >= 20
+          ? 'Rentabilité des fonds propres élevée dans cette maquette. Il faut toutefois vérifier si elle repose sur un endettement important ou sur une rentabilité opérationnelle durable.'
+          : value >= 12
+          ? 'Rentabilité des capitaux propres correcte à solide ; la comparaison sectorielle reste déterminante.'
+          : 'Rentabilité des capitaux propres modérée ; il faut examiner les marges, la rotation des actifs et la structure financière.',
+    };
+  }
+  if (key === 'roa') {
+    return {
+      definition:
+        'Le ROA mesure le bénéfice produit par l’ensemble des actifs utilisés par l’entreprise.',
+      lecture: /banque|bank/i.test(secteur)
+        ? 'Pour une banque, le ROA est structurellement plus faible que dans de nombreux secteurs industriels : une lecture autour de quelques pourcents peut déjà être significative.'
+        : value >= 8
+        ? 'Efficacité élevée des actifs dans cette maquette : l’entreprise génère une rentabilité importante par unité d’actif.'
+        : value >= 4
+        ? 'Efficacité opérationnelle intermédiaire ; à comparer à l’intensité capitalistique du secteur.'
+        : 'ROA faible : l’actif économique génère peu de résultat relatif, ce qui mérite une analyse des marges et de l’utilisation des actifs.',
+    };
+  }
+  if (key === 'margeNette') {
+    return {
+      definition:
+        'La marge nette indique la part du chiffre d’affaires qui reste en résultat net après toutes les charges.',
+      lecture:
+        value >= 15
+          ? 'Marge nette confortable dans la maquette, suggérant une bonne capacité à convertir le chiffre d’affaires en bénéfice.'
+          : 'Marge à surveiller relativement aux concurrents et à son évolution historique.',
+    };
+  }
+  if (key === 'detteFondsPropres') {
+    return {
+      definition:
+        'Dette / fonds propres mesure le poids de la dette financière relativement aux capitaux propres.',
+      lecture:
+        value <= 0.5
+          ? 'Le levier financier apparaît contenu dans la maquette.'
+          : value <= 1
+          ? 'Le levier est intermédiaire ; son acceptabilité dépend de la stabilité des flux de trésorerie et du secteur.'
+          : 'Levier élevé : il convient d’examiner la couverture des intérêts, les échéances et la génération de cash-flow.',
+    };
+  }
+  if (key === 'croissanceCA') {
+    return {
+      definition:
+        'Croissance du chiffre d’affaires : évolution de l’activité commerciale sur la période de référence.',
+      lecture:
+        value >= 8
+          ? 'Dynamique commerciale soutenue dans la maquette.'
+          : 'Progression mesurée ; il faut distinguer croissance organique, effet prix et acquisitions.',
+    };
+  }
+  if (key === 'croissanceBpa') {
+    return {
+      definition:
+        'Croissance du BPA : évolution du bénéfice attribuable à chaque action.',
+      lecture:
+        value >= 10
+          ? 'Croissance bénéficiaire soutenue dans la maquette.'
+          : 'Croissance bénéficiaire modérée ; à rapprocher du chiffre d’affaires et des marges.',
+    };
+  }
+  if (key === 'rendementDividende') {
+    return {
+      definition:
+        'Le rendement du dividende rapporte le dividende annuel au cours de l’action.',
+      lecture:
+        'Un rendement élevé n’est pas automatiquement favorable : il faut vérifier la soutenabilité du dividende et le taux de distribution.',
+    };
+  }
+  return {
+    definition:
+      'Le Price-to-Book compare la capitalisation boursière aux fonds propres comptables.',
+    lecture:
+      value < 1
+        ? 'Une valeur inférieure à 1 peut signaler une décote comptable ou refléter une faible rentabilité attendue.'
+        : 'Une valeur supérieure à 1 signifie que le marché valorise l’entreprise au-dessus de ses fonds propres comptables.',
+  };
+};
+
+function TechnicalPriceChart({ rows, devise }) {
+  const [mode, setMode] = useState('Bougies');
+  const [tool, setTool] = useState('none');
+  const [drawings, setDrawings] = useState([]);
+  const [draftStart, setDraftStart] = useState(null);
+  const [hover, setHover] = useState(null);
+  const [showSma20, setShowSma20] = useState(true);
+  const [showSma50, setShowSma50] = useState(true);
+
+  const width = 1100;
+  const height = 430;
+  const margin = { left: 72, right: 24, top: 22, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const minLow = Math.min(...rows.map((row) => row.low));
+  const maxHigh = Math.max(...rows.map((row) => row.high));
+  const padding = Math.max((maxHigh - minLow) * 0.08, maxHigh * 0.005);
+  const minPrice = minLow - padding;
+  const maxPrice = maxHigh + padding;
+  const xFor = (index) =>
+    margin.left +
+    (rows.length <= 1 ? 0 : (index / (rows.length - 1)) * plotWidth);
+  const yFor = (price) =>
+    margin.top + ((maxPrice - price) / (maxPrice - minPrice)) * plotHeight;
+  const pathFor = (key) => {
+    let started = false;
+    return rows
+      .map((row, index) => {
+        const value = row[key];
+        if (value == null) return null;
+        const command = started ? 'L' : 'M';
+        started = true;
+        return `${command} ${xFor(index).toFixed(1)} ${yFor(value).toFixed(1)}`;
+      })
+      .filter(Boolean)
+      .join(' ');
+  };
+  const closePath = pathFor('close');
+  const candleWidth = Math.max(
+    2.2,
+    Math.min(9, (plotWidth / rows.length) * 0.62)
+  );
+
+  const pointerPosition = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * width;
+    const y = ((event.clientY - rect.top) / rect.height) * height;
+    return {
+      x: Math.max(margin.left, Math.min(width - margin.right, x)),
+      y: Math.max(margin.top, Math.min(height - margin.bottom, y)),
+    };
+  };
+
+  const handleMove = (event) => {
+    const point = pointerPosition(event);
+    const relative = (point.x - margin.left) / plotWidth;
+    const index = Math.max(
+      0,
+      Math.min(rows.length - 1, Math.round(relative * (rows.length - 1)))
+    );
+    setHover({ ...point, index });
+  };
+
+  const handleChartClick = (event) => {
+    if (tool === 'none') return;
+    const point = pointerPosition(event);
+    if (tool === 'horizontal') {
+      setDrawings((current) => [
+        ...current,
+        { type: 'horizontal', y: point.y },
+      ]);
+      return;
+    }
+    if (!draftStart) {
+      setDraftStart(point);
+    } else {
+      setDrawings((current) => [
+        ...current,
+        {
+          type: 'trend',
+          x1: draftStart.x,
+          y1: draftStart.y,
+          x2: point.x,
+          y2: point.y,
+        },
+      ]);
+      setDraftStart(null);
+    }
+  };
+
+  const selectTool = (next) => {
+    setTool(next);
+    setDraftStart(null);
+  };
+
+  const hoverRow = hover ? rows[hover.index] : null;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {['Bougies', 'Linéaire', 'Aire'].map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setMode(item)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={{
+                background: mode === item ? C.navy : '#F0F1F5',
+                color: mode === item ? '#fff' : C.sub,
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => selectTool(tool === 'trend' ? 'none' : 'trend')}
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+            style={{
+              borderColor: tool === 'trend' ? C.indigo : C.line,
+              color: tool === 'trend' ? C.indigo : C.sub,
+              background: tool === 'trend' ? '#EEF1FF' : '#fff',
+            }}
+          >
+            Trait de tendance
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              selectTool(tool === 'horizontal' ? 'none' : 'horizontal')
+            }
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+            style={{
+              borderColor: tool === 'horizontal' ? C.gold : C.line,
+              color: tool === 'horizontal' ? '#8A6A16' : C.sub,
+              background: tool === 'horizontal' ? '#FBF1DD' : '#fff',
+            }}
+          >
+            Ligne horizontale
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawings((current) => current.slice(0, -1));
+              setDraftStart(null);
+            }}
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+            style={{ borderColor: C.line, color: C.sub }}
+          >
+            Annuler tracé
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDrawings([]);
+              setDraftStart(null);
+            }}
+            className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
+            style={{ borderColor: C.line, color: C.coral }}
+          >
+            Effacer
+          </button>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-4 flex-wrap mb-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setShowSma20((value) => !value)}
+          style={{
+            color: showSma20 ? C.indigo : C.sub,
+            opacity: showSma20 ? 1 : 0.45,
+          }}
+        >
+          MM20 {showSma20 ? '●' : '○'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSma50((value) => !value)}
+          style={{
+            color: showSma50 ? C.gold : C.sub,
+            opacity: showSma50 ? 1 : 0.45,
+          }}
+        >
+          MM50 {showSma50 ? '●' : '○'}
+        </button>
+        {tool === 'trend' && (
+          <span style={{ color: C.indigo }}>
+            {draftStart
+              ? 'Cliquez le deuxième point du trait.'
+              : 'Cliquez deux points sur le graphique.'}
+          </span>
+        )}
+        {tool === 'horizontal' && (
+          <span style={{ color: '#8A6A16' }}>
+            Cliquez au niveau de prix souhaité.
+          </span>
+        )}
+      </div>
+
+      <div
+        className="relative rounded-2xl overflow-hidden border"
+        style={{ borderColor: C.line, background: '#fff' }}
+      >
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full h-auto select-none"
+          style={{
+            cursor: tool === 'none' ? 'crosshair' : 'cell',
+            minHeight: 340,
+          }}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHover(null)}
+          onClick={handleChartClick}
+        >
+          <rect x="0" y="0" width={width} height={height} fill="#FFFFFF" />
+          {Array.from({ length: 6 }).map((_, index) => {
+            const y = margin.top + (index / 5) * plotHeight;
+            const price = maxPrice - (index / 5) * (maxPrice - minPrice);
+            return (
+              <g key={`grid-y-${index}`}>
+                <line
+                  x1={margin.left}
+                  x2={width - margin.right}
+                  y1={y}
+                  y2={y}
+                  stroke={C.line}
+                  strokeWidth="1"
+                />
+                <text
+                  x={margin.left - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  fontSize="11"
+                  fill={C.sub}
+                >
+                  {fmtPrice(price)}
+                </text>
+              </g>
+            );
+          })}
+          {Array.from({ length: 6 }).map((_, index) => {
+            const dataIndex = Math.min(
+              rows.length - 1,
+              Math.round((index / 5) * (rows.length - 1))
+            );
+            const x = xFor(dataIndex);
+            return (
+              <g key={`grid-x-${index}`}>
+                <line
+                  x1={x}
+                  x2={x}
+                  y1={margin.top}
+                  y2={height - margin.bottom}
+                  stroke="#F1F2F5"
+                  strokeWidth="1"
+                />
+                <text
+                  x={x}
+                  y={height - 15}
+                  textAnchor="middle"
+                  fontSize="11"
+                  fill={C.sub}
+                >
+                  {rows[dataIndex]?.label}
+                </text>
+              </g>
+            );
+          })}
+
+          {mode === 'Bougies' &&
+            rows.map((row, index) => {
+              const x = xFor(index);
+              const openY = yFor(row.open);
+              const closeY = yFor(row.close);
+              const highY = yFor(row.high);
+              const lowY = yFor(row.low);
+              const up = row.close >= row.open;
+              return (
+                <g key={row.date}>
+                  <line
+                    x1={x}
+                    x2={x}
+                    y1={highY}
+                    y2={lowY}
+                    stroke={up ? C.teal : C.coral}
+                    strokeWidth="1.25"
+                  />
+                  <rect
+                    x={x - candleWidth / 2}
+                    y={Math.min(openY, closeY)}
+                    width={candleWidth}
+                    height={Math.max(1.5, Math.abs(closeY - openY))}
+                    rx="1"
+                    fill={up ? C.teal : C.coral}
+                    opacity="0.92"
+                  />
+                </g>
+              );
+            })}
+
+          {mode === 'Aire' && (
+            <path
+              d={`${closePath} L ${xFor(rows.length - 1)} ${
+                height - margin.bottom
+              } L ${xFor(0)} ${height - margin.bottom} Z`}
+              fill={C.indigo}
+              opacity="0.10"
+            />
+          )}
+          {mode !== 'Bougies' && (
+            <path
+              d={closePath}
+              fill="none"
+              stroke={C.navy}
+              strokeWidth="2.4"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+          )}
+          {showSma20 && (
+            <path
+              d={pathFor('sma20')}
+              fill="none"
+              stroke={C.indigo}
+              strokeWidth="1.8"
+              strokeDasharray="6 4"
+            />
+          )}
+          {showSma50 && (
+            <path
+              d={pathFor('sma50')}
+              fill="none"
+              stroke={C.gold}
+              strokeWidth="1.8"
+              strokeDasharray="3 4"
+            />
+          )}
+
+          {drawings.map((drawing, index) =>
+            drawing.type === 'horizontal' ? (
+              <line
+                key={`drawing-${index}`}
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={drawing.y}
+                y2={drawing.y}
+                stroke={C.gold}
+                strokeWidth="2"
+                strokeDasharray="7 5"
+              />
+            ) : (
+              <line
+                key={`drawing-${index}`}
+                x1={drawing.x1}
+                y1={drawing.y1}
+                x2={drawing.x2}
+                y2={drawing.y2}
+                stroke={C.indigo}
+                strokeWidth="2.3"
+              />
+            )
+          )}
+          {draftStart && hover && tool === 'trend' && (
+            <line
+              x1={draftStart.x}
+              y1={draftStart.y}
+              x2={hover.x}
+              y2={hover.y}
+              stroke={C.indigo}
+              strokeWidth="2"
+              strokeDasharray="5 5"
+            />
+          )}
+
+          {hover && (
+            <g pointerEvents="none">
+              <line
+                x1={hover.x}
+                x2={hover.x}
+                y1={margin.top}
+                y2={height - margin.bottom}
+                stroke="#8B93A7"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+              <line
+                x1={margin.left}
+                x2={width - margin.right}
+                y1={hover.y}
+                y2={hover.y}
+                stroke="#8B93A7"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+            </g>
+          )}
+        </svg>
+
+        {hoverRow && (
+          <div
+            className="absolute top-3 left-3 px-3 py-2 rounded-xl border text-[11px] shadow-sm"
+            style={{
+              background: 'rgba(255,255,255,0.96)',
+              borderColor: C.line,
+              color: C.ink,
+              ...F_MONO,
+            }}
+          >
+            <div className="font-bold mb-1">{hoverRow.date}</div>
+            <div>
+              O {fmtPrice(hoverRow.open)} · H {fmtPrice(hoverRow.high)}
+            </div>
+            <div>
+              B {fmtPrice(hoverRow.low)} · C {fmtPrice(hoverRow.close)}
+            </div>
+            <div>
+              Volume {fmt(hoverRow.volume)} · {devise}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AnalyseInstrument({ ctx, go }) {
+  const instrument =
+    resolveMarketInstrument(ctx?.instrument, ctx?.marche) ||
+    resolveMarketInstrument(
+      BOURSES_ACTIVE_CONFIG.BRVM.instruments[0].nom,
+      'BRVM'
+    );
+  const [horizon, setHorizon] = useState('6M');
+  const allRows = buildTechnicalSeries(instrument, 240);
+  const horizonPoints = { '1M': 22, '3M': 66, '6M': 132, '1A': 240 };
+  const rows = allRows.slice(-horizonPoints[horizon]);
+  const fundamental = buildFundamentalSnapshot(instrument);
+  const latest = rows[rows.length - 1];
+  const previous = rows[rows.length - 2] || latest;
+  const rsi = technicalRsi(rows);
+  const macd = technicalMacd(rows);
+  const volatility = technicalVolatility(rows);
+  const support = Math.min(...rows.slice(-20).map((row) => row.low));
+  const resistance = Math.max(...rows.slice(-20).map((row) => row.high));
+  const sma20 = latest?.sma20 || latest?.close || 0;
+  const sma50 = latest?.sma50 || latest?.close || 0;
+  const trend =
+    latest.close > sma20 && sma20 > sma50
+      ? 'Tendance haussière'
+      : latest.close < sma20 && sma20 < sma50
+      ? 'Tendance baissière'
+      : 'Tendance neutre / transition';
+  const momentum =
+    rsi >= 70
+      ? 'RSI en zone de surachat'
+      : rsi <= 30
+      ? 'RSI en zone de survente'
+      : 'RSI en zone neutre';
+  const dayMove = previous?.close
+    ? (latest.close / previous.close - 1) * 100
+    : Number(instrument.variation || 0);
+
+  const ratios = [
+    { key: 'per', label: 'PER', value: fundamental.per, suffix: 'x' },
+    { key: 'roe', label: 'ROE', value: fundamental.roe, suffix: '%' },
+    { key: 'roa', label: 'ROA', value: fundamental.roa, suffix: '%' },
+    {
+      key: 'margeNette',
+      label: 'Marge nette',
+      value: fundamental.margeNette,
+      suffix: '%',
+    },
+    {
+      key: 'detteFondsPropres',
+      label: 'Dette / Fonds propres',
+      value: fundamental.detteFondsPropres,
+      suffix: 'x',
+    },
+    {
+      key: 'croissanceCA',
+      label: 'Croissance CA',
+      value: fundamental.croissanceCA,
+      suffix: '%',
+    },
+    {
+      key: 'croissanceBpa',
+      label: 'Croissance BPA',
+      value: fundamental.croissanceBpa,
+      suffix: '%',
+    },
+    {
+      key: 'rendementDividende',
+      label: 'Rendement dividende',
+      value: fundamental.rendementDividende,
+      suffix: '%',
+    },
+    {
+      key: 'priceBook',
+      label: 'Price / Book',
+      value: fundamental.priceBook,
+      suffix: 'x',
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb
+        items={[
+          'Accueil',
+          'Marchés Actions',
+          { label: `Analyse · ${instrument.nom}` },
+        ]}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Analyse d'instrument</Eyebrow>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2
+              className="text-2xl font-bold"
+              style={{ ...F_DISPLAY, color: C.ink }}
+            >
+              {instrument.nom}
+            </h2>
+            <Badge tone="navy">{instrument.marche}</Badge>
+            <Badge tone="slate">{fundamental.secteur}</Badge>
+          </div>
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Analyse technique et fondamentale intégrée. Les valeurs de cette
+            page sont simulées pour la maquette et devront être remplacées par
+            les données historiques et financières réelles de la plateforme.
+          </div>
+        </div>
+        <div className="text-right">
+          <div
+            className="text-[10px] uppercase font-semibold"
+            style={{ color: C.sub }}
+          >
+            Dernier cours
+          </div>
+          <div
+            className="text-3xl font-bold"
+            style={{ ...F_MONO, color: C.ink }}
+          >
+            {fmtPrice(latest.close)} {instrument.devise}
+          </div>
+          <div className="mt-1">
+            <Pct v={dayMove} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-2 flex-wrap">
+          {Object.keys(horizonPoints).map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setHorizon(item)}
+              className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+              style={{
+                background: horizon === item ? C.navy : '#F0F1F5',
+                color: horizon === item ? '#fff' : C.sub,
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Btn tone="ghost" onClick={() => go('vue-boursiere')}>
+            Retour aux cotations
+          </Btn>
+          <Btn
+            tone="ghost"
+            onClick={() =>
+              go('profondeur', {
+                marche: instrument.marche,
+                instrument: instrument.nom,
+                source: 'vue-boursiere',
+              })
+            }
+          >
+            Voir profondeur
+          </Btn>
+        </div>
+      </div>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap mb-4">
+          <div>
+            <Eyebrow>Analyse technique</Eyebrow>
+            <div className="text-base font-bold" style={{ color: C.ink }}>
+              Prix, tendance et outils graphiques
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub }}>
+              Bougies OHLC, courbe linéaire ou aire, MM20/MM50 et tracés
+              manuels.
+            </div>
+          </div>
+          <Badge
+            tone={
+              trend.includes('haussière')
+                ? 'teal'
+                : trend.includes('baissière')
+                ? 'coral'
+                : 'slate'
+            }
+          >
+            {trend}
+          </Badge>
+        </div>
+
+        <TechnicalPriceChart rows={rows} devise={instrument.devise} />
+
+        <div className="grid grid-cols-6 gap-3 mt-4">
+          {[
+            {
+              label: 'RSI 14',
+              value: rsi.toFixed(1),
+              detail: momentum,
+            },
+            {
+              label: 'MACD',
+              value: macd.macd.toFixed(2),
+              detail:
+                macd.histogram >= 0 ? 'Momentum positif' : 'Momentum négatif',
+            },
+            {
+              label: 'MM20',
+              value: `${fmtPrice(sma20)} ${instrument.devise}`,
+              detail:
+                latest.close >= sma20 ? 'Cours au-dessus' : 'Cours en dessous',
+            },
+            {
+              label: 'MM50',
+              value: `${fmtPrice(sma50)} ${instrument.devise}`,
+              detail: sma20 >= sma50 ? 'MM20 ≥ MM50' : 'MM20 < MM50',
+            },
+            {
+              label: 'Support 20 j',
+              value: `${fmtPrice(support)} ${instrument.devise}`,
+              detail: 'Plus bas récent',
+            },
+            {
+              label: 'Résistance 20 j',
+              value: `${fmtPrice(resistance)} ${instrument.devise}`,
+              detail: `Vol. ${volatility.toFixed(1)}% annualisée`,
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
+              className="p-3 rounded-2xl border"
+              style={{ borderColor: C.line, background: '#FAFAFC' }}
+            >
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                {item.label}
+              </div>
+              <div
+                className="text-sm font-bold mt-1"
+                style={{ ...F_MONO, color: C.ink }}
+              >
+                {item.value}
+              </div>
+              <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                {item.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Analyse fondamentale</Eyebrow>
+            <div className="text-base font-bold" style={{ color: C.ink }}>
+              Rentabilité, valorisation et qualité financière
+            </div>
+            <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+              Les ratios ci-dessous expliquent ce que le marché paie, la
+              rentabilité des capitaux et des actifs, la marge, le levier et la
+              croissance.
+            </div>
+          </div>
+          <Badge tone="gold">Ratios de démonstration</Badge>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          {ratios.map((ratio) => {
+            const explanation = fundamentalRatioExplanation(
+              ratio.key,
+              ratio.value,
+              fundamental.secteur
+            );
+            return (
+              <div
+                key={ratio.key}
+                className="p-4 rounded-2xl border"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div
+                      className="text-[10px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      {ratio.label}
+                    </div>
+                    <div
+                      className="text-2xl font-bold mt-1"
+                      style={{ ...F_MONO, color: C.ink }}
+                    >
+                      {Number(ratio.value).toFixed(
+                        ratio.key === 'detteFondsPropres' ||
+                          ratio.key === 'priceBook'
+                          ? 2
+                          : 1
+                      )}
+                      {ratio.suffix}
+                    </div>
+                  </div>
+                  <Badge tone="slate">Démo</Badge>
+                </div>
+                <div
+                  className="text-[11px] mt-3 leading-relaxed"
+                  style={{ color: C.sub }}
+                >
+                  <b style={{ color: C.ink }}>Ce que mesure le ratio :</b>{' '}
+                  {explanation.definition}
+                </div>
+                <div
+                  className="text-[11px] mt-2 leading-relaxed"
+                  style={{ color: C.sub }}
+                >
+                  <b style={{ color: C.ink }}>Lecture :</b>{' '}
+                  {explanation.lecture}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card className="p-5" style={{ borderColor: C.gold }}>
+        <Eyebrow>Lecture croisée</Eyebrow>
+        <div className="grid grid-cols-2 gap-5">
+          <div>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Technique
+            </div>
+            <div
+              className="text-xs mt-1 leading-relaxed"
+              style={{ color: C.sub }}
+            >
+              {trend}. {momentum}. Le MACD est{' '}
+              {macd.histogram >= 0
+                ? 'au-dessus de son signal'
+                : 'sous son signal'}{' '}
+              ; les niveaux de support et résistance récents se situent autour
+              de {fmtPrice(support)} et {fmtPrice(resistance)}{' '}
+              {instrument.devise}.
+            </div>
+          </div>
+          <div>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Fondamental
+            </div>
+            <div
+              className="text-xs mt-1 leading-relaxed"
+              style={{ color: C.sub }}
+            >
+              Le PER de démonstration est de {fundamental.per.toFixed(1)}x, avec
+              un ROE de {fundamental.roe.toFixed(1)}% et un ROA de{' '}
+              {fundamental.roa.toFixed(1)}%. Cette synthèse ne constitue pas une
+              recommandation d’achat ou de vente et devra être recalculée avec
+              les données financières réelles de l’émetteur.
+            </div>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -20945,7 +22027,9 @@ export default function App() {
                     ? screen === n.id ||
                       (n.id === 'portefeuilles' && screen === 'client') ||
                       (n.id === 'vue-boursiere' &&
-                        screen === 'profondeur' &&
+                        ['profondeur', 'instrument-analysis'].includes(
+                          screen
+                        ) &&
                         ctx.source === 'vue-boursiere') ||
                       (n.id === 'marches' &&
                         screen === 'profondeur' &&
@@ -21056,6 +22140,9 @@ export default function App() {
                     watchlistTitles={watchlistTitles}
                     onAddWatch={addToWatchlist}
                   />
+                )}
+                {screen === 'instrument-analysis' && (
+                  <AnalyseInstrument ctx={ctx} go={go} />
                 )}
                 {screen === 'marches' && (
                   <Marches
