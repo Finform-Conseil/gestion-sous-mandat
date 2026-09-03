@@ -3007,12 +3007,16 @@ function VueBourses({
   };
 
   const ouvrirAnalyseInstrument = (instrument) => {
-    if (espaceClient) return;
-    go?.('instrument-analysis', {
+    const params = {
       marche: snapshot.code,
       instrument: instrument.nom,
       source: 'vue-boursiere',
-    });
+    };
+    if (espaceClient) {
+      goClient?.('client-instrument-analysis', params);
+      return;
+    }
+    go?.('instrument-analysis', params);
   };
 
   const ajouterWatchlist = (instrument) => {
@@ -3042,9 +3046,9 @@ function VueBourses({
             Suivi intrajournalier simulé des marchés actions de la BRVM, de la
             NGX et de la GSE : indice principal, activité, breadth, volumes,
             transactions et principaux mouvements de séance. Depuis cette vue,
-            chaque valeur peut être ajoutée à la watchlist, ouverte dans son
-            carnet d'ordres ou envoyée directement vers son Ticket d'ordre dans
-            l'espace Client.
+            chaque valeur peut être analysée, ajoutée à la watchlist, ouverte
+            dans son carnet d'ordres ou envoyée directement vers son Ticket
+            d'ordre dans l'espace Client.
           </div>
         </div>
 
@@ -3415,19 +3419,15 @@ function VueBourses({
                     }}
                   >
                     <Td className="font-semibold whitespace-nowrap">
-                      {espaceClient ? (
-                        instrument.nom
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => ouvrirAnalyseInstrument(instrument)}
-                          className="font-semibold text-left hover:underline underline-offset-4"
-                          style={{ color: C.indigo }}
-                          title={`Analyser ${instrument.nom}`}
-                        >
-                          {instrument.nom}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => ouvrirAnalyseInstrument(instrument)}
+                        className="font-semibold text-left hover:underline underline-offset-4"
+                        style={{ color: C.indigo }}
+                        title={`Analyser ${instrument.nom}`}
+                      >
+                        {instrument.nom}
+                      </button>
                     </Td>
                     <Td>{instrument.secteur}</Td>
                     <Td mono className="whitespace-nowrap">
@@ -4224,7 +4224,7 @@ function TechnicalPriceChart({ rows, devise }) {
   );
 }
 
-function AnalyseInstrument({ ctx, go }) {
+function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
   const instrument =
     resolveMarketInstrument(ctx?.instrument, ctx?.marche) ||
     resolveMarketInstrument(
@@ -4232,6 +4232,7 @@ function AnalyseInstrument({ ctx, go }) {
       'BRVM'
     );
   const [horizon, setHorizon] = useState('6M');
+  const espaceClient = mode === 'client';
   const allRows = buildTechnicalSeries(instrument, 240);
   const horizonPoints = { '1M': 22, '3M': 66, '6M': 132, '1A': 240 };
   const rows = allRows.slice(-horizonPoints[horizon]);
@@ -4305,13 +4306,23 @@ function AnalyseInstrument({ ctx, go }) {
 
   return (
     <div className="space-y-5">
-      <Breadcrumb
-        items={[
-          'Accueil',
-          'Marchés Actions',
-          { label: `Analyse · ${instrument.nom}` },
-        ]}
-      />
+      {espaceClient ? (
+        <ClientBreadcrumb
+          items={[
+            'Espace Client',
+            'Marchés Actions',
+            `Analyse · ${instrument.nom}`,
+          ]}
+        />
+      ) : (
+        <Breadcrumb
+          items={[
+            'Accueil',
+            'Marchés Actions',
+            { label: `Analyse · ${instrument.nom}` },
+          ]}
+        />
+      )}
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -4369,21 +4380,46 @@ function AnalyseInstrument({ ctx, go }) {
           ))}
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Btn tone="ghost" onClick={() => go('vue-boursiere')}>
+          <Btn
+            tone="ghost"
+            onClick={() =>
+              espaceClient
+                ? goClient?.('client-exchanges')
+                : go?.('vue-boursiere')
+            }
+          >
             Retour aux cotations
           </Btn>
           <Btn
             tone="ghost"
-            onClick={() =>
-              go('profondeur', {
+            onClick={() => {
+              const params = {
                 marche: instrument.marche,
                 instrument: instrument.nom,
                 source: 'vue-boursiere',
-              })
-            }
+              };
+              if (espaceClient) {
+                goClient?.('client-market-depth', params);
+                return;
+              }
+              go?.('profondeur', params);
+            }}
           >
             Voir profondeur
           </Btn>
+          {espaceClient && (
+            <Btn
+              onClick={() =>
+                goClient?.('client-ticket', {
+                  instrument: instrument.nom,
+                  marche: instrument.marche,
+                  source: 'vue-boursiere',
+                })
+              }
+            >
+              Ticket d'ordre
+            </Btn>
+          )}
         </div>
       </div>
 
@@ -10858,6 +10894,9 @@ function AllocCriteres({ initialSens, initialInstrument }) {
     return matchMarche && matchInstrument && matchTypePortefeuille;
   });
 
+  const liquiditePourInvestir = (c) =>
+    Math.max(0, (c.encours * Number(c.alloc?.Liquidité || 0)) / 100);
+
   const projection = (c) => {
     const valeurActuelle = (c.encours * c.alloc[type]) / 100;
     const delta = sens === 'Achat' ? montantOrdre : -montantOrdre;
@@ -11035,6 +11074,7 @@ function AllocCriteres({ initialSens, initialInstrument }) {
               <Th>Client</Th>
               <Th>Marché</Th>
               <Th>Type</Th>
+              <Th>Liquidité pour investir</Th>
               <Th>Écart actuel {type}</Th>
               {instrument !== 'Aucun' && <Th>Exposition {instrument}</Th>}
               <Th>Écart après ordre</Th>
@@ -11044,7 +11084,7 @@ function AllocCriteres({ initialSens, initialInstrument }) {
             {results.length === 0 && (
               <tr>
                 <td
-                  colSpan={instrument !== 'Aucun' ? 6 : 5}
+                  colSpan={instrument !== 'Aucun' ? 7 : 6}
                   className="text-center py-6 text-sm"
                   style={{ color: C.sub }}
                 >
@@ -11070,6 +11110,9 @@ function AllocCriteres({ initialSens, initialInstrument }) {
                     <Badge tone="slate">
                       {PROFILE_TYPE_LABEL[c.type] || c.type}
                     </Badge>
+                  </Td>
+                  <Td mono className="whitespace-nowrap">
+                    {fmt(Math.round(liquiditePourInvestir(c)))} {c.devise}
                   </Td>
                   <Td mono>{p.ecartActuel.toFixed(1)} pts</Td>
                   {instrument !== 'Aucun' && (
@@ -11116,7 +11159,9 @@ function AllocCriteres({ initialSens, initialInstrument }) {
               className="text-xs font-semibold block mb-1"
               style={{ color: C.sub }}
             >
-              Pourcentage de liquidité de l'ordre par portefeuille
+              {sens === 'Achat'
+                ? 'Pourcentage de liquidité'
+                : 'Pourcentage de cession'}
             </label>
             <input
               type="number"
@@ -22037,9 +22082,11 @@ export default function App() {
                       (n.id === 'comite' && screen === 'decisions-comite')
                     : clientScreen === n.id ||
                       (n.id === 'client-exchanges' &&
-                        ['client-market-depth', 'client-ticket'].includes(
-                          clientScreen
-                        ) &&
+                        [
+                          'client-market-depth',
+                          'client-ticket',
+                          'client-instrument-analysis',
+                        ].includes(clientScreen) &&
                         clientCtx.source === 'vue-boursiere') ||
                       (n.id === 'client-markets' &&
                         ['client-market-depth', 'client-ticket'].includes(
@@ -22200,6 +22247,13 @@ export default function App() {
                     goClient={goClient}
                     watchlistTitles={clientWatchlistTitles}
                     onAddWatch={addToClientWatchlist}
+                  />
+                )}
+                {clientScreen === 'client-instrument-analysis' && (
+                  <AnalyseInstrument
+                    ctx={clientCtx}
+                    mode="client"
+                    goClient={goClient}
                   />
                 )}
                 {clientScreen === 'client-markets' && (
