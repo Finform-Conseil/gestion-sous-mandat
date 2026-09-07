@@ -14423,21 +14423,81 @@ function MoneyManagement({ go, devise = 'XOF' }) {
 
 function AnalysePortefeuille({ devise = 'XOF' }) {
   const [tab, setTab] = useState('Devises');
-  const totalRef = CLIENTS.reduce(
+  const [filtreType, setFiltreType] = useState('Tous');
+  const [filtreRisque, setFiltreRisque] = useState('Tous');
+  const [filtrePortefeuille, setFiltrePortefeuille] = useState('');
+
+  const normaliserRecherche = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+  const profilsRisqueDisponibles = Array.from(
+    new Set(CLIENTS.map((client) => client.profilRisque).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const recherchePortefeuille = normaliserRecherche(filtrePortefeuille);
+  const clientsFiltres = CLIENTS.filter((client) => {
+    const typeLibelle = PROFILE_TYPE_LABEL[client.type] || client.type;
+    const correspondType = filtreType === 'Tous' || typeLibelle === filtreType;
+    const correspondRisque =
+      filtreRisque === 'Tous' || client.profilRisque === filtreRisque;
+    const correspondPortefeuille =
+      !recherchePortefeuille ||
+      normaliserRecherche(`${client.id} ${client.nom}`).includes(
+        recherchePortefeuille
+      );
+
+    return correspondType && correspondRisque && correspondPortefeuille;
+  });
+
+  const totalRef = clientsFiltres.reduce(
     (s, c) => s + convertCurrency(c.encours, c.devise, devise),
     0
   );
+
+  const encoursParDevise = clientsFiltres.reduce((acc, client) => {
+    const montantReference = convertCurrency(
+      client.encours,
+      client.devise,
+      devise
+    );
+    acc[client.devise] = (acc[client.devise] || 0) + montantReference;
+    return acc;
+  }, {});
+
+  const currencyMixFiltree = Object.entries(encoursParDevise)
+    .map(([name, montant]) => ({
+      name,
+      value: totalRef > 0 ? Number(((montant / totalRef) * 100).toFixed(1)) : 0,
+      montant,
+      devise,
+    }))
+    .sort((a, b) => b.montant - a.montant);
+
+  const filtresActifs = [
+    filtreType !== 'Tous' ? filtreType : null,
+    filtreRisque !== 'Tous' ? filtreRisque : null,
+    filtrePortefeuille.trim() ? `Cible : ${filtrePortefeuille.trim()}` : null,
+  ].filter(Boolean);
+
   const shocks = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10];
 
-  const devisesEtrangeres = [...new Set(CLIENTS.map((c) => c.devise))].filter(
-    (d) => d !== 'XOF'
+  const devisesEtrangeres = [
+    ...new Set(clientsFiltres.map((c) => c.devise)),
+  ].filter((d) => d !== devise);
+  const [paire, setPaire] = useState(
+    [...new Set(CLIENTS.map((c) => c.devise))].find((d) => d !== devise) || ''
   );
-  const [paire, setPaire] = useState(devisesEtrangeres[0]);
+  const paireActive = devisesEtrangeres.includes(paire)
+    ? paire
+    : devisesEtrangeres[0] || '';
   const [chocManuel, setChocManuel] = useState(0);
-  const expoPaire = CLIENTS.filter((c) => c.devise === paire).reduce(
-    (s, c) => s + convertCurrency(c.encours, c.devise, devise),
-    0
-  );
+  const expoPaire = clientsFiltres
+    .filter((c) => c.devise === paireActive)
+    .reduce((s, c) => s + convertCurrency(c.encours, c.devise, devise), 0);
   const baseHorsPaire = totalRef - expoPaire;
   const scatterDataPaire = shocks.map((shock) => ({
     shock,
@@ -14453,11 +14513,34 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
   const [corrDim, setCorrDim] = useState('Secteurs');
   const [secteurChoc, setSecteurChoc] = useState(CORR_SECTEURS_LABELS[0]);
   const [pctChocSecteur, setPctChocSecteur] = useState(20);
+  const paysFiltres = Array.from(
+    new Set(
+      clientsFiltres
+        .map((client) => client.pays)
+        .filter((pays) => CORR_PAYS_LABELS.includes(pays))
+    )
+  );
+  const indicesPaysFiltres = paysFiltres.map((pays) =>
+    CORR_PAYS_LABELS.indexOf(pays)
+  );
   const corrLabels =
-    corrDim === 'Secteurs' ? CORR_SECTEURS_LABELS : CORR_PAYS_LABELS;
-  const corrHist = corrDim === 'Secteurs' ? CORR_SECTEURS_HIST : CORR_PAYS_HIST;
+    corrDim === 'Secteurs'
+      ? clientsFiltres.length > 0
+        ? CORR_SECTEURS_LABELS
+        : []
+      : paysFiltres;
+  const corrHist =
+    corrDim === 'Secteurs'
+      ? CORR_SECTEURS_HIST
+      : indicesPaysFiltres.map((ri) =>
+          indicesPaysFiltres.map((ci) => CORR_PAYS_HIST[ri][ci])
+        );
   const corrCriseBase =
-    corrDim === 'Secteurs' ? CORR_SECTEURS_CRISE : CORR_PAYS_CRISE;
+    corrDim === 'Secteurs'
+      ? CORR_SECTEURS_CRISE
+      : indicesPaysFiltres.map((ri) =>
+          indicesPaysFiltres.map((ci) => CORR_PAYS_CRISE[ri][ci])
+        );
   const indexChoc =
     corrDim === 'Secteurs' ? CORR_SECTEURS_LABELS.indexOf(secteurChoc) : -1;
   const corrCrise = corrCriseBase.map((row, ri) =>
@@ -14471,12 +14554,20 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
 
   const [pctPosition, setPctPosition] = useState(20);
   const [pctVolumeMax, setPctVolumeMax] = useState(5);
-  const advActionsRef = VOLUME_JOUR.filter((v) => v.type === 'Action').reduce(
-    (s, v) => s + convertCurrency(v.volume, v.devise, devise),
+  const marchesFiltres = new Set(clientsFiltres.map((client) => client.marche));
+  const advActionsRef = VOLUME_JOUR.filter(
+    (v) => v.type === 'Action' && marchesFiltres.has(v.marche)
+  ).reduce((s, v) => s + convertCurrency(v.volume, v.devise, devise), 0);
+  const positionActionsRef = clientsFiltres.reduce(
+    (s, client) =>
+      s +
+      convertCurrency(
+        (client.encours * Number(client.alloc?.Actions || 0)) / 100,
+        client.devise,
+        devise
+      ),
     0
   );
-  const positionActionsRef =
-    (totalRef * ASSET_MIX.find((a) => a.name === 'Actions').value) / 100;
   const montantACeder = (positionActionsRef * pctPosition) / 100;
   const capaciteJour = (advActionsRef * pctVolumeMax) / 100;
   const joursNecessaires =
@@ -14497,6 +14588,161 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
       <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
         Analyse portefeuille
       </h2>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Périmètre de simulation</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Filtrer les portefeuilles analysés
+            </div>
+            <div className="text-xs mt-1" style={{ color: C.sub }}>
+              Les filtres se cumulent. Les simulations de change, de stress et
+              de liquidité utilisent uniquement les portefeuilles correspondant
+              au périmètre sélectionné.
+            </div>
+          </div>
+          <Btn
+            tone="ghost"
+            onClick={() => {
+              setFiltreType('Tous');
+              setFiltreRisque('Tous');
+              setFiltrePortefeuille('');
+            }}
+          >
+            Réinitialiser les filtres
+          </Btn>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4 mt-4">
+          <div>
+            <label
+              className="text-xs font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Type de portefeuille
+            </label>
+            <select
+              value={filtreType}
+              onChange={(e) => setFiltreType(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, ...F_BODY }}
+            >
+              <option value="Tous">Tous</option>
+              <option value="Particulier">Particulier</option>
+              <option value="Institutionnel">Institutionnel</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="text-xs font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Profil de risque
+            </label>
+            <select
+              value={filtreRisque}
+              onChange={(e) => setFiltreRisque(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, ...F_BODY }}
+            >
+              <option value="Tous">Tous les profils</option>
+              {profilsRisqueDisponibles.map((profil) => (
+                <option key={profil} value={profil}>
+                  {profil}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="text-xs font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Portefeuille cible — nom client ou ID
+            </label>
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2"
+                style={{ color: C.sub }}
+              />
+              <input
+                type="text"
+                list="analyse-portefeuille-cibles"
+                value={filtrePortefeuille}
+                onChange={(e) => setFiltrePortefeuille(e.target.value)}
+                placeholder="Ex. Aïcha Koné ou c1"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line, ...F_BODY }}
+              />
+              <datalist id="analyse-portefeuille-cibles">
+                {CLIENTS.map((client) => (
+                  <option
+                    key={client.id}
+                    value={client.id}
+                    label={`${client.nom} · ${client.id}`}
+                  />
+                ))}
+                {CLIENTS.map((client) => (
+                  <option
+                    key={`nom-${client.id}`}
+                    value={client.nom}
+                    label={`${client.id} · ${client.nom}`}
+                  />
+                ))}
+              </datalist>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="flex items-center justify-between gap-3 flex-wrap mt-4 pt-4 border-t"
+          style={{ borderColor: C.line }}
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone={clientsFiltres.length > 0 ? 'teal' : 'coral'}>
+              {clientsFiltres.length} portefeuille(s)
+            </Badge>
+            {filtresActifs.length === 0 ? (
+              <Badge tone="slate">Tous les portefeuilles</Badge>
+            ) : (
+              filtresActifs.map((filtre) => (
+                <Badge key={filtre} tone="slate">
+                  {filtre}
+                </Badge>
+              ))
+            )}
+          </div>
+          <div className="text-right">
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Encours du périmètre
+            </div>
+            <div
+              className="text-lg font-bold"
+              style={{ ...F_MONO, color: C.ink }}
+            >
+              {fmt(Math.round(totalRef))} {devise}
+            </div>
+          </div>
+        </div>
+
+        {clientsFiltres.length === 0 && (
+          <div
+            className="mt-4 p-3 rounded-xl text-xs"
+            style={{ background: '#FDEEEE', color: C.coral }}
+          >
+            Aucun portefeuille ne correspond à cette combinaison de filtres.
+            Modifiez le type, le profil de risque ou le portefeuille cible.
+          </div>
+        )}
+      </Card>
+
       <div className="flex gap-1.5">
         {['Devises', 'Corrélations', 'Stress test'].map((t) => (
           <button
@@ -14516,108 +14762,165 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
       {tab === 'Devises' && (
         <>
           <Card className="p-5">
-            <Eyebrow>Allocation du portefeuille par devise</Eyebrow>
-            <div className="grid grid-cols-2 gap-4 items-center mt-2">
-              <div className="flex justify-center">
-                <Donut data={CURRENCY_MIX} size={160} />
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <Eyebrow>Allocation du portefeuille par devise</Eyebrow>
+                <div className="text-xs" style={{ color: C.sub }}>
+                  Répartition calculée uniquement sur le périmètre filtré.
+                </div>
               </div>
-              <Legende data={CURRENCY_MIX} />
+              <div
+                className="px-4 py-3 rounded-2xl border text-right min-w-[260px]"
+                style={{ borderColor: C.gold, background: '#FBF7EE' }}
+              >
+                <div
+                  className="text-[10px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Encours correspondant au filtre
+                </div>
+                <div
+                  className="text-xl font-bold mt-1"
+                  style={{ ...F_MONO, color: C.ink }}
+                >
+                  {fmt(Math.round(totalRef))} {devise}
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                  Devise principale de la gestion : {devise}
+                </div>
+              </div>
             </div>
+
+            {currencyMixFiltree.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 items-center mt-4">
+                <div className="flex justify-center">
+                  <Donut data={currencyMixFiltree} size={160} />
+                </div>
+                <Legende data={currencyMixFiltree} />
+              </div>
+            ) : (
+              <div
+                className="mt-4 p-4 rounded-xl text-sm text-center"
+                style={{ background: '#FAFAFC', color: C.sub }}
+              >
+                Aucune allocation à afficher pour le périmètre sélectionné.
+              </div>
+            )}
           </Card>
 
           <Card className="p-5">
             <Eyebrow>Simulation — variation d'une paire de devises</Eyebrow>
-            <div className="flex items-end gap-4 mt-2 mb-3 flex-wrap">
-              <div>
-                <label
-                  className="text-xs font-semibold block mb-1"
-                  style={{ color: C.sub }}
-                >
-                  Paire simulée
-                </label>
-                <select
-                  value={paire}
-                  onChange={(e) => setPaire(e.target.value)}
-                  className="px-3 py-2 rounded-xl border text-sm"
-                  style={{ borderColor: C.line }}
-                >
-                  {devisesEtrangeres.map((d) => (
-                    <option key={d} value={d}>
-                      {d} / XOF
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex-1 min-w-[200px]">
-                <label
-                  className="text-xs font-semibold block mb-1"
-                  style={{ color: C.sub }}
-                >
-                  Choc appliqué : {chocManuel > 0 ? '+' : ''}
-                  {chocManuel}%
-                </label>
-                <input
-                  type="range"
-                  min="-20"
-                  max="20"
-                  step="1"
-                  value={chocManuel}
-                  onChange={(e) => setChocManuel(Number(e.target.value))}
-                  className="w-full"
-                />
-              </div>
+            {paireActive ? (
+              <>
+                <div className="flex items-end gap-4 mt-2 mb-3 flex-wrap">
+                  <div>
+                    <label
+                      className="text-xs font-semibold block mb-1"
+                      style={{ color: C.sub }}
+                    >
+                      Paire simulée
+                    </label>
+                    <select
+                      value={paireActive}
+                      onChange={(e) => setPaire(e.target.value)}
+                      className="px-3 py-2 rounded-xl border text-sm"
+                      style={{ borderColor: C.line }}
+                    >
+                      {devisesEtrangeres.map((d) => (
+                        <option key={d} value={d}>
+                          {d} / {devise}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex-1 min-w-[200px]">
+                    <label
+                      className="text-xs font-semibold block mb-1"
+                      style={{ color: C.sub }}
+                    >
+                      Choc appliqué : {chocManuel > 0 ? '+' : ''}
+                      {chocManuel}%
+                    </label>
+                    <input
+                      type="range"
+                      min="-20"
+                      max="20"
+                      step="1"
+                      value={chocManuel}
+                      onChange={(e) => setChocManuel(Number(e.target.value))}
+                      className="w-full"
+                    />
+                  </div>
+                  <div
+                    className="p-3 rounded-xl border text-right"
+                    style={{ borderColor: C.gold }}
+                  >
+                    <div className="text-xs" style={{ color: C.sub }}>
+                      Valeur simulée
+                    </div>
+                    <div className="text-lg font-bold" style={F_DISPLAY}>
+                      {fmt(valeurSimulee)} {devise}
+                    </div>
+                    <Pct
+                      v={
+                        totalRef > 0
+                          ? ((valeurSimulee - totalRef) / totalRef) * 100
+                          : 0
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="text-xs mb-2" style={{ color: C.sub }}>
+                  Exposition simulée : {fmt(Math.round(expoPaire))} {devise} sur{' '}
+                  {fmt(Math.round(totalRef))} {devise} sur le périmètre, dont
+                  l'exposition est libellée en {paireActive}.
+                </div>
+                <ResponsiveContainer width="100%" height={240}>
+                  <ScatterChart
+                    margin={{ top: 10, right: 20, bottom: 10, left: 10 }}
+                  >
+                    <CartesianGrid stroke={C.line} />
+                    <XAxis
+                      type="number"
+                      dataKey="shock"
+                      name={`Choc ${paireActive}/${devise}`}
+                      unit="%"
+                      tick={{ fontSize: 11, fill: C.sub }}
+                    />
+                    <YAxis
+                      type="number"
+                      dataKey="valeur"
+                      name={`Valeur (${devise})`}
+                      tick={{ fontSize: 11, fill: C.sub }}
+                      tickFormatter={(v) => fmt(v)}
+                    />
+                    <ZAxis range={[80, 80]} />
+                    <Tooltip
+                      formatter={(v, n) =>
+                        n === 'valeur'
+                          ? [`${fmt(v)} ${devise}`, 'Valeur']
+                          : [`${v}%`, 'Choc FX']
+                      }
+                      contentStyle={{
+                        borderRadius: 10,
+                        fontSize: 12,
+                        border: `1px solid ${C.line}`,
+                      }}
+                    />
+                    <Scatter data={scatterDataPaire} fill={C.navy} />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </>
+            ) : (
               <div
-                className="p-3 rounded-xl border text-right"
-                style={{ borderColor: C.gold }}
+                className="mt-3 p-4 rounded-xl text-sm"
+                style={{ background: '#FAFAFC', color: C.sub }}
               >
-                <div className="text-xs" style={{ color: C.sub }}>
-                  Valeur simulée
-                </div>
-                <div className="text-lg font-bold" style={F_DISPLAY}>
-                  {fmt(valeurSimulee)} {devise}
-                </div>
-                <Pct v={((valeurSimulee - totalRef) / totalRef) * 100} />
+                Le périmètre sélectionné ne comporte aucune devise différente de
+                la devise principale {devise}. Aucun choc de change n'est à
+                simuler pour ce filtre.
               </div>
-            </div>
-            <div className="text-xs mb-2" style={{ color: C.sub }}>
-              Exposition simulée : {fmt(Math.round(expoPaire))} {devise} sur{' '}
-              {fmt(Math.round(totalRef))} {devise} détenus en {paire}.
-            </div>
-            <ResponsiveContainer width="100%" height={240}>
-              <ScatterChart
-                margin={{ top: 10, right: 20, bottom: 10, left: 10 }}
-              >
-                <CartesianGrid stroke={C.line} />
-                <XAxis
-                  type="number"
-                  dataKey="shock"
-                  name={`Choc ${paire}/XOF`}
-                  unit="%"
-                  tick={{ fontSize: 11, fill: C.sub }}
-                />
-                <YAxis
-                  type="number"
-                  dataKey="valeur"
-                  name={`Valeur (${devise})`}
-                  tick={{ fontSize: 11, fill: C.sub }}
-                  tickFormatter={(v) => fmt(v)}
-                />
-                <ZAxis range={[80, 80]} />
-                <Tooltip
-                  formatter={(v, n) =>
-                    n === 'valeur'
-                      ? [`${fmt(v)} ${devise}`, 'Valeur']
-                      : [`${v}%`, 'Choc FX']
-                  }
-                  contentStyle={{
-                    borderRadius: 10,
-                    fontSize: 12,
-                    border: `1px solid ${C.line}`,
-                  }}
-                />
-                <Scatter data={scatterDataPaire} fill={C.navy} />
-              </ScatterChart>
-            </ResponsiveContainer>
+            )}
           </Card>
         </>
       )}
@@ -14763,11 +15066,11 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
         <>
           <Card className="p-5">
             <Eyebrow>
-              Impact de scénarios de stress sur le portefeuille général
+              Impact de scénarios de stress sur le périmètre filtré
             </Eyebrow>
             <div className="text-xs mb-2" style={{ color: C.sub }}>
               Ajustez le paramètre de choc de chaque scénario pour observer
-              l'effet sur la valorisation générale.
+              l'effet sur la valorisation du périmètre filtré.
             </div>
             <div className="space-y-4 mt-2">
               {STRESS_SCENARIOS.map((s) => {
@@ -14827,9 +15130,7 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
           </Card>
 
           <Card className="p-5">
-            <Eyebrow>
-              Risque de liquidité — portefeuille général (Actions)
-            </Eyebrow>
+            <Eyebrow>Risque de liquidité — périmètre filtré (Actions)</Eyebrow>
             <div className="text-xs mb-3" style={{ color: C.sub }}>
               Nombre de jours nécessaires pour céder la position sans dépasser
               une part donnée du volume moyen quotidien traité sur les marchés
