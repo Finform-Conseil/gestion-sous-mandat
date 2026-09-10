@@ -6093,6 +6093,7 @@ const NAV = [
   { id: 'accueil', label: 'Accueil', icon: Home },
   { id: 'portefeuilles', label: 'Portefeuilles', icon: Briefcase },
   { id: 'money-management', label: 'Money Management', icon: Droplets },
+  { id: 'cession-retrait', label: 'Cession_Retrait', icon: ArrowDownRight },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
@@ -6463,6 +6464,7 @@ function Accueil({
   onDeviseChange,
   dark,
   onToggleDark,
+  cessionRetraitEtats = [],
 }) {
   const [dim, setDim] = useState('Profil de risque');
   const [genClient, setGenClient] = useState(CLIENTS[0].id);
@@ -6621,6 +6623,20 @@ function Accueil({
   const totalAlertes = statistiquesAlertesAccueil.reduce(
     (somme, stat) => somme + stat.nombre,
     0
+  );
+
+  const statistiquesCessionRetraitAccueil = CESSION_RETRAIT_STATUTS.map(
+    (statut) => ({
+      statut,
+      nombre: cessionRetraitEtats.filter((item) => item.statut === statut)
+        .length,
+    })
+  );
+  const totalCessionRetraitActifs = cessionRetraitEtats.filter(
+    (item) => item.statut !== 'Retrait disponible'
+  ).length;
+  const retraitsDisponiblesAccueil = cessionRetraitEtats.filter(
+    (item) => item.statut === 'Retrait disponible'
   );
 
   return (
@@ -6882,6 +6898,67 @@ function Accueil({
                   {stat.nombre}
                 </Badge>
               </div>
+            ))}
+          </div>
+
+          <div
+            className="mt-4 pt-3"
+            style={{ borderTop: `1px solid ${C.line}` }}
+          >
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div>
+                <div
+                  className="text-[10px] uppercase tracking-wide font-bold"
+                  style={{ color: C.sub }}
+                >
+                  État cession-retrait
+                </div>
+                <div className="text-[9px] mt-0.5" style={{ color: C.sub }}>
+                  {totalCessionRetraitActifs} dossier(s) en traitement
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => go('cession-retrait')}
+                className="text-[10px] font-semibold whitespace-nowrap"
+                style={{ color: C.indigo }}
+              >
+                Voir →
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {statistiquesCessionRetraitAccueil.map((stat) => (
+                <div
+                  key={stat.statut}
+                  className="flex items-center justify-between gap-2 text-[11px]"
+                >
+                  <span style={{ color: C.sub }}>{stat.statut}</span>
+                  <Badge tone={cessionRetraitStatusTone(stat.statut)}>
+                    {stat.nombre}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+
+            {retraitsDisponiblesAccueil.slice(0, 2).map((item) => (
+              <button
+                type="button"
+                key={`${item.clientId}-${item.modePaiement}`}
+                onClick={() => go('cession-retrait')}
+                className="w-full mt-2 p-2 rounded-xl text-left"
+                style={{ background: '#EAF8F3' }}
+              >
+                <div
+                  className="text-[10px] font-semibold"
+                  style={{ color: C.teal }}
+                >
+                  ✓ {item.client} · retrait disponible
+                </div>
+                <div className="text-[9px] mt-0.5" style={{ color: C.sub }}>
+                  {fmt(item.montant)} {item.devise} · {item.modePaiement}
+                </div>
+              </button>
             ))}
           </div>
         </Card>
@@ -8969,7 +9046,11 @@ function Carnet({ initial }) {
   const [instrumentFilter, setInstrumentFilter] = useState(
     initial?.instrument || null
   );
-  const rows = ORDERS.filter(
+  const cessionRows = Array.isArray(initial?.cessionOrders)
+    ? initial.cessionOrders
+    : [];
+  const sourceRows = [...cessionRows, ...ORDERS];
+  const rows = sourceRows.filter(
     (o) =>
       (f === 'Tous' || o.marche === f) &&
       (!instrumentFilter || o.titre === instrumentFilter)
@@ -9011,6 +9092,27 @@ function Carnet({ initial }) {
           </div>
         </div>
       </div>
+      {cessionRows.length > 0 && (
+        <Card
+          className="p-4"
+          style={{ borderColor: C.gold, background: '#FFFCF5' }}
+        >
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Cession_Retrait</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Plan de cession transmis pour validation
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Ces ordres proviennent de l'optimisation des demandes de
+                retrait. Ils restent à valider/fractionner avant exécution
+                réelle.
+              </div>
+            </div>
+            <Badge tone="gold">{cessionRows.length} ordre(s) importé(s)</Badge>
+          </div>
+        </Card>
+      )}
       {rows.length === 0 && (
         <Card className="p-6 text-center text-sm" style={{ color: C.sub }}>
           Aucun ordre pour ce filtre.
@@ -11160,7 +11262,7 @@ function AllocCriteres({ initialSens, initialInstrument }) {
               style={{ color: C.sub }}
             >
               {sens === 'Achat'
-                ? 'Pourcentage de liquidité'
+                ? 'Pourcentage de liquidité à investir'
                 : 'Pourcentage de cession'}
             </label>
             <input
@@ -12091,6 +12193,2707 @@ function Reequilibrage({ initial, devise = 'XOF' }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ------------------------- CESSION / RETRAIT GSM ------------------------- */
+/*
+ * Moteur de simulation de cession destiné aux demandes de retrait des clients
+ * en gestion sous mandat.
+ *
+ * Objectifs de la maquette :
+ * - sélectionner plusieurs clients et associer un montant/date de retrait ;
+ * - conserver, après retrait, la poche de liquidité cible du profil ;
+ * - céder prioritairement les classes d'actifs surpondérées ;
+ * - contrôler la liquidité de marché via le volume quotidien simulé ;
+ * - produire un plan d'ordres transférable au Carnet d'ordres.
+ *
+ * En production, les positions et quantités devront provenir des positions ORM
+ * réelles. Ici, elles sont reconstruites depuis les allocations/expositions de
+ * démonstration déjà présentes dans la maquette.
+ */
+const CESSION_RETRAIT_REFERENCE_DATE = '2026-09-09';
+const CESSION_RETRAIT_FEE_RATE = 0.0025;
+const CESSION_RETRAIT_TOLERANCE = 3;
+const CESSION_RETRAIT_DEFAULT_PARTICIPATION = 20;
+
+const CESSION_RETRAIT_SEED = {
+  c1: {
+    selected: true,
+    montant: 35_000_000,
+    date: '2026-09-11',
+    urgence: 'Haute',
+  },
+  c3: {
+    selected: true,
+    montant: 140_000_000,
+    date: '2026-09-12',
+    urgence: 'Haute',
+  },
+  c4: {
+    selected: true,
+    montant: 100_000_000,
+    date: '2026-09-15',
+    urgence: 'Normale',
+  },
+};
+
+/* ------------------- SUIVI OPÉRATIONNEL CESSION / RETRAIT ------------------- */
+const CESSION_RETRAIT_ETATS_DEMO = [
+  {
+    clientId: 'c1',
+    client: 'Aïcha Koné',
+    montant: 35_000_000,
+    devise: 'XOF',
+    statut: 'Demande reçue',
+    dateDemande: '2026-09-09',
+    dateSouhaitee: '2026-09-11',
+    modePaiement: 'Chèque',
+  },
+  {
+    clientId: 'c3',
+    client: 'Emeka Okafor',
+    montant: 140_000_000,
+    devise: 'NGN',
+    statut: 'Processus lancé',
+    dateDemande: '2026-09-09',
+    dateSouhaitee: '2026-09-12',
+    modePaiement: 'Virement bancaire',
+  },
+  {
+    clientId: 'c4',
+    client: 'Groupe Assurance Sahel',
+    montant: 100_000_000,
+    devise: 'XOF',
+    statut: 'Cession en cours',
+    dateDemande: '2026-09-08',
+    dateSouhaitee: '2026-09-15',
+    modePaiement: 'Virement bancaire',
+  },
+  {
+    clientId: 'c2',
+    client: 'Fonds Prévoyance CI',
+    montant: 25_000_000,
+    devise: 'XOF',
+    statut: 'Retrait disponible',
+    dateDemande: '2026-09-05',
+    dateSouhaitee: '2026-09-09',
+    modePaiement: 'Chèque',
+  },
+];
+
+const CESSION_RETRAIT_STATUTS = [
+  'Demande reçue',
+  'Processus lancé',
+  'Cession en cours',
+  'Retrait disponible',
+];
+
+const cessionRetraitStatusTone = (statut) =>
+  statut === 'Retrait disponible'
+    ? 'teal'
+    : statut === 'Cession en cours'
+    ? 'gold'
+    : statut === 'Processus lancé'
+    ? 'navy'
+    : 'coral';
+
+const cessionAssetClass = (instrument) => {
+  if (!instrument) return 'Autres';
+  if (instrument.type === 'Action') return 'Actions';
+  if (/corporate|priv/i.test(String(instrument.nom || ''))) {
+    return 'Obl. privées';
+  }
+  return 'Obl. souveraines';
+};
+
+const cessionUpcomingCash = (client, dateRetrait) => {
+  const dateDebut = parseIsoLocalDate(CESSION_RETRAIT_REFERENCE_DATE);
+  const dateFin = parseIsoLocalDate(
+    dateRetrait || CESSION_RETRAIT_REFERENCE_DATE
+  );
+  if (dateFin < dateDebut) return 0;
+
+  return UPCOMING_CASHFLOWS.reduce((total, flux) => {
+    const dateFlux = parseFR(flux.echeance);
+    const clients = String(flux.portefeuilles || '')
+      .split(',')
+      .map((nom) => nom.trim())
+      .filter(Boolean);
+    if (
+      !clients.includes(client.nom) ||
+      dateFlux < dateDebut ||
+      dateFlux > dateFin
+    ) {
+      return total;
+    }
+    const montantClient =
+      clients.length > 0 ? flux.montant / clients.length : 0;
+    return (
+      total +
+      convertCurrency(
+        montantClient,
+        flux.devise || client.devise,
+        client.devise
+      )
+    );
+  }, 0);
+};
+
+const cessionMarketCandidates = (client, assetClass) =>
+  CLIENT_TRADABLE_MARKETS.filter(
+    (instrument) =>
+      instrument.marche === client.marche &&
+      cessionAssetClass(instrument) === assetClass
+  );
+
+const cessionSimulatedHoldings = (client, assetClass) => {
+  const classValue =
+    (Number(client.encours || 0) * Number(client.alloc?.[assetClass] || 0)) /
+    100;
+  if (classValue <= 0) return [];
+
+  const candidates = cessionMarketCandidates(client, assetClass);
+  if (candidates.length === 0) return [];
+
+  const rawWeights = candidates.map((instrument) =>
+    Math.max(0, Number(exposureOf(client.id, instrument.nom) || 0))
+  );
+  const rawTotal = rawWeights.reduce((sum, value) => sum + value, 0);
+  const weights =
+    rawTotal > 0
+      ? rawWeights.map((value) => value / rawTotal)
+      : candidates.map(() => 1 / candidates.length);
+
+  return candidates
+    .map((instrument, index) => {
+      const holdingValue = classValue * weights[index];
+      const price = Math.max(0.000001, Number(instrument.cours || 0));
+      const quantity = Math.max(0, Math.floor(holdingValue / price));
+      const value = quantity * price;
+      const volume = Math.max(0, Number(instrument.volumeJour || 0));
+      const tradedValue = volume * price;
+      const amplitude =
+        price > 0
+          ? Math.abs(
+              Number(instrument.coursMax || price) -
+                Number(instrument.coursMin || price)
+            ) / price
+          : 0;
+      const concentration = classValue > 0 ? value / classValue : 0;
+      const variation = Number(instrument.variation || 0);
+      const bearishBoost = Math.max(0, -variation) / 10;
+      const liquidityBoost = Math.min(1, tradedValue / Math.max(classValue, 1));
+      const priorityScore =
+        concentration * 0.45 + liquidityBoost * 0.35 + bearishBoost * 0.2;
+
+      return {
+        instrument,
+        quantity,
+        value,
+        holdingValue: value,
+        priorityScore,
+        volume,
+        tradedValue,
+        amplitude,
+      };
+    })
+    .filter((holding) => holding.quantity > 0 && holding.holdingValue > 0)
+    .sort((a, b) => b.priorityScore - a.priorityScore);
+};
+
+const cessionBuildPlan = (
+  client,
+  request,
+  maxParticipation = CESSION_RETRAIT_DEFAULT_PARTICIPATION,
+  strategie = 'Équilibrée'
+) => {
+  const requestedWithdrawal = Math.max(0, Number(request?.montant || 0));
+  const withdrawal = Math.min(requestedWithdrawal, Number(client.encours || 0));
+  const invalidWithdrawal =
+    requestedWithdrawal <= 0 ||
+    requestedWithdrawal >= Number(client.encours || 0);
+  const currentCash =
+    (Number(client.encours || 0) * Number(client.alloc?.Liquidité || 0)) / 100;
+  const upcomingCash = cessionUpcomingCash(client, request?.date);
+  const projectedValue = Math.max(0, Number(client.encours || 0) - withdrawal);
+  const targetCash =
+    (projectedValue * Number(client.cible?.Liquidité || 0)) / 100;
+  const cashBeforeSale = currentCash + upcomingCash;
+  const netSaleNeed = Math.max(0, withdrawal + targetCash - cashBeforeSale);
+  const grossSaleNeed =
+    netSaleNeed > 0 ? netSaleNeed / (1 - CESSION_RETRAIT_FEE_RATE) : 0;
+
+  const investedClasses = ['Actions', 'Obl. souveraines', 'Obl. privées'];
+  const classDiagnostics = investedClasses.map((assetClass) => {
+    const currentValue =
+      (Number(client.encours || 0) * Number(client.alloc?.[assetClass] || 0)) /
+      100;
+    const targetValue =
+      (projectedValue * Number(client.cible?.[assetClass] || 0)) / 100;
+    const excess = currentValue - targetValue;
+    return {
+      assetClass,
+      currentValue,
+      targetValue,
+      excess,
+      currentPct: Number(client.alloc?.[assetClass] || 0),
+      targetPct: Number(client.cible?.[assetClass] || 0),
+    };
+  });
+
+  let classRemaining = grossSaleNeed;
+  const saleByClass = [];
+
+  classDiagnostics
+    .filter((item) => item.excess > 0)
+    .sort((a, b) => b.excess - a.excess)
+    .forEach((item) => {
+      if (classRemaining <= 0) return;
+      const amount = Math.min(item.excess, classRemaining);
+      if (amount > 0) {
+        saleByClass.push({ ...item, amount });
+        classRemaining -= amount;
+      }
+    });
+
+  // Si les seuls écarts positifs ne suffisent pas à couvrir les frais/arrondis,
+  // on complète sur les classes les plus importantes sans dépasser leur valeur.
+  if (classRemaining > 1) {
+    classDiagnostics
+      .slice()
+      .sort((a, b) => b.currentValue - a.currentValue)
+      .forEach((item) => {
+        if (classRemaining <= 0) return;
+        const deja = saleByClass
+          .filter((line) => line.assetClass === item.assetClass)
+          .reduce((sum, line) => sum + line.amount, 0);
+        const disponible = Math.max(0, item.currentValue - deja);
+        const amount = Math.min(disponible, classRemaining);
+        if (amount > 0) {
+          saleByClass.push({ ...item, amount, fallback: true });
+          classRemaining -= amount;
+        }
+      });
+  }
+
+  const orders = [];
+  let uncoveredMarket = 0;
+
+  saleByClass.forEach((saleClass) => {
+    let remaining = saleClass.amount;
+    let holdings = cessionSimulatedHoldings(client, saleClass.assetClass);
+
+    if (strategie === 'Exécution rapide') {
+      holdings = holdings.sort((a, b) => b.tradedValue - a.tradedValue);
+    } else if (strategie === 'Impact minimal') {
+      holdings = holdings.sort((a, b) => a.amplitude - b.amplitude);
+    } else if (strategie === "Nombre d'ordres minimal") {
+      holdings = holdings.sort((a, b) => b.holdingValue - a.holdingValue);
+    }
+
+    if (holdings.length === 0) {
+      uncoveredMarket += remaining;
+      return;
+    }
+
+    holdings.forEach((holding) => {
+      if (remaining <= 0) return;
+      const price = Number(holding.instrument.cours || 0);
+      const targetValue = Math.min(remaining, holding.holdingValue);
+      const quantity = Math.min(
+        holding.quantity,
+        Math.max(1, Math.ceil(targetValue / Math.max(price, 0.000001)))
+      );
+      const gross = quantity * price;
+      const dailyVolume = Math.max(
+        0,
+        Number(holding.instrument.volumeJour || 0)
+      );
+      const participationPct =
+        dailyVolume > 0 ? (quantity / dailyVolume) * 100 : Infinity;
+      const sessions = Number.isFinite(participationPct)
+        ? Math.max(
+            1,
+            Math.ceil(participationPct / Math.max(1, maxParticipation))
+          )
+        : 99;
+      const impact =
+        participationPct <= maxParticipation
+          ? 'Faible'
+          : participationPct <= maxParticipation * 5
+          ? 'Moyen'
+          : 'Élevé';
+      const execution =
+        participationPct <= maxParticipation
+          ? 'Immédiat'
+          : participationPct <= maxParticipation * 5
+          ? 'Fractionné'
+          : 'Sous contrainte';
+
+      orders.push({
+        clientId: client.id,
+        client: client.nom,
+        assetClass: saleClass.assetClass,
+        titre: holding.instrument.nom,
+        marche: holding.instrument.marche,
+        devise: holding.instrument.devise,
+        prix: price,
+        quantite: quantity,
+        montantBrut: gross,
+        fraisEstimes: gross * CESSION_RETRAIT_FEE_RATE,
+        montantNet: gross * (1 - CESSION_RETRAIT_FEE_RATE),
+        volumeJour: dailyVolume,
+        participationPct,
+        sessions,
+        impact,
+        execution,
+        motif: saleClass.fallback
+          ? `${saleClass.assetClass} mobilisée en complément du besoin de liquidité.`
+          : `${saleClass.assetClass} surpondérée par rapport à la cible post-retrait.`,
+      });
+      remaining -= gross;
+    });
+
+    if (remaining > 1) uncoveredMarket += remaining;
+  });
+
+  const grossSale = orders.reduce((sum, order) => sum + order.montantBrut, 0);
+  const fees = orders.reduce((sum, order) => sum + order.fraisEstimes, 0);
+  const netSale = orders.reduce((sum, order) => sum + order.montantNet, 0);
+  const cashAfterWithdrawal = Math.max(
+    0,
+    cashBeforeSale + netSale - withdrawal
+  );
+
+  const soldByClass = investedClasses.reduce((map, assetClass) => {
+    map[assetClass] = orders
+      .filter((order) => order.assetClass === assetClass)
+      .reduce((sum, order) => sum + order.montantBrut, 0);
+    return map;
+  }, {});
+
+  const postAmounts = {
+    Actions: Math.max(
+      0,
+      (Number(client.encours || 0) * Number(client.alloc?.Actions || 0)) / 100 -
+        Number(soldByClass.Actions || 0)
+    ),
+    'Obl. souveraines': Math.max(
+      0,
+      (Number(client.encours || 0) *
+        Number(client.alloc?.['Obl. souveraines'] || 0)) /
+        100 -
+        Number(soldByClass['Obl. souveraines'] || 0)
+    ),
+    'Obl. privées': Math.max(
+      0,
+      (Number(client.encours || 0) *
+        Number(client.alloc?.['Obl. privées'] || 0)) /
+        100 -
+        Number(soldByClass['Obl. privées'] || 0)
+    ),
+    Liquidité: cashAfterWithdrawal,
+  };
+
+  const postTotal = Object.values(postAmounts).reduce(
+    (sum, value) => sum + Number(value || 0),
+    0
+  );
+  const postAllocation = ASSET_KEYS.reduce((map, assetClass) => {
+    map[assetClass] =
+      postTotal > 0
+        ? (Number(postAmounts[assetClass] || 0) / postTotal) * 100
+        : 0;
+    return map;
+  }, {});
+  const deviations = ASSET_KEYS.map((assetClass) => ({
+    assetClass,
+    current: Number(client.alloc?.[assetClass] || 0),
+    target: Number(client.cible?.[assetClass] || 0),
+    post: Number(postAllocation[assetClass] || 0),
+    gap:
+      Number(postAllocation[assetClass] || 0) -
+      Number(client.cible?.[assetClass] || 0),
+  }));
+  const maxDeviation = Math.max(
+    ...deviations.map((item) => Math.abs(item.gap))
+  );
+  const maxOrderParticipation = orders.length
+    ? Math.max(...orders.map((order) => order.participationPct))
+    : 0;
+  const maxSessions = orders.length
+    ? Math.max(...orders.map((order) => order.sessions))
+    : 1;
+  const marketStatus =
+    uncoveredMarket > 1 || !Number.isFinite(maxOrderParticipation)
+      ? 'Non exécutable'
+      : maxOrderParticipation <= maxParticipation
+      ? 'Compatible'
+      : maxOrderParticipation <= maxParticipation * 5
+      ? 'Fractionnement requis'
+      : 'Sous contrainte';
+  const allocationCompliant = maxDeviation <= CESSION_RETRAIT_TOLERANCE;
+  const amountCovered = netSale + cashBeforeSale + 1 >= withdrawal + targetCash;
+  const executable =
+    !invalidWithdrawal &&
+    amountCovered &&
+    uncoveredMarket <= 1 &&
+    marketStatus !== 'Non exécutable';
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        100 -
+          maxDeviation * 5 -
+          Math.max(0, maxOrderParticipation - maxParticipation) * 0.25 -
+          (uncoveredMarket > 1 ? 35 : 0)
+      )
+    )
+  );
+
+  return {
+    client,
+    request,
+    withdrawal,
+    currentCash,
+    upcomingCash,
+    targetCash,
+    cashBeforeSale,
+    netSaleNeed,
+    grossSaleNeed,
+    grossSale,
+    fees,
+    netSale,
+    cashAfterWithdrawal,
+    projectedValue,
+    postTotal,
+    postAllocation,
+    deviations,
+    maxDeviation,
+    orders,
+    uncoveredMarket,
+    maxOrderParticipation,
+    maxSessions,
+    marketStatus,
+    allocationCompliant,
+    amountCovered,
+    executable,
+    invalidWithdrawal,
+    score,
+  };
+};
+
+const cessionManagerEditKey = (order) =>
+  `${order.assetClass}::${order.titreSysteme || order.titre}`;
+
+const cessionApplyManagerEdits = (
+  basePlan,
+  quantityEdits = {},
+  titleEdits = {},
+  maxParticipation = CESSION_RETRAIT_DEFAULT_PARTICIPATION
+) => {
+  const investedClasses = ['Actions', 'Obl. souveraines', 'Obl. privées'];
+  const usedQuantities = {};
+
+  const proposalLines = (basePlan.orders || []).map((order) => {
+    const key = `${order.assetClass}::${order.titre}`;
+    const holdings = cessionSimulatedHoldings(
+      basePlan.client,
+      order.assetClass
+    );
+    const availableTitles = holdings.map((holding) => holding.instrument.nom);
+    const requestedTitle = titleEdits?.[key] || order.titre;
+    const selectedHolding =
+      holdings.find((holding) => holding.instrument.nom === requestedTitle) ||
+      holdings.find((holding) => holding.instrument.nom === order.titre);
+    const instrument = selectedHolding?.instrument || {
+      nom: order.titre,
+      marche: order.marche,
+      devise: order.devise,
+      cours: order.prix,
+      volumeJour: order.volumeJour,
+    };
+    const selectedTitle = instrument.nom;
+    const titleChanged = selectedTitle !== order.titre;
+    const stockKey = `${order.assetClass}::${selectedTitle}`;
+    const alreadyUsed = Number(usedQuantities[stockKey] || 0);
+    const holdingMaxQuantity = Math.max(
+      0,
+      Number(selectedHolding?.quantity ?? order.quantite ?? 0)
+    );
+    const maxQuantity = Math.max(0, holdingMaxQuantity - alreadyUsed);
+    const price = Math.max(
+      0.000001,
+      Number(instrument.cours || order.prix || 0)
+    );
+
+    const hasQuantityEdit = Object.prototype.hasOwnProperty.call(
+      quantityEdits || {},
+      key
+    );
+    const rawQuantity = hasQuantityEdit
+      ? quantityEdits[key]
+      : titleChanged
+      ? Math.round(Number(order.montantBrut || 0) / price)
+      : order.quantite;
+    const requestedQuantity =
+      rawQuantity === '' || rawQuantity == null
+        ? 0
+        : Math.max(0, Math.floor(Number(rawQuantity) || 0));
+    const quantity = Math.min(requestedQuantity, maxQuantity);
+    usedQuantities[stockKey] = alreadyUsed + quantity;
+
+    const gross = quantity * price;
+    const dailyVolume = Math.max(
+      0,
+      Number(instrument.volumeJour || order.volumeJour || 0)
+    );
+    const participationPct =
+      dailyVolume > 0 ? (quantity / dailyVolume) * 100 : Infinity;
+    const sessions =
+      quantity <= 0
+        ? 0
+        : Number.isFinite(participationPct)
+        ? Math.max(
+            1,
+            Math.ceil(
+              participationPct / Math.max(1, Number(maxParticipation || 1))
+            )
+          )
+        : 99;
+    const impact =
+      quantity <= 0
+        ? 'Aucun'
+        : participationPct <= maxParticipation
+        ? 'Faible'
+        : participationPct <= maxParticipation * 5
+        ? 'Moyen'
+        : 'Élevé';
+    const execution =
+      quantity <= 0
+        ? 'Exclu par le gérant'
+        : participationPct <= maxParticipation
+        ? 'Immédiat'
+        : participationPct <= maxParticipation * 5
+        ? 'Fractionné'
+        : 'Sous contrainte';
+
+    return {
+      ...order,
+      editKey: key,
+      titreSysteme: order.titre,
+      titre: selectedTitle,
+      marche: instrument.marche || order.marche,
+      devise: instrument.devise || order.devise,
+      prix: price,
+      volumeJour: dailyVolume,
+      availableTitles,
+      quantiteSysteme: Number(order.quantite || 0),
+      quantite: quantity,
+      maxQuantity,
+      holdingMaxQuantity,
+      montantBrut: gross,
+      fraisEstimes: gross * CESSION_RETRAIT_FEE_RATE,
+      montantNet: gross * (1 - CESSION_RETRAIT_FEE_RATE),
+      participationPct,
+      sessions,
+      impact,
+      execution,
+      managerEdited:
+        titleChanged ||
+        (hasQuantityEdit && quantity !== Number(order.quantite || 0)),
+    };
+  });
+
+  const orders = proposalLines.filter((order) => order.quantite > 0);
+  const grossSale = orders.reduce(
+    (sum, order) => sum + Number(order.montantBrut || 0),
+    0
+  );
+  const fees = orders.reduce(
+    (sum, order) => sum + Number(order.fraisEstimes || 0),
+    0
+  );
+  const netSale = orders.reduce(
+    (sum, order) => sum + Number(order.montantNet || 0),
+    0
+  );
+  const cashAfterWithdrawal = Math.max(
+    0,
+    Number(basePlan.cashBeforeSale || 0) +
+      netSale -
+      Number(basePlan.withdrawal || 0)
+  );
+
+  const soldByClass = investedClasses.reduce((map, assetClass) => {
+    map[assetClass] = orders
+      .filter((order) => order.assetClass === assetClass)
+      .reduce((sum, order) => sum + Number(order.montantBrut || 0), 0);
+    return map;
+  }, {});
+
+  const client = basePlan.client;
+  const postAmounts = {
+    Actions: Math.max(
+      0,
+      (Number(client.encours || 0) * Number(client.alloc?.Actions || 0)) / 100 -
+        Number(soldByClass.Actions || 0)
+    ),
+    'Obl. souveraines': Math.max(
+      0,
+      (Number(client.encours || 0) *
+        Number(client.alloc?.['Obl. souveraines'] || 0)) /
+        100 -
+        Number(soldByClass['Obl. souveraines'] || 0)
+    ),
+    'Obl. privées': Math.max(
+      0,
+      (Number(client.encours || 0) *
+        Number(client.alloc?.['Obl. privées'] || 0)) /
+        100 -
+        Number(soldByClass['Obl. privées'] || 0)
+    ),
+    Liquidité: cashAfterWithdrawal,
+  };
+
+  const postTotal = Object.values(postAmounts).reduce(
+    (sum, value) => sum + Number(value || 0),
+    0
+  );
+  const postAllocation = ASSET_KEYS.reduce((map, assetClass) => {
+    map[assetClass] =
+      postTotal > 0
+        ? (Number(postAmounts[assetClass] || 0) / postTotal) * 100
+        : 0;
+    return map;
+  }, {});
+  const deviations = ASSET_KEYS.map((assetClass) => ({
+    assetClass,
+    current: Number(client.alloc?.[assetClass] || 0),
+    target: Number(client.cible?.[assetClass] || 0),
+    post: Number(postAllocation[assetClass] || 0),
+    gap:
+      Number(postAllocation[assetClass] || 0) -
+      Number(client.cible?.[assetClass] || 0),
+  }));
+  const maxDeviation = Math.max(
+    0,
+    ...deviations.map((item) => Math.abs(item.gap))
+  );
+  const maxOrderParticipation = orders.length
+    ? Math.max(...orders.map((order) => order.participationPct))
+    : 0;
+  const maxSessions = orders.length
+    ? Math.max(...orders.map((order) => order.sessions))
+    : 0;
+
+  const uncoveredMarket = Math.max(
+    0,
+    Number(basePlan.grossSaleNeed || 0) - grossSale
+  );
+  const marketStatus =
+    uncoveredMarket > 1 ||
+    (orders.length > 0 && !Number.isFinite(maxOrderParticipation))
+      ? 'Non exécutable'
+      : maxOrderParticipation <= maxParticipation
+      ? 'Compatible'
+      : maxOrderParticipation <= maxParticipation * 5
+      ? 'Fractionnement requis'
+      : 'Sous contrainte';
+
+  const allocationCompliant = maxDeviation <= CESSION_RETRAIT_TOLERANCE;
+  const amountCovered =
+    netSale + Number(basePlan.cashBeforeSale || 0) + 1 >=
+    Number(basePlan.withdrawal || 0) + Number(basePlan.targetCash || 0);
+  const executable =
+    !basePlan.invalidWithdrawal &&
+    amountCovered &&
+    uncoveredMarket <= 1 &&
+    marketStatus !== 'Non exécutable';
+
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        100 -
+          maxDeviation * 5 -
+          Math.max(0, maxOrderParticipation - maxParticipation) * 0.25 -
+          (uncoveredMarket > 1 ? 35 : 0)
+      )
+    )
+  );
+
+  return {
+    ...basePlan,
+    proposalLines,
+    orders,
+    grossSale,
+    fees,
+    netSale,
+    cashAfterWithdrawal,
+    postTotal,
+    postAllocation,
+    deviations,
+    maxDeviation,
+    uncoveredMarket,
+    maxOrderParticipation,
+    maxSessions,
+    marketStatus,
+    allocationCompliant,
+    amountCovered,
+    executable,
+    score,
+    managerEdited: proposalLines.some((order) => order.managerEdited),
+  };
+};
+
+function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
+  const [requests, setRequests] = useState(() =>
+    CLIENTS.reduce((map, client) => {
+      const seed = CESSION_RETRAIT_SEED[client.id];
+      map[client.id] = {
+        selected: Boolean(seed?.selected),
+        montant: seed?.montant || 0,
+        date: seed?.date || '2026-09-15',
+        urgence: seed?.urgence || 'Normale',
+      };
+      return map;
+    }, {})
+  );
+  const [filtreClient, setFiltreClient] = useState('');
+  const [filtreMarche, setFiltreMarche] = useState('Tous');
+  const [strategie, setStrategie] = useState('Équilibrée');
+  const [participationMax, setParticipationMax] = useState(
+    CESSION_RETRAIT_DEFAULT_PARTICIPATION
+  );
+  const [optimisationVisible, setOptimisationVisible] = useState(true);
+  const [clientOuvert, setClientOuvert] = useState('c1');
+  const [editionPlans, setEditionPlans] = useState(false);
+  const [managerEdits, setManagerEdits] = useState({});
+  const [managerTitleEdits, setManagerTitleEdits] = useState({});
+
+  const updateRequest = (clientId, patch) => {
+    setRequests((current) => ({
+      ...current,
+      [clientId]: { ...current[clientId], ...patch },
+    }));
+  };
+
+  const updatePlanQuantity = (clientId, order, value) => {
+    const key = order.editKey || cessionManagerEditKey(order);
+    const normalizedValue =
+      value === ''
+        ? ''
+        : String(
+            Math.max(
+              0,
+              Math.min(
+                Number(order.maxQuantity ?? order.quantite ?? 0),
+                Math.floor(Number(value) || 0)
+              )
+            )
+          );
+    setManagerEdits((current) => ({
+      ...current,
+      [clientId]: {
+        ...(current[clientId] || {}),
+        [key]: normalizedValue,
+      },
+    }));
+  };
+
+  const updatePlanTitle = (clientId, order, title) => {
+    const key = order.editKey || cessionManagerEditKey(order);
+    setManagerTitleEdits((current) => ({
+      ...current,
+      [clientId]: {
+        ...(current[clientId] || {}),
+        [key]: title,
+      },
+    }));
+    setManagerEdits((current) => {
+      const currentClient = { ...(current[clientId] || {}) };
+      delete currentClient[key];
+      return {
+        ...current,
+        [clientId]: currentClient,
+      };
+    });
+  };
+
+  const resetPlanEdits = (clientId) => {
+    setManagerEdits((current) => {
+      const next = { ...current };
+      delete next[clientId];
+      return next;
+    });
+    setManagerTitleEdits((current) => {
+      const next = { ...current };
+      delete next[clientId];
+      return next;
+    });
+  };
+
+  const resetAllPlanEdits = () => {
+    setManagerEdits({});
+    setManagerTitleEdits({});
+  };
+
+  const clientsFiltres = CLIENTS.filter((client) => {
+    const matchNom = client.nom
+      .toLowerCase()
+      .includes(filtreClient.trim().toLowerCase());
+    const matchMarche =
+      filtreMarche === 'Tous' || client.marche === filtreMarche;
+    return matchNom && matchMarche;
+  });
+
+  const selectedClients = CLIENTS.filter(
+    (client) =>
+      requests[client.id]?.selected &&
+      Number(requests[client.id]?.montant || 0) > 0
+  );
+  const basePlans = selectedClients.map((client) =>
+    cessionBuildPlan(
+      client,
+      requests[client.id],
+      Math.max(1, Number(participationMax || 1)),
+      strategie
+    )
+  );
+  const plans = basePlans.map((plan) =>
+    cessionApplyManagerEdits(
+      plan,
+      managerEdits[plan.client.id] || {},
+      managerTitleEdits[plan.client.id] || {},
+      Math.max(1, Number(participationMax || 1))
+    )
+  );
+
+  const totalRetraitsRef = plans.reduce(
+    (sum, plan) =>
+      sum + convertCurrency(plan.withdrawal, plan.client.devise, devise),
+    0
+  );
+  const totalCessionsRef = plans.reduce(
+    (sum, plan) =>
+      sum + convertCurrency(plan.grossSale, plan.client.devise, devise),
+    0
+  );
+  const constrainedPlans = plans.filter(
+    (plan) =>
+      !plan.executable ||
+      plan.marketStatus === 'Sous contrainte' ||
+      plan.marketStatus === 'Non exécutable'
+  );
+  const totalOrders = plans.reduce((sum, plan) => sum + plan.orders.length, 0);
+  const plansModifies = plans.filter((plan) => plan.managerEdited).length;
+  const cessionInterneReady =
+    plans.length > 0 &&
+    totalOrders > 0 &&
+    plans.every(
+      (plan) =>
+        !plan.invalidWithdrawal &&
+        plan.amountCovered &&
+        Number(plan.uncoveredMarket || 0) <= 1
+    );
+
+  const ouvrirCessionInterne = () => {
+    if (!cessionInterneReady) return;
+
+    plans.forEach((plan) => {
+      onCessionStatusChange?.(plan.client.id, {
+        client: plan.client.nom,
+        montant: plan.withdrawal,
+        devise: plan.client.devise,
+        statut: 'Processus lancé',
+        dateDemande: CESSION_RETRAIT_REFERENCE_DATE,
+        dateSouhaitee: plan.request?.date || CESSION_RETRAIT_REFERENCE_DATE,
+      });
+    });
+
+    go('cession-interne', {
+      plans,
+      strategie,
+      participationMax,
+      source: 'cession-retrait',
+    });
+  };
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb items={['Accueil', 'Cession_Retrait']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion sous mandat · besoins de liquidité clients</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Cession_Retrait — optimisation des actifs à céder
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+            Sélectionnez les clients qui demandent un retrait. Le moteur estime
+            la cession nécessaire après utilisation de la liquidité disponible,
+            conserve la poche de liquidité cible du profil, puis privilégie les
+            classes surpondérées et les titres suffisamment liquides au regard
+            du marché simulé.
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge tone="gold">Simulation GSM</Badge>
+          <Badge tone="slate">
+            Tolérance allocation ±{CESSION_RETRAIT_TOLERANCE} pts
+          </Badge>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Clients sélectionnés',
+            value: plans.length,
+            detail: 'demandes actives',
+            tone: 'navy',
+          },
+          {
+            label: 'Retraits demandés',
+            value: `${fmt(Math.round(totalRetraitsRef))} ${devise}`,
+            detail: 'équivalent devise de référence',
+            tone: 'gold',
+          },
+          {
+            label: 'Cessions proposées',
+            value: `${fmt(Math.round(totalCessionsRef))} ${devise}`,
+            detail: `${totalOrders} ordre(s) simulé(s)`,
+            tone: 'teal',
+          },
+          {
+            label: 'Cas sous contrainte',
+            value: constrainedPlans.length,
+            detail: 'liquidité / allocation / couverture',
+            tone: constrainedPlans.length > 0 ? 'coral' : 'teal',
+          },
+        ].map((item) => (
+          <Card key={item.label} className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                {item.label}
+              </div>
+              <Badge tone={item.tone}>
+                {item.tone === 'coral' ? '!' : '●'}
+              </Badge>
+            </div>
+            <div
+              className="text-xl font-bold mt-2"
+              style={{ ...F_MONO, color: C.ink }}
+            >
+              {item.value}
+            </div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+              {item.detail}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div className="grid grid-cols-4 gap-3 flex-1 min-w-[900px]">
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Rechercher un client
+              </label>
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                <Search size={14} color={C.sub} />
+                <input
+                  value={filtreClient}
+                  onChange={(e) => setFiltreClient(e.target.value)}
+                  placeholder="Nom du client"
+                  className="w-full outline-none text-sm"
+                  style={{ ...F_BODY, color: C.ink }}
+                />
+              </div>
+            </div>
+            <div>
+              <label
+                className="text-xs font-semibold block mb-1"
+                style={{ color: C.sub }}
+              >
+                Marché
+              </label>
+              <select
+                value={filtreMarche}
+                onChange={(e) => setFiltreMarche(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                {['Tous', 'BRVM', 'NGX', 'GSE'].map((marche) => (
+                  <option key={marche}>{marche}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <Btn
+            onClick={() => {
+              resetAllPlanEdits();
+              setEditionPlans(false);
+              setOptimisationVisible(true);
+            }}
+          >
+            Optimiser les cessions
+          </Btn>
+        </div>
+      </Card>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 flex items-center justify-between gap-3">
+          <div>
+            <Eyebrow>1 · Demandes de retrait</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Clients, montants et échéances
+            </div>
+          </div>
+          <Badge tone="gold">{plans.length} demande(s) active(s)</Badge>
+        </div>
+        <div
+          className="overflow-auto"
+          style={{
+            maxHeight: 420,
+            overflowY: 'auto',
+            overflowX: 'auto',
+            overscrollBehavior: 'contain',
+            scrollbarGutter: 'stable',
+          }}
+        >
+          <table className="w-full" style={{ minWidth: 1400 }}>
+            <thead
+              style={{
+                background: '#FAFAFC',
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                boxShadow: `0 1px 0 ${C.line}`,
+              }}
+            >
+              <tr>
+                <Th>✓</Th>
+                <Th>Client</Th>
+                <Th>Marché</Th>
+                <Th>Profil</Th>
+                <Th>Encours</Th>
+                <Th>Liquidité actuelle</Th>
+                <Th>Retrait demandé</Th>
+                <Th>Date souhaitée</Th>
+                <Th>Urgence</Th>
+                <Th>Besoin estimé de cession</Th>
+                <Th>Situation</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {clientsFiltres.map((client, index) => {
+                const request = requests[client.id];
+                const plan =
+                  request?.selected && Number(request?.montant || 0) > 0
+                    ? cessionBuildPlan(
+                        client,
+                        request,
+                        Math.max(1, Number(participationMax || 1)),
+                        strategie
+                      )
+                    : null;
+                const currentCash =
+                  (client.encours * Number(client.alloc?.Liquidité || 0)) / 100;
+
+                return (
+                  <tr
+                    key={client.id}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background: index % 2 ? '#FCFCFD' : '#fff',
+                    }}
+                  >
+                    <Td>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(request?.selected)}
+                        onChange={(e) =>
+                          updateRequest(client.id, {
+                            selected: e.target.checked,
+                          })
+                        }
+                        className="w-4 h-4"
+                      />
+                    </Td>
+                    <Td className="font-semibold whitespace-nowrap">
+                      {client.nom}
+                    </Td>
+                    <Td>
+                      <Badge tone="navy">{client.marche}</Badge>
+                    </Td>
+                    <Td>
+                      <Badge tone="slate">{client.profilRisque}</Badge>
+                    </Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmt(client.encours)} {client.devise}
+                    </Td>
+                    <Td mono className="whitespace-nowrap">
+                      {fmt(Math.round(currentCash))} {client.devise}
+                    </Td>
+                    <Td>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={request?.montant || 0}
+                        onChange={(e) =>
+                          updateRequest(client.id, {
+                            montant: Math.max(0, Number(e.target.value || 0)),
+                            selected:
+                              Number(e.target.value || 0) > 0 ||
+                              request?.selected,
+                          })
+                        }
+                        className="min-w-[160px] px-3 py-2 rounded-xl border text-sm"
+                        style={{ borderColor: C.line, ...F_MONO }}
+                      />
+                      <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                        {client.devise}
+                      </div>
+                    </Td>
+                    <Td>
+                      <input
+                        type="date"
+                        value={request?.date || '2026-09-15'}
+                        min={CESSION_RETRAIT_REFERENCE_DATE}
+                        onChange={(e) =>
+                          updateRequest(client.id, { date: e.target.value })
+                        }
+                        className="px-3 py-2 rounded-xl border text-sm"
+                        style={{ borderColor: C.line }}
+                      />
+                    </Td>
+                    <Td>
+                      <select
+                        value={request?.urgence || 'Normale'}
+                        onChange={(e) =>
+                          updateRequest(client.id, { urgence: e.target.value })
+                        }
+                        className="px-3 py-2 rounded-xl border text-sm"
+                        style={{ borderColor: C.line }}
+                      >
+                        <option>Haute</option>
+                        <option>Normale</option>
+                        <option>Faible</option>
+                      </select>
+                    </Td>
+                    <Td mono className="whitespace-nowrap">
+                      {plan
+                        ? `${fmt(Math.round(plan.netSaleNeed))} ${
+                            client.devise
+                          }`
+                        : '—'}
+                    </Td>
+                    <Td>
+                      {plan ? (
+                        <Badge
+                          tone={
+                            plan.executable
+                              ? plan.marketStatus === 'Compatible'
+                                ? 'teal'
+                                : 'gold'
+                              : 'coral'
+                          }
+                        >
+                          {plan.executable ? plan.marketStatus : 'À revoir'}
+                        </Badge>
+                      ) : (
+                        <Badge tone="slate">Non sélectionné</Badge>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {optimisationVisible && plans.length > 0 && (
+        <>
+          <Card className="p-0 overflow-hidden">
+            <div className="p-4">
+              <Eyebrow>2 · Diagnostic de financement</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Combien faut-il réellement céder ?
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Besoin de cession = retrait + liquidité cible post-retrait −
+                cash disponible avant cession.
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 1300 }}>
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Client</Th>
+                    <Th>Cash actuel</Th>
+                    <Th>Flux confirmés avant retrait</Th>
+                    <Th>Retrait</Th>
+                    <Th>Encours post-retrait</Th>
+                    <Th>Cash cible à conserver</Th>
+                    <Th>Cession nette nécessaire</Th>
+                    <Th>Frais estimés</Th>
+                    <Th>Cash final simulé</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plans.map((plan, index) => (
+                    <tr
+                      key={plan.client.id}
+                      style={{
+                        borderTop: `1px solid ${C.line}`,
+                        background: index % 2 ? '#FCFCFD' : '#fff',
+                      }}
+                    >
+                      <Td className="font-semibold">{plan.client.nom}</Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.currentCash))} {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.upcomingCash))}{' '}
+                        {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.withdrawal))} {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.projectedValue))}{' '}
+                        {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.targetCash))} {plan.client.devise}
+                      </Td>
+                      <Td mono className="font-semibold">
+                        {fmt(Math.round(plan.netSaleNeed))} {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.fees))} {plan.client.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(plan.cashAfterWithdrawal))}{' '}
+                        {plan.client.devise}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden" style={{ borderColor: C.gold }}>
+            <div
+              className="p-4 flex items-start justify-between gap-4 flex-wrap"
+              style={{ background: '#FFFCF6' }}
+            >
+              <div>
+                <Eyebrow>3 · Plans optimisés de cession</Eyebrow>
+                <div className="text-base font-bold" style={{ color: C.ink }}>
+                  Propositions optimales regroupées par client
+                </div>
+                <div
+                  className="text-[10px] mt-1 max-w-3xl"
+                  style={{ color: C.sub }}
+                >
+                  Toutes les propositions sont regroupées dans ce cadrant.
+                  Ouvrez un client pour examiner sa proposition. Le gérant peut
+                  ajuster les titres et les quantités avant la vérification de
+                  la cession interne ; les frais, la couverture du retrait,
+                  l'impact marché et l'allocation post-cession sont recalculés
+                  immédiatement.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <Badge tone="navy">{plans.length} client(s)</Badge>
+                {plansModifies > 0 && (
+                  <Badge tone="gold">
+                    {plansModifies} proposition(s) modifiée(s)
+                  </Badge>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setEditionPlans((value) => !value)}
+                  className="px-3.5 py-2 rounded-xl text-sm font-semibold"
+                  style={{
+                    background: editionPlans ? C.gold : '#fff',
+                    color: editionPlans ? '#fff' : C.navy,
+                    border: `1px solid ${editionPlans ? C.gold : C.line}`,
+                    ...F_BODY,
+                  }}
+                >
+                  {editionPlans
+                    ? "Terminer l'édition"
+                    : 'Modifier les propositions'}
+                </button>
+                {plansModifies > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetAllPlanEdits}
+                    className="px-3.5 py-2 rounded-xl text-sm font-semibold"
+                    style={{
+                      background: '#fff',
+                      color: C.coral,
+                      border: `1px solid ${C.line}`,
+                      ...F_BODY,
+                    }}
+                  >
+                    Réinitialiser tout
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              {plans.map((plan, planIndex) => {
+                const open = clientOuvert === plan.client.id;
+                const statusTone = !plan.executable
+                  ? 'coral'
+                  : plan.marketStatus === 'Compatible' &&
+                    plan.allocationCompliant
+                  ? 'teal'
+                  : 'gold';
+                const proposalLines = plan.proposalLines || plan.orders || [];
+                const clientEdits = managerEdits[plan.client.id] || {};
+
+                return (
+                  <section
+                    key={plan.client.id}
+                    style={{
+                      borderTop:
+                        planIndex === 0 ? 'none' : `1px solid ${C.line}`,
+                      background: open ? '#fff' : '#FCFCFD',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setClientOuvert(open ? '' : plan.client.id)
+                      }
+                      className="w-full p-5 text-left"
+                    >
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div
+                              className="text-base font-bold"
+                              style={{ color: C.ink }}
+                            >
+                              {plan.client.nom}
+                            </div>
+                            <Badge tone="navy">{plan.client.marche}</Badge>
+                            <Badge tone={statusTone}>
+                              {plan.executable
+                                ? plan.allocationCompliant
+                                  ? 'Allocation conforme'
+                                  : 'Allocation à surveiller'
+                                : 'Plan à revoir'}
+                            </Badge>
+                            {plan.managerEdited && (
+                              <Badge tone="gold">Modifié par le gérant</Badge>
+                            )}
+                          </div>
+                          <div
+                            className="text-xs mt-2"
+                            style={{ color: C.sub }}
+                          >
+                            Retrait {fmt(Math.round(plan.withdrawal))}{' '}
+                            {plan.client.devise} · cession retenue{' '}
+                            {fmt(Math.round(plan.grossSale))}{' '}
+                            {plan.client.devise} · {plan.orders.length} ligne(s)
+                            active(s) · score {plan.score}/100
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          <Badge tone={plan.amountCovered ? 'teal' : 'coral'}>
+                            {plan.amountCovered
+                              ? 'Retrait couvert'
+                              : `Manque ${fmt(
+                                  Math.round(plan.uncoveredMarket || 0)
+                                )} ${plan.client.devise}`}
+                          </Badge>
+                          <Badge
+                            tone={
+                              plan.marketStatus === 'Compatible'
+                                ? 'teal'
+                                : plan.marketStatus === 'Non exécutable'
+                                ? 'coral'
+                                : 'gold'
+                            }
+                          >
+                            Marché : {plan.marketStatus}
+                          </Badge>
+                          <Badge
+                            tone={
+                              plan.maxSessions <= 1
+                                ? 'teal'
+                                : plan.maxSessions <= 5
+                                ? 'gold'
+                                : 'coral'
+                            }
+                          >
+                            {plan.maxSessions <= 1
+                              ? '1 séance'
+                              : `${plan.maxSessions} séances estimées`}
+                          </Badge>
+                          <ChevronRight
+                            size={17}
+                            color={C.sub}
+                            style={{
+                              transform: open ? 'rotate(90deg)' : 'none',
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </button>
+
+                    {open && (
+                      <div
+                        className="px-5 pb-5 space-y-4"
+                        style={{ background: '#fff' }}
+                      >
+                        <div className="grid grid-cols-5 gap-3">
+                          {[
+                            {
+                              label: 'Besoin brut système',
+                              value: `${fmt(Math.round(plan.grossSaleNeed))} ${
+                                plan.client.devise
+                              }`,
+                            },
+                            {
+                              label: 'Cession retenue',
+                              value: `${fmt(Math.round(plan.grossSale))} ${
+                                plan.client.devise
+                              }`,
+                            },
+                            {
+                              label: 'Produit net',
+                              value: `${fmt(Math.round(plan.netSale))} ${
+                                plan.client.devise
+                              }`,
+                            },
+                            {
+                              label: 'Frais estimés',
+                              value: `${fmt(Math.round(plan.fees))} ${
+                                plan.client.devise
+                              }`,
+                            },
+                            {
+                              label: 'Cash final simulé',
+                              value: `${fmt(
+                                Math.round(plan.cashAfterWithdrawal)
+                              )} ${plan.client.devise}`,
+                            },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="p-3 rounded-2xl border"
+                              style={{
+                                borderColor: C.line,
+                                background: '#FAFAFC',
+                              }}
+                            >
+                              <div
+                                className="text-[9px] uppercase font-semibold"
+                                style={{ color: C.sub }}
+                              >
+                                {item.label}
+                              </div>
+                              <div
+                                className="text-sm font-bold mt-1"
+                                style={{ ...F_MONO, color: C.ink }}
+                              >
+                                {item.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-3">
+                          {plan.deviations.map((item) => {
+                            const compliant =
+                              Math.abs(item.gap) <= CESSION_RETRAIT_TOLERANCE;
+                            return (
+                              <div
+                                key={item.assetClass}
+                                className="p-3 rounded-2xl border"
+                                style={{
+                                  borderColor: compliant
+                                    ? '#CFE9DF'
+                                    : '#F1D6D2',
+                                  background: compliant ? '#F6FBF9' : '#FFF8F7',
+                                }}
+                              >
+                                <div
+                                  className="text-[10px] uppercase font-semibold"
+                                  style={{ color: C.sub }}
+                                >
+                                  {item.assetClass}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 mt-2 text-center">
+                                  <div>
+                                    <div
+                                      className="text-[9px]"
+                                      style={{ color: C.sub }}
+                                    >
+                                      Avant
+                                    </div>
+                                    <div
+                                      className="text-sm font-bold"
+                                      style={F_MONO}
+                                    >
+                                      {item.current.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div
+                                      className="text-[9px]"
+                                      style={{ color: C.sub }}
+                                    >
+                                      Après
+                                    </div>
+                                    <div
+                                      className="text-sm font-bold"
+                                      style={F_MONO}
+                                    >
+                                      {item.post.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div
+                                      className="text-[9px]"
+                                      style={{ color: C.sub }}
+                                    >
+                                      Cible
+                                    </div>
+                                    <div
+                                      className="text-sm font-bold"
+                                      style={F_MONO}
+                                    >
+                                      {item.target.toFixed(1)}%
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="mt-2 text-center">
+                                  <Badge tone={compliant ? 'teal' : 'coral'}>
+                                    Écart {item.gap > 0 ? '+' : ''}
+                                    {item.gap.toFixed(1)} pt
+                                  </Badge>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div
+                          className="p-3 rounded-2xl flex items-center justify-between gap-3 flex-wrap"
+                          style={{
+                            background: editionPlans ? '#FFF8E9' : '#F7F8FA',
+                            border: `1px solid ${
+                              editionPlans ? '#E9CF91' : C.line
+                            }`,
+                          }}
+                        >
+                          <div>
+                            <div
+                              className="text-xs font-bold"
+                              style={{ color: C.ink }}
+                            >
+                              Proposition optimale de cession ·{' '}
+                              {plan.client.nom}
+                            </div>
+                            <div
+                              className="text-[10px] mt-1"
+                              style={{ color: C.sub }}
+                            >
+                              {editionPlans
+                                ? 'Mode édition actif : changez le titre proposé lorsque des alternatives existent, ajustez les quantités, ou saisissez 0 pour exclure une ligne du plan transmis à la Cession interne.'
+                                : 'Activez « Modifier les propositions » pour ajuster le plan avant la Cession interne.'}
+                            </div>
+                          </div>
+                          {plan.managerEdited && (
+                            <button
+                              type="button"
+                              onClick={() => resetPlanEdits(plan.client.id)}
+                              className="px-3 py-1.5 rounded-xl text-xs font-semibold"
+                              style={{
+                                background: '#fff',
+                                color: C.coral,
+                                border: `1px solid ${C.line}`,
+                              }}
+                            >
+                              Rétablir la proposition système
+                            </button>
+                          )}
+                        </div>
+
+                        {proposalLines.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <table
+                              className="w-full"
+                              style={{ minWidth: editionPlans ? 1580 : 1450 }}
+                            >
+                              <thead style={{ background: '#FAFAFC' }}>
+                                <tr>
+                                  <Th>Priorité</Th>
+                                  <Th>Titre</Th>
+                                  <Th>Classe</Th>
+                                  <Th>
+                                    {editionPlans
+                                      ? 'Qté à vendre · modifiable'
+                                      : 'Qté à vendre'}
+                                  </Th>
+                                  {editionPlans && <Th>Qté système / max</Th>}
+                                  <Th>Cours</Th>
+                                  <Th>Produit brut</Th>
+                                  <Th>Produit net</Th>
+                                  <Th>Volume jour</Th>
+                                  <Th>% volume</Th>
+                                  <Th>Séances</Th>
+                                  <Th>Impact</Th>
+                                  <Th>Motif</Th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {proposalLines.map((order, index) => {
+                                  const rawEdit = clientEdits[order.editKey];
+                                  const displayQuantity =
+                                    rawEdit !== undefined
+                                      ? rawEdit
+                                      : order.quantite;
+                                  const inactive = order.quantite <= 0;
+
+                                  return (
+                                    <tr
+                                      key={`${plan.client.id}-${order.titre}-${index}`}
+                                      style={{
+                                        borderTop: `1px solid ${C.line}`,
+                                        background: inactive
+                                          ? '#F7F7F8'
+                                          : order.managerEdited
+                                          ? '#FFFCF4'
+                                          : index % 2
+                                          ? '#FCFCFD'
+                                          : '#fff',
+                                        opacity: inactive ? 0.62 : 1,
+                                      }}
+                                    >
+                                      <Td mono>{index + 1}</Td>
+                                      <Td className="font-semibold whitespace-nowrap">
+                                        {editionPlans &&
+                                        (order.availableTitles || []).length >
+                                          1 ? (
+                                          <div className="min-w-[210px]">
+                                            <select
+                                              value={order.titre}
+                                              onChange={(event) =>
+                                                updatePlanTitle(
+                                                  plan.client.id,
+                                                  order,
+                                                  event.target.value
+                                                )
+                                              }
+                                              className="w-full px-2.5 py-1.5 rounded-lg border text-xs font-semibold outline-none"
+                                              style={{
+                                                borderColor:
+                                                  order.titre !==
+                                                  order.titreSysteme
+                                                    ? C.gold
+                                                    : C.line,
+                                                background: '#fff',
+                                                color: C.ink,
+                                              }}
+                                            >
+                                              {(
+                                                order.availableTitles || []
+                                              ).map((titre) => (
+                                                <option
+                                                  key={titre}
+                                                  value={titre}
+                                                >
+                                                  {titre}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            <div
+                                              className="text-[9px] mt-1"
+                                              style={{ color: C.sub }}
+                                            >
+                                              Système : {order.titreSysteme}
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          order.titre
+                                        )}
+                                        {order.managerEdited && (
+                                          <div
+                                            className="text-[9px] mt-1"
+                                            style={{ color: '#8A6A16' }}
+                                          >
+                                            Ajusté par le gérant
+                                          </div>
+                                        )}
+                                      </Td>
+                                      <Td>
+                                        <Badge tone="slate">
+                                          {order.assetClass}
+                                        </Badge>
+                                      </Td>
+                                      <Td mono>
+                                        {editionPlans ? (
+                                          <div className="min-w-[150px]">
+                                            <input
+                                              type="number"
+                                              min="0"
+                                              max={order.maxQuantity}
+                                              step="1"
+                                              value={displayQuantity}
+                                              onChange={(event) =>
+                                                updatePlanQuantity(
+                                                  plan.client.id,
+                                                  order,
+                                                  event.target.value
+                                                )
+                                              }
+                                              className="w-full px-2.5 py-1.5 rounded-lg border text-sm outline-none"
+                                              style={{
+                                                borderColor: order.managerEdited
+                                                  ? C.gold
+                                                  : C.line,
+                                                background: '#fff',
+                                                color: C.ink,
+                                                ...F_MONO,
+                                              }}
+                                            />
+                                            <div
+                                              className="text-[9px] mt-1"
+                                              style={{ color: C.sub }}
+                                            >
+                                              0 = exclure la ligne
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          fmt(order.quantite)
+                                        )}
+                                      </Td>
+                                      {editionPlans && (
+                                        <Td mono className="whitespace-nowrap">
+                                          {fmt(order.quantiteSysteme)} /{' '}
+                                          {fmt(order.maxQuantity)}
+                                        </Td>
+                                      )}
+                                      <Td mono>
+                                        {fmtPrice(order.prix)} {order.devise}
+                                      </Td>
+                                      <Td mono>
+                                        {fmt(Math.round(order.montantBrut))}{' '}
+                                        {order.devise}
+                                      </Td>
+                                      <Td mono>
+                                        {fmt(Math.round(order.montantNet))}{' '}
+                                        {order.devise}
+                                      </Td>
+                                      <Td mono>{fmt(order.volumeJour)}</Td>
+                                      <Td mono>
+                                        {order.quantite <= 0
+                                          ? '—'
+                                          : Number.isFinite(
+                                              order.participationPct
+                                            )
+                                          ? `${order.participationPct.toFixed(
+                                              1
+                                            )}%`
+                                          : 'N/D'}
+                                      </Td>
+                                      <Td mono>
+                                        {order.quantite <= 0
+                                          ? '—'
+                                          : order.sessions}
+                                      </Td>
+                                      <Td>
+                                        <Badge
+                                          tone={
+                                            order.impact === 'Faible'
+                                              ? 'teal'
+                                              : order.impact === 'Moyen'
+                                              ? 'gold'
+                                              : order.impact === 'Aucun'
+                                              ? 'slate'
+                                              : 'coral'
+                                          }
+                                        >
+                                          {order.impact}
+                                        </Badge>
+                                      </Td>
+                                      <Td>
+                                        <div
+                                          className="text-[10px] max-w-[280px]"
+                                          style={{ color: C.sub }}
+                                        >
+                                          {inactive
+                                            ? 'Ligne exclue manuellement de la proposition.'
+                                            : order.motif}
+                                        </div>
+                                      </Td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {!plan.amountCovered && (
+                          <div
+                            className="p-4 rounded-2xl text-xs"
+                            style={{
+                              background: '#FFF4F2',
+                              color: C.coral,
+                            }}
+                          >
+                            <b>Plan modifié insuffisant :</b> la proposition
+                            actuelle ne couvre plus le retrait tout en
+                            maintenant la liquidité cible. Il manque environ{' '}
+                            {fmt(Math.round(plan.uncoveredMarket || 0))}{' '}
+                            {plan.client.devise}. Augmentez une ou plusieurs
+                            quantités ou rétablissez la proposition système
+                            avant de passer à la Cession interne.
+                          </div>
+                        )}
+
+                        {plan.amountCovered && !plan.allocationCompliant && (
+                          <div
+                            className="p-4 rounded-2xl text-xs"
+                            style={{
+                              background: '#FFF8E9',
+                              color: '#8A6A16',
+                            }}
+                          >
+                            <b>Allocation à surveiller :</b> le besoin de
+                            liquidité est couvert, mais le plan modifié place au
+                            moins une classe au-delà de la tolérance de ±
+                            {CESSION_RETRAIT_TOLERANCE} points par rapport au
+                            profil cible. Le gérant peut encore ajuster les
+                            quantités avant la vérification interne.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card className="p-5" style={{ borderColor: C.gold }}>
+            <div className="flex items-center justify-between gap-5 flex-wrap">
+              <div>
+                <Eyebrow>4 · Validation gérant</Eyebrow>
+                <div className="text-base font-bold" style={{ color: C.ink }}>
+                  Rechercher d'abord une contrepartie interne
+                </div>
+                <div
+                  className="text-xs mt-1 max-w-3xl"
+                  style={{ color: C.sub }}
+                >
+                  Avant toute exposition au marché, la SGI recherche dans les
+                  portefeuilles de l'ensemble de ses gestionnaires les clients
+                  capables d'acheter les titres proposés sans dégrader leur
+                  propre profil d'allocation. Le reliquat éventuel pourra
+                  ensuite être traité sur le marché. Les quantités modifiées par
+                  le gérant sont celles qui seront transmises à cette
+                  vérification.
+                </div>
+                {!cessionInterneReady && (
+                  <div
+                    className="text-[10px] mt-2 font-semibold"
+                    style={{ color: C.coral }}
+                  >
+                    Cession interne indisponible : au moins un plan ne couvre
+                    plus intégralement le besoin de retrait après modification.
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {plansModifies > 0 && (
+                  <Badge tone="gold">
+                    {plansModifies} plan(s) ajusté(s) par le gérant
+                  </Badge>
+                )}
+                <Btn tone="ghost" onClick={() => setOptimisationVisible(false)}>
+                  Masquer la simulation
+                </Btn>
+                <button
+                  type="button"
+                  disabled={!cessionInterneReady}
+                  onClick={ouvrirCessionInterne}
+                  className="px-3.5 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97]"
+                  style={{
+                    background: cessionInterneReady ? C.navy : '#E6E8ED',
+                    color: cessionInterneReady ? '#fff' : '#8B93A7',
+                    border: 'none',
+                    cursor: cessionInterneReady ? 'pointer' : 'not-allowed',
+                    ...F_BODY,
+                  }}
+                  title={
+                    cessionInterneReady
+                      ? 'Vérifier les contreparties internes à partir du plan retenu'
+                      : 'Corrigez les plans insuffisants avant la vérification interne'
+                  }
+                >
+                  Cession interne
+                </button>
+              </div>
+            </div>
+          </Card>
+        </>
+      )}
+
+      <div
+        className="text-[10px] p-3 rounded-xl"
+        style={{ background: '#FBF7EE', color: C.sub, ...F_BODY }}
+      >
+        <b style={{ color: C.ink }}>Important :</b> cette première version est
+        une simulation intégrée à la maquette. Les positions sont reconstituées
+        depuis les allocations et expositions existantes ; les cours et volumes
+        sont ceux des données de démonstration du fichier. En production, les
+        quantités détenues, quantités disponibles, ordres déjà engagés, frais,
+        fiscalité, carnets d'ordres et dates de règlement devront être lus
+        depuis le backend/ORM et les flux de marché réels.
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------- CESSION INTERNE SGI ---------------------------- */
+/*
+ * La cession interne recherche une contrepartie parmi tous les portefeuilles
+ * gérés par la SGI avant d'envoyer un reliquat au marché. La maquette ne possède
+ * pas encore de relation Gestionnaire -> Client dans les données sources : une
+ * affectation déterministe est donc utilisée uniquement pour visualiser le
+ * workflow multi-gestionnaires.
+ */
+const CESSION_INTERNE_GESTIONNAIRES = [
+  'Nadia Traoré',
+  'Jean-Baptiste Kouamé',
+  'Aminata Ndiaye',
+  'Chinedu Okeke',
+  'Akua Mensah',
+];
+
+const cessionInterneGestionnaire = (client) => {
+  const index = Math.max(
+    0,
+    Number(String(client?.id || '').replace(/\D/g, '') || 1) - 1
+  );
+  return CESSION_INTERNE_GESTIONNAIRES[
+    index % CESSION_INTERNE_GESTIONNAIRES.length
+  ];
+};
+
+const cessionInterneMaxDeviation = (client, allocation) =>
+  Math.max(
+    ...ASSET_KEYS.map((assetClass) =>
+      Math.abs(
+        Number(allocation?.[assetClass] || 0) -
+          Number(client?.cible?.[assetClass] || 0)
+      )
+    )
+  );
+
+const cessionInterneCandidate = (buyer, order, amountRequested) => {
+  const encours = Math.max(1, Number(buyer.encours || 0));
+  const assetClass = order.assetClass;
+  const price = Math.max(0.000001, Number(order.prix || 0));
+  const currentCash = (encours * Number(buyer.alloc?.Liquidité || 0)) / 100;
+  const currentAsset = (encours * Number(buyer.alloc?.[assetClass] || 0)) / 100;
+
+  // Bandes de tolérance identiques au moteur de retrait.
+  const maxAssetPct = Math.min(
+    100,
+    Number(buyer.cible?.[assetClass] || 0) + CESSION_RETRAIT_TOLERANCE
+  );
+  const minCashPct = Math.max(
+    0,
+    Number(buyer.cible?.Liquidité || 0) - CESSION_RETRAIT_TOLERANCE
+  );
+  const capacityByAsset = Math.max(
+    0,
+    (encours * maxAssetPct) / 100 - currentAsset
+  );
+  const capacityByCash = Math.max(
+    0,
+    currentCash - (encours * minCashPct) / 100
+  );
+  const rawCapacity = Math.min(capacityByAsset, capacityByCash);
+  const quantityCapacity = Math.max(0, Math.floor(rawCapacity / price));
+  const quantityRequested = Math.max(0, Math.floor(amountRequested / price));
+  const quantity = Math.min(quantityCapacity, quantityRequested);
+  const amount = quantity * price;
+
+  const allocationAfter = ASSET_KEYS.reduce((map, key) => {
+    let value = (encours * Number(buyer.alloc?.[key] || 0)) / 100;
+    if (key === assetClass) value += amount;
+    if (key === 'Liquidité') value -= amount;
+    map[key] = (Math.max(0, value) / encours) * 100;
+    return map;
+  }, {});
+
+  const beforeDeviation = cessionInterneMaxDeviation(buyer, buyer.alloc);
+  const afterDeviation = cessionInterneMaxDeviation(buyer, allocationAfter);
+  const compliantAfter = afterDeviation <= CESSION_RETRAIT_TOLERANCE;
+  const profileImprovement = beforeDeviation - afterDeviation;
+  const assetGapBefore =
+    Number(buyer.alloc?.[assetClass] || 0) -
+    Number(buyer.cible?.[assetClass] || 0);
+  const assetGapAfter =
+    Number(allocationAfter?.[assetClass] || 0) -
+    Number(buyer.cible?.[assetClass] || 0);
+
+  return {
+    buyer,
+    gestionnaire: cessionInterneGestionnaire(buyer),
+    amount,
+    quantity,
+    capacity: quantityCapacity * price,
+    capacityByAsset,
+    capacityByCash,
+    allocationAfter,
+    beforeDeviation,
+    afterDeviation,
+    compliantAfter,
+    profileImprovement,
+    assetGapBefore,
+    assetGapAfter,
+    cashBeforePct: Number(buyer.alloc?.Liquidité || 0),
+    cashAfterPct: Number(allocationAfter.Liquidité || 0),
+  };
+};
+
+const cessionInterneMatchOrder = (order) => {
+  let remaining = Number(order.montantBrut || 0);
+  const seller = CLIENTS.find((client) => client.id === order.clientId);
+
+  const eligible = CLIENTS.filter(
+    (buyer) =>
+      buyer.id !== order.clientId &&
+      buyer.marche === order.marche &&
+      buyer.devise === order.devise
+  )
+    .map((buyer) => cessionInterneCandidate(buyer, order, remaining))
+    .filter((candidate) => candidate.capacity > 0)
+    .sort((a, b) => {
+      // 1. Les achats qui améliorent le profil sont prioritaires.
+      if (b.profileImprovement !== a.profileImprovement) {
+        return b.profileImprovement - a.profileImprovement;
+      }
+      // 2. Puis la capacité financière.
+      return b.capacity - a.capacity;
+    });
+
+  const allocations = [];
+  for (const baseCandidate of eligible) {
+    if (remaining < Number(order.prix || 0)) break;
+    const candidate = cessionInterneCandidate(
+      baseCandidate.buyer,
+      order,
+      remaining
+    );
+    if (candidate.quantity <= 0 || !candidate.compliantAfter) continue;
+    allocations.push(candidate);
+    remaining = Math.max(0, remaining - candidate.amount);
+  }
+
+  return {
+    order,
+    seller,
+    sellerGestionnaire: cessionInterneGestionnaire(seller),
+    eligible,
+    allocations,
+    amountMatched: allocations.reduce((sum, item) => sum + item.amount, 0),
+    remaining,
+  };
+};
+
+function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
+  const plans = Array.isArray(ctx?.plans) ? ctx.plans : [];
+  const orders = plans.flatMap((plan) => plan.orders || []);
+  const matches = orders.map(cessionInterneMatchOrder);
+  const [orderIndex, setOrderIndex] = useState(0);
+  const [interneValidee, setInterneValidee] = useState(false);
+  const [retraitDisponible, setRetraitDisponible] = useState(false);
+  const [modePaiement, setModePaiement] = useState('Chèque');
+
+  const selectedMatch =
+    matches[Math.min(orderIndex, Math.max(0, matches.length - 1))];
+  const totalSaleRef = matches.reduce(
+    (sum, match) =>
+      sum +
+      convertCurrency(
+        Number(match.order?.montantBrut || 0),
+        match.order?.devise || devise,
+        devise
+      ),
+    0
+  );
+  const totalMatchedRef = matches.reduce(
+    (sum, match) =>
+      sum +
+      convertCurrency(
+        Number(match.amountMatched || 0),
+        match.order?.devise || devise,
+        devise
+      ),
+    0
+  );
+  const totalRemainingRef = Math.max(0, totalSaleRef - totalMatchedRef);
+  const uniqueBuyers = new Set(
+    matches.flatMap((match) => match.allocations.map((item) => item.buyer.id))
+  ).size;
+  const managersTouched = new Set(
+    matches.flatMap((match) =>
+      match.allocations.map((item) => item.gestionnaire)
+    )
+  ).size;
+
+  const validerInterne = () => {
+    setInterneValidee(true);
+    plans.forEach((plan) => {
+      onCessionStatusChange?.(plan.client.id, {
+        client: plan.client.nom,
+        montant: plan.withdrawal,
+        devise: plan.client.devise,
+        statut: 'Cession en cours',
+        dateSouhaitee: plan.request?.date,
+      });
+    });
+  };
+
+  const rendreRetraitDisponible = () => {
+    setRetraitDisponible(true);
+    plans.forEach((plan) => {
+      onCessionStatusChange?.(plan.client.id, {
+        client: plan.client.nom,
+        montant: plan.withdrawal,
+        devise: plan.client.devise,
+        statut: 'Retrait disponible',
+        dateSouhaitee: plan.request?.date,
+        modePaiement,
+      });
+    });
+  };
+
+  if (!plans.length || !orders.length) {
+    return (
+      <div className="space-y-5">
+        <Breadcrumb items={['Accueil', 'Cession_Retrait', 'Cession interne']} />
+        <Card className="p-6">
+          <div className="text-base font-bold" style={{ color: C.ink }}>
+            Aucun plan de cession transmis
+          </div>
+          <div className="text-xs mt-2" style={{ color: C.sub }}>
+            Lancez d'abord une optimisation dans Cession_Retrait puis ouvrez la
+            Cession interne.
+          </div>
+          <div className="mt-4">
+            <Btn onClick={() => go('cession-retrait')}>
+              Retour Cession_Retrait
+            </Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb items={['Accueil', 'Cession_Retrait', 'Cession interne']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>SGI · rapprochement interne des contreparties</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Cession interne — recherche des clients acheteurs
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+            Le système parcourt les portefeuilles de tous les gestionnaires de
+            la SGI sur le même marché. Une capacité d'achat n'est retenue que si
+            le portefeuille acheteur dispose de liquidités mobilisables et reste
+            dans la tolérance de son profil après acquisition.
+          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <Badge tone="navy">
+            {CESSION_INTERNE_GESTIONNAIRES.length} gestionnaires simulés
+          </Badge>
+          <Badge tone="gold">Priorité interne avant marché</Badge>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Montant à céder',
+            value: `${fmt(Math.round(totalSaleRef))} ${devise}`,
+            detail: `${orders.length} ligne(s) de vente`,
+            tone: 'navy',
+          },
+          {
+            label: 'Couverture interne',
+            value: `${fmt(Math.round(totalMatchedRef))} ${devise}`,
+            detail:
+              totalSaleRef > 0
+                ? `${((totalMatchedRef / totalSaleRef) * 100).toFixed(
+                    1
+                  )}% des cessions`
+                : '0%',
+            tone: 'teal',
+          },
+          {
+            label: 'Acheteurs retenus',
+            value: uniqueBuyers,
+            detail: `${managersTouched} gestionnaire(s) concernés`,
+            tone: 'gold',
+          },
+          {
+            label: 'Reliquat marché',
+            value: `${fmt(Math.round(totalRemainingRef))} ${devise}`,
+            detail:
+              totalRemainingRef > 0
+                ? 'à exécuter hors cession interne'
+                : 'couverture interne complète',
+            tone: totalRemainingRef > 0 ? 'coral' : 'teal',
+          },
+        ].map((stat) => (
+          <Card key={stat.label} className="p-4">
+            <div className="flex items-center justify-between gap-2">
+              <div
+                className="text-[10px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                {stat.label}
+              </div>
+              <Badge tone={stat.tone}>{stat.tone === 'teal' ? '✓' : '•'}</Badge>
+            </div>
+            <div
+              className="text-lg font-bold mt-2"
+              style={{ ...F_MONO, color: C.ink }}
+            >
+              {stat.value}
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              {stat.detail}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>1 · Ligne à rapprocher</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Sélectionnez une cession pour voir les contreparties internes
+            </div>
+          </div>
+          <select
+            value={orderIndex}
+            onChange={(event) => setOrderIndex(Number(event.target.value))}
+            className="px-3 py-2 rounded-xl border text-xs min-w-[360px]"
+            style={{ borderColor: C.line }}
+          >
+            {matches.map((match, index) => (
+              <option
+                key={`${match.order.clientId}-${match.order.titre}-${index}`}
+                value={index}
+              >
+                {match.order.client} · {match.order.titre} ·{' '}
+                {fmt(Math.round(match.order.montantBrut))} {match.order.devise}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {selectedMatch && (
+          <div className="grid grid-cols-5 gap-3 mt-4">
+            {[
+              ['Client vendeur', selectedMatch.order.client],
+              ['Gestionnaire vendeur', selectedMatch.sellerGestionnaire],
+              ['Titre', selectedMatch.order.titre],
+              ['Classe', selectedMatch.order.assetClass],
+              [
+                'Montant brut',
+                `${fmt(Math.round(selectedMatch.order.montantBrut))} ${
+                  selectedMatch.order.devise
+                }`,
+              ],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="p-3 rounded-xl"
+                style={{ background: '#FAFAFC' }}
+              >
+                <div
+                  className="text-[9px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  {label}
+                </div>
+                <div
+                  className="text-xs font-bold mt-1"
+                  style={{ color: C.ink }}
+                >
+                  {value}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {selectedMatch && (
+        <>
+          <Card className="p-0 overflow-hidden">
+            <div className="p-4 flex items-center justify-between gap-3">
+              <div>
+                <Eyebrow>2 · Clients acheteurs potentiels</Eyebrow>
+                <div className="text-sm font-bold" style={{ color: C.ink }}>
+                  Impact de l'achat sur le respect du profil
+                </div>
+              </div>
+              <Badge tone="slate">
+                {selectedMatch.eligible.length} candidat(s)
+              </Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 1450 }}>
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Gestionnaire</Th>
+                    <Th>Client acheteur</Th>
+                    <Th>Profil</Th>
+                    <Th>Encours</Th>
+                    <Th>Liquidité avant</Th>
+                    <Th>Capacité max</Th>
+                    <Th>{selectedMatch.order.assetClass} avant</Th>
+                    <Th>{selectedMatch.order.assetClass} après</Th>
+                    <Th>Liquidité après</Th>
+                    <Th>Écart max avant</Th>
+                    <Th>Écart max après</Th>
+                    <Th>Impact profil</Th>
+                    <Th>Conformité</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedMatch.eligible.map((candidate, index) => {
+                    const proposed = selectedMatch.allocations.find(
+                      (item) => item.buyer.id === candidate.buyer.id
+                    );
+                    const display = proposed || candidate;
+                    return (
+                      <tr
+                        key={candidate.buyer.id}
+                        style={{
+                          borderTop: `1px solid ${C.line}`,
+                          background: proposed
+                            ? '#F1FAF6'
+                            : index % 2
+                            ? '#FCFCFD'
+                            : '#fff',
+                        }}
+                      >
+                        <Td className="font-semibold">
+                          {candidate.gestionnaire}
+                        </Td>
+                        <Td>{candidate.buyer.nom}</Td>
+                        <Td>
+                          <Badge tone="navy">
+                            {candidate.buyer.profilRisque}
+                          </Badge>
+                        </Td>
+                        <Td mono>
+                          {fmt(Math.round(candidate.buyer.encours))}{' '}
+                          {candidate.buyer.devise}
+                        </Td>
+                        <Td mono>{candidate.cashBeforePct.toFixed(1)}%</Td>
+                        <Td mono>
+                          {fmt(Math.round(candidate.capacity))}{' '}
+                          {candidate.buyer.devise}
+                        </Td>
+                        <Td mono>
+                          {Number(
+                            candidate.buyer.alloc?.[
+                              selectedMatch.order.assetClass
+                            ] || 0
+                          ).toFixed(1)}
+                          %
+                        </Td>
+                        <Td mono>
+                          {Number(
+                            display.allocationAfter?.[
+                              selectedMatch.order.assetClass
+                            ] || 0
+                          ).toFixed(1)}
+                          %
+                        </Td>
+                        <Td mono>{display.cashAfterPct.toFixed(1)}%</Td>
+                        <Td mono>{candidate.beforeDeviation.toFixed(1)} pts</Td>
+                        <Td mono>{display.afterDeviation.toFixed(1)} pts</Td>
+                        <Td>
+                          <Badge
+                            tone={
+                              display.profileImprovement > 0.05
+                                ? 'teal'
+                                : display.profileImprovement < -0.05
+                                ? 'coral'
+                                : 'slate'
+                            }
+                          >
+                            {display.profileImprovement > 0.05
+                              ? `Améliore +${display.profileImprovement.toFixed(
+                                  1
+                                )} pt`
+                              : display.profileImprovement < -0.05
+                              ? `Dégrade ${display.profileImprovement.toFixed(
+                                  1
+                                )} pt`
+                              : 'Neutre'}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Badge
+                            tone={display.compliantAfter ? 'teal' : 'coral'}
+                          >
+                            {display.compliantAfter
+                              ? 'Conforme'
+                              : 'Hors profil'}
+                          </Badge>
+                          {proposed && (
+                            <div
+                              className="text-[9px] mt-1"
+                              style={{ color: C.teal }}
+                            >
+                              Retenu · {fmt(Math.round(proposed.amount))}{' '}
+                              {candidate.buyer.devise}
+                            </div>
+                          )}
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="p-5">
+              <Eyebrow>3 · Affectation interne proposée</Eyebrow>
+              <div className="space-y-3 mt-3">
+                {selectedMatch.allocations.length === 0 && (
+                  <div className="text-xs" style={{ color: C.sub }}>
+                    Aucun portefeuille interne ne peut absorber cette ligne sans
+                    sortir de ses contraintes de profil.
+                  </div>
+                )}
+                {selectedMatch.allocations.map((allocation) => (
+                  <div
+                    key={allocation.buyer.id}
+                    className="p-3 rounded-xl border"
+                    style={{ borderColor: C.line }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div
+                          className="text-xs font-bold"
+                          style={{ color: C.ink }}
+                        >
+                          {allocation.buyer.nom}
+                        </div>
+                        <div
+                          className="text-[9px] mt-0.5"
+                          style={{ color: C.sub }}
+                        >
+                          {allocation.gestionnaire} ·{' '}
+                          {allocation.buyer.profilRisque}
+                        </div>
+                      </div>
+                      <Badge tone="teal">Conforme</Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
+                      <div>
+                        <div style={{ color: C.sub }}>Quantité</div>
+                        <b style={{ color: C.ink, ...F_MONO }}>
+                          {fmt(allocation.quantity)}
+                        </b>
+                      </div>
+                      <div>
+                        <div style={{ color: C.sub }}>Montant</div>
+                        <b style={{ color: C.ink, ...F_MONO }}>
+                          {fmt(Math.round(allocation.amount))}{' '}
+                          {allocation.buyer.devise}
+                        </b>
+                      </div>
+                      <div>
+                        <div style={{ color: C.sub }}>Écart max après</div>
+                        <b style={{ color: C.ink, ...F_MONO }}>
+                          {allocation.afterDeviation.toFixed(1)} pts
+                        </b>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Card
+              className="p-5"
+              style={{
+                borderColor: selectedMatch.remaining > 0 ? C.gold : C.teal,
+              }}
+            >
+              <Eyebrow>Couverture de la ligne</Eyebrow>
+              <div
+                className="text-3xl font-bold mt-2"
+                style={{ ...F_MONO, color: C.ink }}
+              >
+                {selectedMatch.order.montantBrut > 0
+                  ? (
+                      (selectedMatch.amountMatched /
+                        selectedMatch.order.montantBrut) *
+                      100
+                    ).toFixed(1)
+                  : '0.0'}
+                %
+              </div>
+              <div className="text-xs mt-2" style={{ color: C.sub }}>
+                {fmt(Math.round(selectedMatch.amountMatched))}{' '}
+                {selectedMatch.order.devise} absorbés en interne sur{' '}
+                {fmt(Math.round(selectedMatch.order.montantBrut))}{' '}
+                {selectedMatch.order.devise}.
+              </div>
+              <div
+                className="mt-4 p-3 rounded-xl"
+                style={{
+                  background:
+                    selectedMatch.remaining > 0 ? '#FBF7EE' : '#EAF8F3',
+                }}
+              >
+                <div
+                  className="text-[10px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Reliquat
+                </div>
+                <div
+                  className="text-lg font-bold mt-1"
+                  style={{
+                    ...F_MONO,
+                    color: selectedMatch.remaining > 0 ? '#8A6A16' : C.teal,
+                  }}
+                >
+                  {fmt(Math.round(selectedMatch.remaining))}{' '}
+                  {selectedMatch.order.devise}
+                </div>
+                <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                  {selectedMatch.remaining > 0
+                    ? 'Ce solde devra être traité sur le marché ou faire l’objet d’un nouveau rapprochement.'
+                    : 'La cession est entièrement couverte par des clients de la SGI.'}
+                </div>
+              </div>
+            </Card>
+          </div>
+        </>
+      )}
+
+      <Card className="p-5" style={{ borderColor: C.gold }}>
+        <div className="flex items-end justify-between gap-5 flex-wrap">
+          <div>
+            <Eyebrow>4 · Cycle opérationnel</Eyebrow>
+            <div className="text-base font-bold" style={{ color: C.ink }}>
+              Valider le rapprochement puis rendre le retrait disponible
+            </div>
+            <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+              La validation interne fait passer les dossiers à « Cession en
+              cours ». Après règlement/livraison et disponibilité des espèces,
+              le gestionnaire peut signaler que le client peut retirer son
+              chèque ou recevoir le paiement selon le mode choisi.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Btn tone="ghost" onClick={() => go('cession-retrait')}>
+              Retour
+            </Btn>
+            {!interneValidee ? (
+              <Btn onClick={validerInterne}>Valider la cession interne</Btn>
+            ) : (
+              <>
+                <select
+                  value={modePaiement}
+                  onChange={(event) => setModePaiement(event.target.value)}
+                  className="px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                >
+                  <option>Chèque</option>
+                  <option>Virement bancaire</option>
+                  <option>Espèces / caisse</option>
+                </select>
+                <Btn
+                  onClick={rendreRetraitDisponible}
+                  disabled={retraitDisponible || totalRemainingRef > 1}
+                >
+                  {retraitDisponible
+                    ? 'Retrait disponible ✓'
+                    : totalRemainingRef > 1
+                    ? 'Reliquat marché à traiter'
+                    : 'Confirmer fonds disponibles'}
+                </Btn>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <div
+        className="text-[10px] p-3 rounded-xl"
+        style={{ background: '#FBF7EE', color: C.sub }}
+      >
+        <b style={{ color: C.ink }}>Simulation :</b> l'appartenance des clients
+        aux gestionnaires est générée localement pour matérialiser la logique
+        multi-gestionnaires de la SGI. En production, les contreparties
+        internes, positions, liquidités disponibles, restrictions de mandat,
+        règles de meilleure exécution et validations de conformité devront venir
+        du backend.
+      </div>
     </div>
   );
 }
@@ -14715,20 +17518,6 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
                 </Badge>
               ))
             )}
-          </div>
-          <div className="text-right">
-            <div
-              className="text-[10px] uppercase font-semibold"
-              style={{ color: C.sub }}
-            >
-              Encours du périmètre
-            </div>
-            <div
-              className="text-lg font-bold"
-              style={{ ...F_MONO, color: C.ink }}
-            >
-              {fmt(Math.round(totalRef))} {devise}
-            </div>
           </div>
         </div>
 
@@ -22140,6 +24929,9 @@ export default function App() {
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
+  const [cessionRetraitEtats, setCessionRetraitEtats] = useState(
+    CESSION_RETRAIT_ETATS_DEMO
+  );
   const [clientWatchlistTitles, setClientWatchlistTitles] = useState(() => {
     const fallback = ['SONATEL', 'MTN NIGERIA', 'GCB BANK'];
     if (typeof window === 'undefined') return fallback;
@@ -22224,6 +25016,32 @@ export default function App() {
     setScreen(id);
     setCtx(params);
     remonterEnHaut();
+  };
+
+  const updateCessionRetraitStatus = (clientId, patch = {}) => {
+    setCessionRetraitEtats((current) => {
+      const client = CLIENTS.find((item) => item.id === clientId);
+      const existing = current.find((item) => item.clientId === clientId);
+      const nextItem = {
+        clientId,
+        client: patch.client || existing?.client || client?.nom || 'Client',
+        montant: Number(patch.montant ?? existing?.montant ?? 0),
+        devise: patch.devise || existing?.devise || client?.devise || 'XOF',
+        statut: patch.statut || existing?.statut || 'Demande reçue',
+        dateDemande:
+          patch.dateDemande ||
+          existing?.dateDemande ||
+          CESSION_RETRAIT_REFERENCE_DATE,
+        dateSouhaitee:
+          patch.dateSouhaitee ||
+          existing?.dateSouhaitee ||
+          CESSION_RETRAIT_REFERENCE_DATE,
+        modePaiement: patch.modePaiement || existing?.modePaiement || 'Chèque',
+      };
+      return existing
+        ? current.map((item) => (item.clientId === clientId ? nextItem : item))
+        : [nextItem, ...current];
+    });
   };
   const openClient = (
     id,
@@ -22371,6 +25189,8 @@ export default function App() {
                 const active =
                   workspace === 'gestionnaire'
                     ? screen === n.id ||
+                      (n.id === 'cession-retrait' &&
+                        screen === 'cession-interne') ||
                       (n.id === 'portefeuilles' && screen === 'client') ||
                       (n.id === 'vue-boursiere' &&
                         ['profondeur', 'instrument-analysis'].includes(
@@ -22459,6 +25279,7 @@ export default function App() {
                     onDeviseChange={setSiteDevise}
                     dark={dark}
                     onToggleDark={() => setDark(!dark)}
+                    cessionRetraitEtats={cessionRetraitEtats}
                   />
                 )}
                 {screen === 'portefeuilles' && (
@@ -22517,6 +25338,21 @@ export default function App() {
                 {screen === 'alertes' && <Alertes go={go} />}
                 {screen === 'money-management' && (
                   <MoneyManagement go={go} devise={siteDevise} />
+                )}
+                {screen === 'cession-retrait' && (
+                  <CessionRetrait
+                    go={go}
+                    devise={siteDevise}
+                    onCessionStatusChange={updateCessionRetraitStatus}
+                  />
+                )}
+                {screen === 'cession-interne' && (
+                  <CessionInterne
+                    ctx={ctx}
+                    go={go}
+                    devise={siteDevise}
+                    onCessionStatusChange={updateCessionRetraitStatus}
+                  />
                 )}
                 {screen === 'reequilibrage' && (
                   <Reequilibrage initial={ctx} devise={siteDevise} />
