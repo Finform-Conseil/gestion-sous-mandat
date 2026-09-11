@@ -12217,6 +12217,30 @@ const CESSION_RETRAIT_REFERENCE_DATE = '2026-09-09';
 const CESSION_RETRAIT_FEE_RATE = 0.0025;
 const CESSION_RETRAIT_TOLERANCE = 3;
 const CESSION_RETRAIT_DEFAULT_PARTICIPATION = 20;
+const CESSION_RETRAIT_MAX_WITHDRAWAL_RATIO = 0.95;
+
+/*
+ * Le seuil minimum de maintien/clôture n'était pas défini dans cette maquette.
+ * On le lit donc depuis le client lorsqu'il est fourni par le backend / référentiel.
+ * Noms supportés pour faciliter l'intégration :
+ * - montantMinimumClotureCompte
+ * - minimumClotureCompte
+ * - seuilClotureCompte
+ *
+ * En l'absence d'un seuil explicite, aucune valeur arbitraire n'est inventée :
+ * seule la règle des 95 % est appliquée.
+ */
+const cessionRetraitMinimumAccountBalance = (client) => {
+  const candidates = [
+    client?.montantMinimumClotureCompte,
+    client?.minimumClotureCompte,
+    client?.seuilClotureCompte,
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  return candidates.length > 0 ? candidates[0] : 0;
+};
 
 const CESSION_RETRAIT_SEED = {
   c1: {
@@ -12409,11 +12433,27 @@ const cessionBuildPlan = (
   maxParticipation = CESSION_RETRAIT_DEFAULT_PARTICIPATION,
   strategie = 'Équilibrée'
 ) => {
+  const encours = Math.max(0, Number(client.encours || 0));
   const requestedWithdrawal = Math.max(0, Number(request?.montant || 0));
-  const withdrawal = Math.min(requestedWithdrawal, Number(client.encours || 0));
+  const withdrawal = Math.min(requestedWithdrawal, encours);
+
+  const maxWithdrawalAllowed = encours * CESSION_RETRAIT_MAX_WITHDRAWAL_RATIO;
+  const minimumAccountBalance = cessionRetraitMinimumAccountBalance(client);
+  const remainingAfterRequestedWithdrawal = Math.max(
+    0,
+    encours - requestedWithdrawal
+  );
+  const exceeds95Percent =
+    encours > 0 && requestedWithdrawal > maxWithdrawalAllowed;
+  const belowMinimumAccountBalance =
+    minimumAccountBalance > 0 &&
+    remainingAfterRequestedWithdrawal < minimumAccountBalance;
+
   const invalidWithdrawal =
     requestedWithdrawal <= 0 ||
-    requestedWithdrawal >= Number(client.encours || 0);
+    encours <= 0 ||
+    exceeds95Percent ||
+    belowMinimumAccountBalance;
   const currentCash =
     (Number(client.encours || 0) * Number(client.alloc?.Liquidité || 0)) / 100;
   const upcomingCash = cessionUpcomingCash(client, request?.date);
@@ -12682,6 +12722,11 @@ const cessionBuildPlan = (
     amountCovered,
     executable,
     invalidWithdrawal,
+    maxWithdrawalAllowed,
+    minimumAccountBalance,
+    remainingAfterRequestedWithdrawal,
+    exceeds95Percent,
+    belowMinimumAccountBalance,
     score,
   };
 };
@@ -13084,23 +13129,22 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
       sum + convertCurrency(plan.grossSale, plan.client.devise, devise),
     0
   );
-  const constrainedPlans = plans.filter(
+  const blockedPlans = plans.filter((plan) => plan.invalidWithdrawal);
+  const warningPlans = plans.filter(
     (plan) =>
-      !plan.executable ||
-      plan.marketStatus === 'Sous contrainte' ||
-      plan.marketStatus === 'Non exécutable'
+      !plan.invalidWithdrawal &&
+      (!plan.amountCovered ||
+        Number(plan.uncoveredMarket || 0) > 1 ||
+        plan.marketStatus === 'Sous contrainte' ||
+        plan.marketStatus === 'Non exécutable')
   );
   const totalOrders = plans.reduce((sum, plan) => sum + plan.orders.length, 0);
   const plansModifies = plans.filter((plan) => plan.managerEdited).length;
+
+  // Un plan partiellement couvert n'empêche plus la recherche de contreparties
+  // internes. Seules les règles métier du retrait peuvent bloquer le processus.
   const cessionInterneReady =
-    plans.length > 0 &&
-    totalOrders > 0 &&
-    plans.every(
-      (plan) =>
-        !plan.invalidWithdrawal &&
-        plan.amountCovered &&
-        Number(plan.uncoveredMarket || 0) <= 1
-    );
+    plans.length > 0 && plans.every((plan) => !plan.invalidWithdrawal);
 
   const ouvrirCessionInterne = () => {
     if (!cessionInterneReady) return;
@@ -13174,10 +13218,15 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
             tone: 'teal',
           },
           {
-            label: 'Cas sous contrainte',
-            value: constrainedPlans.length,
-            detail: 'liquidité / allocation / couverture',
-            tone: constrainedPlans.length > 0 ? 'coral' : 'teal',
+            label: 'Demandes bloquées',
+            value: blockedPlans.length,
+            detail:
+              blockedPlans.length > 0
+                ? '> 95% encours / solde minimum'
+                : warningPlans.length > 0
+                ? `${warningPlans.length} plan(s) à compléter · non bloquant`
+                : 'aucun blocage métier',
+            tone: blockedPlans.length > 0 ? 'coral' : 'teal',
           },
         ].map((item) => (
           <Card key={item.label} className="p-4">
@@ -13412,14 +13461,19 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                       {plan ? (
                         <Badge
                           tone={
-                            plan.executable
-                              ? plan.marketStatus === 'Compatible'
-                                ? 'teal'
-                                : 'gold'
-                              : 'coral'
+                            plan.invalidWithdrawal
+                              ? 'coral'
+                              : plan.amountCovered &&
+                                plan.marketStatus === 'Compatible'
+                              ? 'teal'
+                              : 'gold'
                           }
                         >
-                          {plan.executable ? plan.marketStatus : 'À revoir'}
+                          {plan.invalidWithdrawal
+                            ? 'Retrait bloqué'
+                            : plan.amountCovered
+                            ? plan.marketStatus
+                            : 'Plan à compléter'}
                         </Badge>
                       ) : (
                         <Badge tone="slate">Non sélectionné</Badge>
@@ -13571,9 +13625,10 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
             <div>
               {plans.map((plan, planIndex) => {
                 const open = clientOuvert === plan.client.id;
-                const statusTone = !plan.executable
+                const statusTone = plan.invalidWithdrawal
                   ? 'coral'
-                  : plan.marketStatus === 'Compatible' &&
+                  : plan.amountCovered &&
+                    plan.marketStatus === 'Compatible' &&
                     plan.allocationCompliant
                   ? 'teal'
                   : 'gold';
@@ -13607,11 +13662,13 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                             </div>
                             <Badge tone="navy">{plan.client.marche}</Badge>
                             <Badge tone={statusTone}>
-                              {plan.executable
-                                ? plan.allocationCompliant
-                                  ? 'Allocation conforme'
-                                  : 'Allocation à surveiller'
-                                : 'Plan à revoir'}
+                              {plan.invalidWithdrawal
+                                ? 'Retrait bloqué'
+                                : !plan.amountCovered
+                                ? 'Plan à compléter · non bloquant'
+                                : plan.allocationCompliant
+                                ? 'Allocation conforme'
+                                : 'Allocation à surveiller'}
                             </Badge>
                             {plan.managerEdited && (
                               <Badge tone="gold">Modifié par le gérant</Badge>
@@ -14068,7 +14125,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           </div>
                         )}
 
-                        {!plan.amountCovered && (
+                        {plan.invalidWithdrawal && (
                           <div
                             className="p-4 rounded-2xl text-xs"
                             style={{
@@ -14076,13 +14133,42 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                               color: C.coral,
                             }}
                           >
-                            <b>Plan modifié insuffisant :</b> la proposition
-                            actuelle ne couvre plus le retrait tout en
-                            maintenant la liquidité cible. Il manque environ{' '}
+                            <b>Retrait non autorisé :</b>{' '}
+                            {plan.exceeds95Percent
+                              ? `la demande dépasse 95 % de l'encours. Le maximum autorisé est ${fmt(
+                                  Math.round(plan.maxWithdrawalAllowed || 0)
+                                )} ${plan.client.devise}.`
+                              : plan.belowMinimumAccountBalance
+                              ? `le retrait laisserait ${fmt(
+                                  Math.round(
+                                    plan.remainingAfterRequestedWithdrawal || 0
+                                  )
+                                )} ${
+                                  plan.client.devise
+                                }, soit moins que le minimum de maintien du compte (${fmt(
+                                  Math.round(plan.minimumAccountBalance || 0)
+                                )} ${plan.client.devise}).`
+                              : 'la demande de retrait est invalide.'}
+                          </div>
+                        )}
+
+                        {!plan.invalidWithdrawal && !plan.amountCovered && (
+                          <div
+                            className="p-4 rounded-2xl text-xs"
+                            style={{
+                              background: '#FFF8E9',
+                              color: '#8A6A16',
+                            }}
+                          >
+                            <b>Plan modifié insuffisant · non bloquant :</b> la
+                            proposition actuelle ne couvre pas encore
+                            intégralement le retrait tout en maintenant la
+                            liquidité cible. Il manque environ{' '}
                             {fmt(Math.round(plan.uncoveredMarket || 0))}{' '}
-                            {plan.client.devise}. Augmentez une ou plusieurs
-                            quantités ou rétablissez la proposition système
-                            avant de passer à la Cession interne.
+                            {plan.client.devise}. Le gestionnaire peut néanmoins
+                            poursuivre vers la Cession interne ; ce reliquat
+                            restera identifié comme montant à traiter sur le
+                            marché ou à compléter dans la suite du processus.
                           </div>
                         )}
 
@@ -14134,8 +14220,19 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     className="text-[10px] mt-2 font-semibold"
                     style={{ color: C.coral }}
                   >
-                    Cession interne indisponible : au moins un plan ne couvre
-                    plus intégralement le besoin de retrait après modification.
+                    Cession interne indisponible : au moins une demande de
+                    retrait dépasse 95 % de l'encours ou laisse un solde
+                    inférieur au minimum de maintien/clôture configuré.
+                  </div>
+                )}
+                {cessionInterneReady && warningPlans.length > 0 && (
+                  <div
+                    className="text-[10px] mt-2 font-semibold"
+                    style={{ color: '#8A6A16' }}
+                  >
+                    {warningPlans.length} plan(s) restent partiellement
+                    couverts, mais cela n'empêche plus la recherche de
+                    contreparties internes.
                   </div>
                 )}
               </div>
@@ -14163,7 +14260,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   title={
                     cessionInterneReady
                       ? 'Vérifier les contreparties internes à partir du plan retenu'
-                      : 'Corrigez les plans insuffisants avant la vérification interne'
+                      : 'Le retrait dépasse la limite de 95 % ou le solde minimum du compte'
                   }
                 >
                   Cession interne
@@ -14371,7 +14468,19 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
       ),
     0
   );
-  const totalRemainingRef = Math.max(0, totalSaleRef - totalMatchedRef);
+  const totalInternalResidualRef = Math.max(0, totalSaleRef - totalMatchedRef);
+  const totalFundingGapRef = plans.reduce(
+    (sum, plan) =>
+      sum +
+      convertCurrency(
+        Number(plan.uncoveredMarket || 0),
+        plan.client?.devise || devise,
+        devise
+      ),
+    0
+  );
+  const totalRemainingRef =
+    totalInternalResidualRef + Math.max(0, totalFundingGapRef);
   const uniqueBuyers = new Set(
     matches.flatMap((match) => match.allocations.map((item) => item.buyer.id))
   ).size;
@@ -14408,7 +14517,7 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     });
   };
 
-  if (!plans.length || !orders.length) {
+  if (!plans.length) {
     return (
       <div className="space-y-5">
         <Breadcrumb items={['Accueil', 'Cession_Retrait', 'Cession interne']} />
@@ -14488,9 +14597,11 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             value: `${fmt(Math.round(totalRemainingRef))} ${devise}`,
             detail:
               totalRemainingRef > 0
-                ? 'à exécuter hors cession interne'
+                ? totalFundingGapRef > 1
+                  ? 'inclut le plan à compléter et le reliquat non apparié'
+                  : 'à exécuter hors cession interne'
                 : 'couverture interne complète',
-            tone: totalRemainingRef > 0 ? 'coral' : 'teal',
+            tone: totalRemainingRef > 0 ? 'gold' : 'teal',
           },
         ].map((stat) => (
           <Card key={stat.label} className="p-4">
@@ -14521,26 +14632,42 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
           <div>
             <Eyebrow>1 · Ligne à rapprocher</Eyebrow>
             <div className="text-sm font-bold" style={{ color: C.ink }}>
-              Sélectionnez une cession pour voir les contreparties internes
+              {orders.length > 0
+                ? 'Sélectionnez une cession pour voir les contreparties internes'
+                : 'Aucune ligne de cession interne à rapprocher'}
             </div>
           </div>
-          <select
-            value={orderIndex}
-            onChange={(event) => setOrderIndex(Number(event.target.value))}
-            className="px-3 py-2 rounded-xl border text-xs min-w-[360px]"
-            style={{ borderColor: C.line }}
-          >
-            {matches.map((match, index) => (
-              <option
-                key={`${match.order.clientId}-${match.order.titre}-${index}`}
-                value={index}
-              >
-                {match.order.client} · {match.order.titre} ·{' '}
-                {fmt(Math.round(match.order.montantBrut))} {match.order.devise}
-              </option>
-            ))}
-          </select>
+          {orders.length > 0 && (
+            <select
+              value={orderIndex}
+              onChange={(event) => setOrderIndex(Number(event.target.value))}
+              className="px-3 py-2 rounded-xl border text-xs min-w-[360px]"
+              style={{ borderColor: C.line }}
+            >
+              {matches.map((match, index) => (
+                <option
+                  key={`${match.order.clientId}-${match.order.titre}-${index}`}
+                  value={index}
+                >
+                  {match.order.client} · {match.order.titre} ·{' '}
+                  {fmt(Math.round(match.order.montantBrut))}{' '}
+                  {match.order.devise}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
+
+        {orders.length === 0 && (
+          <div
+            className="mt-4 p-4 rounded-2xl text-xs"
+            style={{ background: '#FFF8E9', color: '#8A6A16' }}
+          >
+            Le processus reste ouvert : aucune ligne n'est actuellement proposée
+            à la Cession interne, mais le dossier peut être validé et le
+            reliquat de financement reste à traiter dans la suite du cycle.
+          </div>
+        )}
 
         {selectedMatch && (
           <div className="grid grid-cols-5 gap-3 mt-4">
@@ -14843,9 +14970,12 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             </div>
             <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
               La validation interne fait passer les dossiers à « Cession en
-              cours ». Après règlement/livraison et disponibilité des espèces,
-              le gestionnaire peut signaler que le client peut retirer son
-              chèque ou recevoir le paiement selon le mode choisi.
+              cours », même lorsqu'un plan reste partiellement couvert. Le
+              reliquat est alors conservé comme montant à traiter sur le marché.
+              Après règlement/livraison de l'ensemble des montants nécessaires
+              et disponibilité des espèces, le gestionnaire peut signaler que le
+              client peut retirer son chèque ou recevoir le paiement selon le
+              mode choisi.
             </div>
           </div>
 
