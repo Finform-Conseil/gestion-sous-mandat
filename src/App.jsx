@@ -37,6 +37,9 @@ import {
   Moon,
   Activity,
   Droplets,
+  BookOpen,
+  Download,
+  ExternalLink,
 } from 'lucide-react';
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -5845,6 +5848,78 @@ const ACTIONS_LIST = [
   'PALMCI',
 ];
 const OBLIGATIONS_LIST = ['Obligation Trésor CI 6.5% 2029'];
+
+/*
+ * Présentation des actifs cotés — métriques de coût et de plus/moins-value.
+ *
+ * En production, le CMP doit provenir des positions/lots ou de l'historique
+ * réel des acquisitions. La maquette accepte déjà plusieurs formes possibles :
+ * - client.cmp[instrument]
+ * - client.coutMoyenPondere[instrument]
+ * - client.positions[].cmp / coutMoyenPondere
+ *
+ * Si aucune donnée de coût n'est encore disponible, un CMP déterministe de
+ * démonstration est utilisé afin de garder la maquette fonctionnelle.
+ */
+const gsmPositionCmp = (client, instrument) => {
+  const position = Array.isArray(client?.positions)
+    ? client.positions.find(
+        (item) =>
+          item?.instrument === instrument ||
+          item?.titre === instrument ||
+          item?.nom === instrument
+      )
+    : null;
+
+  const cmpExplicite =
+    position?.cmp ??
+    position?.coutMoyenPondere ??
+    client?.cmp?.[instrument] ??
+    client?.coutMoyenPondere?.[instrument];
+
+  const cmpNumerique = Number(cmpExplicite);
+  if (Number.isFinite(cmpNumerique) && cmpNumerique > 0) {
+    return cmpNumerique;
+  }
+
+  const marche = resolveMarketInstrument(instrument, client?.marche);
+  const cours = Number(marche?.cours || 0);
+  if (!Number.isFinite(cours) || cours <= 0) return 0;
+
+  // Fallback uniquement pour la maquette : écart stable compris entre -8% et +8%.
+  const seed = marketActiveSeed(`${client?.id || 'client'}-${instrument}-cmp`);
+  const ecart = ((seed % 17) - 8) / 100;
+  return Number(
+    (cours * (1 + ecart)).toFixed(client?.marche === 'BRVM' ? 0 : 2)
+  );
+};
+
+const gsmListedAssetMetrics = (client, instrument) => {
+  const exposition = Number(exposureOf(client.id, instrument) || 0);
+  const valeurMarche = Math.round(
+    (Number(client.encours || 0) * exposition) / 100
+  );
+  const marche = resolveMarketInstrument(instrument, client.marche);
+  const cours = Number(marche?.cours || 0);
+  const cmp = gsmPositionCmp(client, instrument);
+
+  const quantiteEstimee = cours > 0 ? valeurMarche / cours : 0;
+  const coutHistorique = cmp > 0 ? quantiteEstimee * cmp : valeurMarche;
+  const plusMoinsValue = valeurMarche - coutHistorique;
+  const plusMoinsValuePct =
+    coutHistorique > 0 ? (plusMoinsValue / coutHistorique) * 100 : 0;
+
+  return {
+    exposition,
+    valeurMarche,
+    cours,
+    cmp,
+    quantiteEstimee,
+    coutHistorique,
+    plusMoinsValue,
+    plusMoinsValuePct,
+  };
+};
 const expositionClient = (client, dimension, value) => {
   if (dimension === 'Profil de risque') {
     const pct = client.profilRisque === value ? 100 : 0;
@@ -6106,6 +6181,31 @@ const NAV = [
   { id: 'reequilibrage', label: 'Rééquilibrage', icon: Scale },
   { id: 'analyse', label: 'Analyse portefeuille', icon: Activity },
   { id: 'comite', label: 'Rapport de comité', icon: FileBarChart2 },
+  { id: 'documentation', label: 'Documentation', icon: BookOpen },
+];
+
+const GSM_DOCUMENTATION = [
+  {
+    id: 'architecture-bases-donnees',
+    title: 'Architecture des bases de données et persistance des interfaces',
+    description:
+      'Architecture cible du logiciel OPCVM GSM : bases métier et marché, tables, relations, CMP, ordres, liquidité, Cession_Retrait, Cession interne, audit, sécurité et feuille de route.',
+    category: 'Architecture technique',
+    version: '1.0',
+    updatedAt: '14/09/2026',
+    format: 'PDF',
+    file: '/documentation/OPCVM_GSM_Architecture_Bases_Donnees.pdf',
+  },
+  {
+    id: 'architecture-bases-donnees',
+    title: 'Spécifications de référence architechtural',
+    description: 'Détail de architechtural',
+    category: 'Architecture technique',
+    version: '1.0',
+    updatedAt: '14/09/2026',
+    format: 'PDF',
+    file: '/documentation/Detail_Architechtural.pdf.pdf',
+  },
 ];
 
 /* ------------------------------- UI ATOMS ------------------------------- */
@@ -6646,7 +6746,11 @@ function Accueil({
       <MarketTicker
         onViewAll={() => go('vue-boursiere')}
         onInstrumentClick={(m) =>
-          go('profondeur', { marche: m.marche, instrument: m.nom })
+          go('instrument-analysis', {
+            marche: m.marche,
+            instrument: m.nom,
+            source: 'accueil-ticker',
+          })
         }
       />
 
@@ -8832,8 +8936,18 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
       </Card>
 
       <Card className="p-5">
-        <Eyebrow>Présentation des actifs cotés</Eyebrow>
-        <div className="grid grid-cols-2 gap-4 mt-2">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Présentation des actifs cotés</Eyebrow>
+            <div className="text-[10px]" style={{ color: C.sub, ...F_BODY }}>
+              CMP = Coût Moyen Pondéré · +/- Value = gain ou perte latent(e) de
+              la ligne par rapport à sa valorisation actuelle.
+            </div>
+          </div>
+          <Badge tone="slate">Valorisation par ligne</Badge>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-3">
           <div>
             <div
               className="text-xs font-semibold mb-1"
@@ -8841,45 +8955,86 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             >
               Actions
             </div>
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <Th>Titre</Th>
-                  <Th>Exposition</Th>
-                  <Th>Valeur estimée</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {ACTIONS_LIST.filter((t) => exposureOf(client.id, t) > 0).map(
-                  (t) => (
-                    <tr key={t} style={{ borderTop: `1px solid ${C.line}` }}>
-                      <Td>{t}</Td>
-                      <Td mono>{exposureOf(client.id, t)}%</Td>
-                      <Td mono>
-                        {fmt(
-                          Math.round(
-                            (client.encours * exposureOf(client.id, t)) / 100
-                          )
-                        )}{' '}
-                        {client.devise}
-                      </Td>
-                    </tr>
-                  )
-                )}
-                {ACTIONS_LIST.every((t) => exposureOf(client.id, t) === 0) && (
+
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 700 }}>
+                <thead>
                   <tr>
-                    <td
-                      colSpan={3}
-                      className="text-center text-xs py-3"
-                      style={{ color: C.sub }}
-                    >
-                      Aucune action détenue
-                    </td>
+                    <Th>Titre</Th>
+                    <Th>Exposition</Th>
+                    <Th>CMP</Th>
+                    <Th>Valeur estimée</Th>
+                    <Th>+/- Value</Th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {ACTIONS_LIST.filter((t) => exposureOf(client.id, t) > 0).map(
+                    (t) => {
+                      const ligne = gsmListedAssetMetrics(client, t);
+                      const gain = ligne.plusMoinsValue >= 0;
+
+                      return (
+                        <tr
+                          key={t}
+                          style={{ borderTop: `1px solid ${C.line}` }}
+                        >
+                          <Td>{t}</Td>
+                          <Td mono>{ligne.exposition}%</Td>
+                          <Td mono className="whitespace-nowrap">
+                            {fmtPrice(ligne.cmp)} {client.devise}
+                          </Td>
+                          <Td mono className="whitespace-nowrap">
+                            {fmt(Math.round(ligne.valeurMarche))}{' '}
+                            {client.devise}
+                          </Td>
+                          <Td>
+                            <div
+                              className="inline-flex flex-col whitespace-nowrap"
+                              style={{
+                                color: gain ? C.teal : C.coral,
+                                ...F_MONO,
+                              }}
+                            >
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold">
+                                {gain ? (
+                                  <ArrowUpRight size={13} />
+                                ) : (
+                                  <ArrowDownRight size={13} />
+                                )}
+                                {gain ? '+' : '-'}
+                                {fmt(
+                                  Math.round(Math.abs(ligne.plusMoinsValue))
+                                )}{' '}
+                                {client.devise}
+                              </span>
+                              <span className="text-[9px]">
+                                {gain ? '+' : '-'}
+                                {Math.abs(ligne.plusMoinsValuePct).toFixed(2)}%
+                              </span>
+                            </div>
+                          </Td>
+                        </tr>
+                      );
+                    }
+                  )}
+                  {ACTIONS_LIST.every(
+                    (t) => exposureOf(client.id, t) === 0
+                  ) && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="text-center text-xs py-3"
+                        style={{ color: C.sub }}
+                      >
+                        Aucune action détenue
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
           <div>
             <div
               className="text-xs font-semibold mb-1"
@@ -8887,47 +9042,92 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             >
               Obligations
             </div>
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <Th>Titre</Th>
-                  <Th>Exposition</Th>
-                  <Th>Valeur estimée</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {OBLIGATIONS_LIST.filter(
-                  (t) => exposureOf(client.id, t) > 0
-                ).map((t) => (
-                  <tr key={t} style={{ borderTop: `1px solid ${C.line}` }}>
-                    <Td>{t}</Td>
-                    <Td mono>{exposureOf(client.id, t)}%</Td>
-                    <Td mono>
-                      {fmt(
-                        Math.round(
-                          (client.encours * exposureOf(client.id, t)) / 100
-                        )
-                      )}{' '}
-                      {client.devise}
-                    </Td>
-                  </tr>
-                ))}
-                {OBLIGATIONS_LIST.every(
-                  (t) => exposureOf(client.id, t) === 0
-                ) && (
+
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 700 }}>
+                <thead>
                   <tr>
-                    <td
-                      colSpan={3}
-                      className="text-center text-xs py-3"
-                      style={{ color: C.sub }}
-                    >
-                      Aucune obligation détenue en direct
-                    </td>
+                    <Th>Titre</Th>
+                    <Th>Exposition</Th>
+                    <Th>CMP</Th>
+                    <Th>Valeur estimée</Th>
+                    <Th>+/- Value</Th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {OBLIGATIONS_LIST.filter(
+                    (t) => exposureOf(client.id, t) > 0
+                  ).map((t) => {
+                    const ligne = gsmListedAssetMetrics(client, t);
+                    const gain = ligne.plusMoinsValue >= 0;
+
+                    return (
+                      <tr key={t} style={{ borderTop: `1px solid ${C.line}` }}>
+                        <Td>{t}</Td>
+                        <Td mono>{ligne.exposition}%</Td>
+                        <Td mono className="whitespace-nowrap">
+                          {fmtPrice(ligne.cmp)} {client.devise}
+                        </Td>
+                        <Td mono className="whitespace-nowrap">
+                          {fmt(Math.round(ligne.valeurMarche))} {client.devise}
+                        </Td>
+                        <Td>
+                          <div
+                            className="inline-flex flex-col whitespace-nowrap"
+                            style={{
+                              color: gain ? C.teal : C.coral,
+                              ...F_MONO,
+                            }}
+                          >
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold">
+                              {gain ? (
+                                <ArrowUpRight size={13} />
+                              ) : (
+                                <ArrowDownRight size={13} />
+                              )}
+                              {gain ? '+' : '-'}
+                              {fmt(
+                                Math.round(Math.abs(ligne.plusMoinsValue))
+                              )}{' '}
+                              {client.devise}
+                            </span>
+                            <span className="text-[9px]">
+                              {gain ? '+' : '-'}
+                              {Math.abs(ligne.plusMoinsValuePct).toFixed(2)}%
+                            </span>
+                          </div>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                  {OBLIGATIONS_LIST.every(
+                    (t) => exposureOf(client.id, t) === 0
+                  ) && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="text-center text-xs py-3"
+                        style={{ color: C.sub }}
+                      >
+                        Aucune obligation détenue en direct
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+        </div>
+
+        <div
+          className="text-[10px] mt-3 p-3 rounded-xl"
+          style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}
+        >
+          <b style={{ color: C.ink }}>Calcul :</b> +/- Value = valeur de marché
+          de la ligne − coût historique de la position. Le coût historique est
+          obtenu à partir du CMP multiplié par la quantité correspondante.
+          Lorsque le backend fournira les CMP issus des lots réels, ils seront
+          utilisés automatiquement à la place du fallback de démonstration.
         </div>
       </Card>
 
@@ -25048,6 +25248,173 @@ function ClientAnalysis({ devise }) {
     </div>
   );
 }
+/* ----------------------------- DOCUMENTATION ----------------------------- */
+function Documentation() {
+  return (
+    <div className="space-y-5">
+      <Breadcrumb items={['Accueil', 'Documentation']} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Centre documentaire</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Documentation du logiciel OPCVM GSM
+          </h2>
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Retrouvez ici les documents de référence à conserver sous les yeux
+            pendant le développement et l'exploitation du logiciel. Les
+            documents peuvent être consultés dans le navigateur ou téléchargés
+            localement.
+          </div>
+        </div>
+        <Badge tone="navy">
+          {GSM_DOCUMENTATION.length} document disponible
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          {
+            label: 'Architecture',
+            value: 'Données & API',
+            detail: 'Bases, tables, flux et intégrité',
+          },
+          {
+            label: 'Version actuelle',
+            value: '1.0',
+            detail: 'Mise à jour du 14/09/2026',
+          },
+          {
+            label: 'Format',
+            value: 'PDF',
+            detail: 'Consultable et téléchargeable',
+          },
+        ].map((item) => (
+          <Card key={item.label} className="p-4">
+            <div
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              {item.label}
+            </div>
+            <div
+              className="text-base font-bold mt-1"
+              style={{ color: C.ink, ...F_DISPLAY }}
+            >
+              {item.value}
+            </div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+              {item.detail}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+          <div>
+            <Eyebrow>Documents disponibles</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Référentiels fonctionnels et techniques
+            </div>
+          </div>
+          <Badge tone="gold">Bibliothèque interne</Badge>
+        </div>
+
+        <div className="space-y-3">
+          {GSM_DOCUMENTATION.map((document) => (
+            <div
+              key={document.id}
+              className="p-4 rounded-2xl border flex items-start justify-between gap-5 flex-wrap"
+              style={{ borderColor: C.line, background: '#FAFAFC' }}
+            >
+              <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div
+                  className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ background: '#EEF1FF', color: C.indigo }}
+                >
+                  <BookOpen size={20} />
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="text-sm font-bold" style={{ color: C.ink }}>
+                      {document.title}
+                    </div>
+                    <Badge tone="slate">{document.format}</Badge>
+                  </div>
+                  <div
+                    className="text-[11px] mt-1 leading-relaxed max-w-4xl"
+                    style={{ color: C.sub }}
+                  >
+                    {document.description}
+                  </div>
+                  <div
+                    className="flex items-center gap-4 flex-wrap text-[10px] mt-2"
+                    style={{ color: C.sub, ...F_MONO }}
+                  >
+                    <span>{document.category}</span>
+                    <span>Version {document.version}</span>
+                    <span>Mise à jour {document.updatedAt}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={document.file}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold"
+                  style={{
+                    borderColor: C.line,
+                    color: C.indigo,
+                    background: '#fff',
+                  }}
+                >
+                  <ExternalLink size={14} />
+                  Ouvrir le PDF
+                </a>
+                <a
+                  href={document.file}
+                  download
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
+                  style={{ background: C.navy, color: '#fff' }}
+                >
+                  <Download size={14} />
+                  Télécharger
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-5" style={{ borderColor: C.gold }}>
+        <Eyebrow>Emplacement du fichier</Eyebrow>
+        <div className="text-sm font-semibold" style={{ color: C.ink }}>
+          Publication dans l'application Next.js
+        </div>
+        <div className="text-xs mt-2 leading-relaxed" style={{ color: C.sub }}>
+          Pour que les boutons ci-dessus fonctionnent dans le projet réel,
+          placez le PDF dans
+          <code
+            className="mx-1 px-2 py-1 rounded-lg"
+            style={{ background: '#F0F1F5', color: C.navy, ...F_MONO }}
+          >
+            public/documentation/OPCVM_GSM_Architecture_Bases_Donnees.pdf
+          </code>
+          . En production, cette bibliothèque pourra ensuite être alimentée par
+          la table documents et un endpoint sécurisé de téléchargement.
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /* --------------------------------- APP --------------------------------- */
 export default function App() {
   const [workspace, setWorkspace] = useState('gestionnaire');
@@ -25492,6 +25859,7 @@ export default function App() {
                 )}
                 {screen === 'comite' && <Comite devise={siteDevise} go={go} />}
                 {screen === 'decisions-comite' && <PriseDecisions go={go} />}
+                {screen === 'documentation' && <Documentation />}
               </>
             )}
 
