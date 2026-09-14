@@ -6204,7 +6204,7 @@ const GSM_DOCUMENTATION = [
     version: '1.0',
     updatedAt: '14/09/2026',
     format: 'PDF',
-    file: '/documentation/Detail_Architechtural.pdf.pdf',
+    file: '/documentation/Detail_Architechtural.pdf',
   },
 ];
 
