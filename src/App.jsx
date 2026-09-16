@@ -8533,7 +8533,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
               className="text-[10px] uppercase font-semibold"
               style={{ color: C.sub }}
             >
-              Capital net versé
+              Apport net cumulé
             </div>
             <div
               className="text-sm font-bold mt-1"
@@ -18549,6 +18549,7 @@ const nouvelleAllocationDecision = () => {
   return {
     typeInstrument,
     sens: 'Achat',
+    pourcentageOperation: '',
     marche: 'Tous',
     typePortefeuille: 'Tous',
     instrument,
@@ -18600,6 +18601,119 @@ const portefeuillesEligiblesDecision = (allocation) =>
     return correspondMarche && correspondType && correspondExposition;
   });
 
+function PortefeuillesConcernesDropdown({ portefeuilles = [] }) {
+  const [ouvert, setOuvert] = useState(false);
+  const liste = Array.isArray(portefeuilles)
+    ? portefeuilles.filter(Boolean)
+    : [];
+
+  if (liste.length === 0) {
+    return (
+      <span className="text-xs" style={{ color: C.sub }}>
+        Aucun
+      </span>
+    );
+  }
+
+  return (
+    <div className="min-w-[240px]">
+      <button
+        type="button"
+        onClick={() => setOuvert((valeur) => !valeur)}
+        className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-left transition-colors"
+        style={{
+          borderColor: ouvert ? C.indigo : C.line,
+          background: ouvert ? '#F4F6FF' : '#fff',
+          color: ouvert ? C.indigo : C.ink,
+        }}
+        aria-expanded={ouvert}
+      >
+        <span className="text-xs font-semibold whitespace-nowrap">
+          Portefeuilles concernés ({liste.length})
+        </span>
+        <ChevronRight
+          size={15}
+          style={{
+            flexShrink: 0,
+            transform: ouvert ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 160ms ease',
+          }}
+        />
+      </button>
+
+      {ouvert && (
+        <div
+          className="mt-2 rounded-xl border overflow-hidden"
+          style={{
+            borderColor: C.line,
+            background: '#fff',
+            boxShadow: '0 8px 24px rgba(15, 27, 51, 0.08)',
+          }}
+        >
+          <div
+            className="px-3 py-2 flex items-center justify-between gap-3"
+            style={{
+              background: '#FAFAFC',
+              borderBottom: `1px solid ${C.line}`,
+            }}
+          >
+            <span
+              className="text-[10px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Liste des portefeuilles
+            </span>
+            <Badge tone="navy">{liste.length}</Badge>
+          </div>
+
+          <div
+            className="max-h-56 overflow-y-auto"
+            style={{ scrollbarGutter: 'stable' }}
+          >
+            {liste.map((nom, index) => {
+              const client = CLIENTS.find((item) => item.nom === nom);
+
+              return (
+                <div
+                  key={`${nom}-${index}`}
+                  className="px-3 py-2.5"
+                  style={{
+                    borderTop:
+                      index === 0 ? 'none' : `1px solid ${C.line}`,
+                    background: index % 2 ? '#FCFCFD' : '#fff',
+                  }}
+                >
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: C.ink }}
+                  >
+                    {nom}
+                  </div>
+
+                  {client && (
+                    <div
+                      className="flex items-center gap-2 mt-1 flex-wrap text-[9px]"
+                      style={{ color: C.sub }}
+                    >
+                      <span>{client.marche}</span>
+                      <span>•</span>
+                      <span>{client.profilRisque}</span>
+                      <span>•</span>
+                      <span>
+                        {fmt(client.encours)} {client.devise}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PriseDecisions({ go }) {
   const [allocationCourante, setAllocationCourante] = useState(() =>
     nouvelleAllocationDecision()
@@ -18636,6 +18750,14 @@ function PriseDecisions({ go }) {
         };
       }
 
+      if (champ === 'sens') {
+        return {
+          ...courante,
+          sens: valeur,
+          pourcentageOperation: '',
+        };
+      }
+
       return { ...courante, [champ]: valeur };
     });
   };
@@ -18648,6 +18770,17 @@ function PriseDecisions({ go }) {
     const seuil = Number(allocation.seuil);
     if (!Number.isFinite(seuil) || seuil < 0 || seuil > 100) {
       return "Le seuil d'exposition doit être compris entre 0 et 100 %.";
+    }
+
+    const pourcentageOperation = Number(allocation.pourcentageOperation);
+    if (
+      !Number.isFinite(pourcentageOperation) ||
+      pourcentageOperation <= 0 ||
+      pourcentageOperation > 100
+    ) {
+      return allocation.sens === 'Vente'
+        ? 'Le pourcentage de cession doit être supérieur à 0 et inférieur ou égal à 100 %.'
+        : 'Le pourcentage de liquidité doit être supérieur à 0 et inférieur ou égal à 100 %.';
     }
 
     const prixMin = Number(allocation.prixMin);
@@ -18682,6 +18815,7 @@ function PriseDecisions({ go }) {
       ...allocationCourante,
       id: `ALLOC-${Date.now()}-${allocations.length + 1}`,
       seuil: Number(allocationCourante.seuil),
+      pourcentageOperation: Number(allocationCourante.pourcentageOperation),
       prixMin: Number(allocationCourante.prixMin),
       prixMax: Number(allocationCourante.prixMax),
       prixObjectif: Number(allocationCourante.prixObjectif),
@@ -18850,7 +18984,7 @@ function PriseDecisions({ go }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <div>
             <label
               className="text-xs font-semibold block mb-1"
@@ -18886,6 +19020,43 @@ function PriseDecisions({ go }) {
               <option>Achat</option>
               <option>Vente</option>
             </select>
+          </div>
+
+          <div>
+            <label
+              className="text-xs font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              {allocationCourante.sens === 'Vente'
+                ? 'Pourcentage de cession (%)'
+                : 'Pourcentage de liquidité (%)'}
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0.01"
+                max="100"
+                step="0.5"
+                placeholder="Ex. 25"
+                value={allocationCourante.pourcentageOperation}
+                onChange={(e) =>
+                  mettreAJour('pourcentageOperation', e.target.value)
+                }
+                className="w-full px-3 py-2 pr-9 rounded-xl border text-sm"
+                style={{ borderColor: C.line, ...F_MONO }}
+              />
+              <span
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold"
+                style={{ color: C.sub }}
+              >
+                %
+              </span>
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+              {allocationCourante.sens === 'Vente'
+                ? 'Part de la position à céder.'
+                : 'Part de la liquidité disponible à mobiliser.'}
+            </div>
           </div>
 
           <div>
@@ -19109,12 +19280,13 @@ function PriseDecisions({ go }) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 2450 }}>
+          <table className="w-full" style={{ minWidth: 2650 }}>
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>#</Th>
                 <Th>Type d'instrument</Th>
                 <Th>Sens</Th>
+                <Th>Pourcentage de cession / liquidité</Th>
                 <Th>Marché boursier</Th>
                 <Th>Type de portefeuille</Th>
                 <Th>Instrument (action / obligation)</Th>
@@ -19132,7 +19304,7 @@ function PriseDecisions({ go }) {
               {allocations.length === 0 && (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="text-center py-8 text-sm"
                     style={{ color: C.sub }}
                   >
@@ -19160,6 +19332,19 @@ function PriseDecisions({ go }) {
                       {allocation.sens}
                     </Badge>
                   </Td>
+                  <Td className="whitespace-nowrap">
+                    <div
+                      className="font-semibold"
+                      style={{ ...F_MONO, color: C.ink }}
+                    >
+                      {Number(allocation.pourcentageOperation || 0).toFixed(1)}%
+                    </div>
+                    <div className="text-[9px]" style={{ color: C.sub }}>
+                      {allocation.sens === 'Vente'
+                        ? 'Pourcentage de cession'
+                        : 'Pourcentage de liquidité'}
+                    </div>
+                  </Td>
                   <Td>
                     <Badge tone="navy">{allocation.marche}</Badge>
                   </Td>
@@ -19176,13 +19361,9 @@ function PriseDecisions({ go }) {
                   <Td mono>{fmtPrice(allocation.prixMax)}</Td>
                   <Td mono>{fmtPrice(allocation.prixObjectif)}</Td>
                   <Td>
-                    <div className="text-xs" style={{ color: C.sub }}>
-                      {allocation.portefeuillesEligibles.length > 0
-                        ? `${
-                            allocation.portefeuillesEligibles.length
-                          } — ${allocation.portefeuillesEligibles.join(', ')}`
-                        : 'Aucun'}
-                    </div>
+                    <PortefeuillesConcernesDropdown
+                      portefeuilles={allocation.portefeuillesEligibles || []}
+                    />
                   </Td>
                   <Td>
                     <button
@@ -19267,11 +19448,12 @@ function PriseDecisions({ go }) {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full" style={{ minWidth: 2200 }}>
+            <table className="w-full" style={{ minWidth: 2400 }}>
               <thead style={{ background: '#FAFAFC' }}>
                 <tr>
                   <Th>Type d'instrument</Th>
                   <Th>Sens</Th>
+                  <Th>Pourcentage de cession / liquidité</Th>
                   <Th>Marché boursier</Th>
                   <Th>Type de portefeuille</Th>
                   <Th>Instrument (action / obligation)</Th>
@@ -19303,6 +19485,28 @@ function PriseDecisions({ go }) {
                         {allocation.sens}
                       </Badge>
                     </Td>
+                    <Td className="whitespace-nowrap">
+                      {allocation.pourcentageOperation != null &&
+                      allocation.pourcentageOperation !== '' ? (
+                        <>
+                          <div
+                            className="font-semibold"
+                            style={{ ...F_MONO, color: C.ink }}
+                          >
+                            {Number(allocation.pourcentageOperation).toFixed(1)}%
+                          </div>
+                          <div className="text-[9px]" style={{ color: C.sub }}>
+                            {allocation.sens === 'Vente'
+                              ? 'Pourcentage de cession'
+                              : 'Pourcentage de liquidité'}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-xs" style={{ color: C.sub }}>
+                          —
+                        </span>
+                      )}
+                    </Td>
                     <Td>
                       <Badge tone="navy">{allocation.marche}</Badge>
                     </Td>
@@ -19321,10 +19525,9 @@ function PriseDecisions({ go }) {
                     <Td mono>{fmtPrice(allocation.prixMax)}</Td>
                     <Td mono>{fmtPrice(allocation.prixObjectif)}</Td>
                     <Td>
-                      <span className="text-xs" style={{ color: C.sub }}>
-                        {(allocation.portefeuillesEligibles || []).join(', ') ||
-                          'Aucun'}
-                      </span>
+                      <PortefeuillesConcernesDropdown
+                        portefeuilles={allocation.portefeuillesEligibles || []}
+                      />
                     </Td>
                   </tr>
                 ))}
