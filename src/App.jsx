@@ -20724,13 +20724,12 @@ function ClientPortfolios({ devise, orders }) {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1180 }}>
+              <table className="w-full" style={{ minWidth: 1060 }}>
                 <thead style={{ background: '#FAFAFC' }}>
                   <tr>
                     <Th>Instrument</Th>
                     <Th>Classe</Th>
                     <Th>Quantité</Th>
-                    <Th>PRU</Th>
                     <Th title="Coût Moyen Pondéré">CMP</Th>
                     <Th>Cours</Th>
                     <Th>Valeur</Th>
@@ -20759,9 +20758,6 @@ function ClientPortfolios({ devise, orders }) {
                           </Badge>
                         </Td>
                         <Td mono>{fmt(ligne.qte)}</Td>
-                        <Td mono>
-                          {fmtPrice(ligne.pru)} {portefeuille.devise}
-                        </Td>
                         <Td mono className="whitespace-nowrap">
                           {fmtPrice(cmp)} {portefeuille.devise}
                         </Td>
