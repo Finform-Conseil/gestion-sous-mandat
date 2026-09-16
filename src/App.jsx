@@ -4974,6 +4974,34 @@ const clientLineValue = (ligne) => {
   return ligne.qte * Number(marche?.cours || ligne.pru || 0);
 };
 
+/*
+ * Gestion libre — coût moyen pondéré et plus/moins-value latente.
+ *
+ * En production, `cmp` doit provenir des transactions/lots réels.
+ * La maquette actuelle dispose surtout du `pru`; celui-ci est donc utilisé
+ * comme fallback uniquement lorsqu'aucun CMP explicite n'est encore fourni.
+ */
+const clientLineCmp = (ligne) => {
+  const cmp = Number(
+    ligne?.cmp ??
+      ligne?.coutMoyenPondere ??
+      ligne?.averageCost ??
+      ligne?.pru ??
+      0
+  );
+
+  return Number.isFinite(cmp) && cmp >= 0 ? cmp : 0;
+};
+
+const clientLinePlusMoinsValue = (ligne) => {
+  const marche = clientMarket(ligne.instrument);
+  const cours = Number(marche?.cours || ligne?.pru || 0);
+  const cmp = clientLineCmp(ligne);
+  const quantite = Number(ligne?.qte || 0);
+
+  return quantite * (cours - cmp);
+};
+
 const clientPortfolioValueIn = (portefeuille, devise) =>
   convertCurrency(
     clientPortfolioValue(portefeuille),
@@ -20561,7 +20589,9 @@ function ClientPortfolios({ devise, orders }) {
           Une fiche par compte-titres afin de conserver la vision de
           l'intermédiaire, de la devise et du marché d'origine, avec distinction
           entre espèces disponibles et espèces déjà mobilisées par des achats
-          non exécutés.
+          non exécutés. Le CMP correspond au coût moyen pondéré de la ligne et
+          la Plus/Moins-value est affichée en montant dans la devise native du
+          portefeuille.
         </div>
       </div>
 
@@ -20694,13 +20724,14 @@ function ClientPortfolios({ devise, orders }) {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full" style={{ minWidth: 1180 }}>
                 <thead style={{ background: '#FAFAFC' }}>
                   <tr>
                     <Th>Instrument</Th>
                     <Th>Classe</Th>
                     <Th>Quantité</Th>
                     <Th>PRU</Th>
+                    <Th title="Coût Moyen Pondéré">CMP</Th>
                     <Th>Cours</Th>
                     <Th>Valeur</Th>
                     <Th>Plus/Moins-value</Th>
@@ -20712,10 +20743,10 @@ function ClientPortfolios({ devise, orders }) {
                     const marche = clientMarket(ligne.instrument);
                     const cours = Number(marche?.cours || ligne.pru);
                     const valeur = clientLineValue(ligne);
-                    const perf =
-                      ligne.pru > 0
-                        ? ((cours - ligne.pru) / ligne.pru) * 100
-                        : 0;
+                    const cmp = clientLineCmp(ligne);
+                    const plusMoinsValue = clientLinePlusMoinsValue(ligne);
+                    const plusMoinsPositive = plusMoinsValue >= 0;
+
                     return (
                       <tr
                         key={ligne.instrument}
@@ -20731,6 +20762,9 @@ function ClientPortfolios({ devise, orders }) {
                         <Td mono>
                           {fmtPrice(ligne.pru)} {portefeuille.devise}
                         </Td>
+                        <Td mono className="whitespace-nowrap">
+                          {fmtPrice(cmp)} {portefeuille.devise}
+                        </Td>
                         <Td mono>
                           {fmtPrice(cours)} {portefeuille.devise}
                         </Td>
@@ -20738,7 +20772,23 @@ function ClientPortfolios({ devise, orders }) {
                           {fmt(Math.round(valeur))} {portefeuille.devise}
                         </Td>
                         <Td>
-                          <Pct v={perf} />
+                          <div
+                            className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold"
+                            style={{
+                              color: plusMoinsPositive ? C.teal : C.coral,
+                              ...F_MONO,
+                            }}
+                            title="Plus/Moins-value latente = Quantité × (Cours actuel − CMP)"
+                          >
+                            {plusMoinsPositive ? (
+                              <ArrowUpRight size={13} />
+                            ) : (
+                              <ArrowDownRight size={13} />
+                            )}
+                            {plusMoinsPositive ? '+' : '-'}
+                            {fmt(Math.round(Math.abs(plusMoinsValue)))}{' '}
+                            {portefeuille.devise}
+                          </div>
                         </Td>
                         <Td mono>
                           {total > 0
