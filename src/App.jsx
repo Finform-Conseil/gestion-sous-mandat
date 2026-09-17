@@ -20303,9 +20303,10 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       <MarketTicker
         onViewAll={() => goClient('client-exchanges')}
         onInstrumentClick={(m) =>
-          goClient('client-market-depth', {
+          goClient('client-instrument-analysis', {
             instrument: m.nom,
             marche: m.marche,
+            source: 'client-dashboard-ticker',
           })
         }
       />
