@@ -7357,7 +7357,7 @@ function Accueil({
                           className="text-xs font-semibold block mb-1"
                           style={{ color: C.sub }}
                         >
-                          Seuil d'exposition min. (%)
+                          Seuil d'allocation min. (%)
                         </label>
                         <input
                           type="number"
