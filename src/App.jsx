@@ -7199,26 +7199,6 @@ function Accueil({
               )}
             </div>
 
-            {retraitsDisponiblesAccueil.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setRetraitsDisponiblesOuverts(true)}
-                className="w-full mt-2 p-2 rounded-xl text-left"
-                style={{ background: '#EAF8F3' }}
-              >
-                <div
-                  className="flex items-center justify-between gap-2"
-                  style={{ color: C.teal }}
-                >
-                  <span className="text-[10px] font-semibold">
-                    ✓ Retrait disponible
-                  </span>
-                </div>
-                <div className="text-[9px] mt-0.5" style={{ color: C.sub }}>
-                  {retraitsDisponiblesAccueil.length} retrait(s) prêt(s) pour paiement
-                </div>
-              </button>
-            )}
           </div>
         </Card>
 
