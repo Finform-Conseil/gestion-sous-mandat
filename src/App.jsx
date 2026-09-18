@@ -7213,9 +7213,6 @@ function Accueil({
                   <span className="text-[10px] font-semibold">
                     ✓ Retrait disponible
                   </span>
-                  <span className="text-[9px] font-semibold">
-                    Voir le détail →
-                  </span>
                 </div>
                 <div className="text-[9px] mt-0.5" style={{ color: C.sub }}>
                   {retraitsDisponiblesAccueil.length} retrait(s) prêt(s) pour paiement
