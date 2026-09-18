@@ -6697,6 +6697,8 @@ function Accueil({
     GSE: 'GHS',
   });
   const [selection, setSelection] = useState(null);
+  const [retraitsDisponiblesOuverts, setRetraitsDisponiblesOuverts] =
+    useState(false);
   const [seuilExpo, setSeuilExpo] = useState(0);
   const [rechercheClient, setRechercheClient] = useState('');
   const [profilHistoriquePortefeuilles, setProfilHistoriquePortefeuilles] =
@@ -7153,40 +7155,222 @@ function Accueil({
             </div>
 
             <div className="space-y-1.5">
-              {statistiquesCessionRetraitAccueil.map((stat) => (
-                <div
-                  key={stat.statut}
-                  className="flex items-center justify-between gap-2 text-[11px]"
-                >
-                  <span style={{ color: C.sub }}>{stat.statut}</span>
-                  <Badge tone={cessionRetraitStatusTone(stat.statut)}>
-                    {stat.nombre}
-                  </Badge>
-                </div>
-              ))}
+              {statistiquesCessionRetraitAccueil.map((stat) =>
+                stat.statut === 'Retrait disponible' ? (
+                  <button
+                    type="button"
+                    key={stat.statut}
+                    disabled={stat.nombre === 0}
+                    onClick={() => setRetraitsDisponiblesOuverts(true)}
+                    className="w-full flex items-center justify-between gap-2 text-[11px] rounded-lg px-2 py-1.5 transition-colors"
+                    style={{
+                      background: stat.nombre > 0 ? '#EAF8F3' : 'transparent',
+                      cursor: stat.nombre > 0 ? 'pointer' : 'default',
+                      opacity: stat.nombre > 0 ? 1 : 0.6,
+                    }}
+                    title={
+                      stat.nombre > 0
+                        ? 'Voir les retraits disponibles'
+                        : 'Aucun retrait disponible'
+                    }
+                  >
+                    <span
+                      className="font-semibold flex items-center gap-1.5"
+                      style={{ color: stat.nombre > 0 ? C.teal : C.sub }}
+                    >
+                      {stat.statut}
+                      {stat.nombre > 0 && <ChevronRight size={12} />}
+                    </span>
+                    <Badge tone={cessionRetraitStatusTone(stat.statut)}>
+                      {stat.nombre}
+                    </Badge>
+                  </button>
+                ) : (
+                  <div
+                    key={stat.statut}
+                    className="flex items-center justify-between gap-2 text-[11px] px-2 py-1.5"
+                  >
+                    <span style={{ color: C.sub }}>{stat.statut}</span>
+                    <Badge tone={cessionRetraitStatusTone(stat.statut)}>
+                      {stat.nombre}
+                    </Badge>
+                  </div>
+                )
+              )}
             </div>
 
-            {retraitsDisponiblesAccueil.slice(0, 2).map((item) => (
+            {retraitsDisponiblesAccueil.length > 0 && (
               <button
                 type="button"
-                key={`${item.clientId}-${item.modePaiement}`}
-                onClick={() => go('cession-retrait')}
+                onClick={() => setRetraitsDisponiblesOuverts(true)}
                 className="w-full mt-2 p-2 rounded-xl text-left"
                 style={{ background: '#EAF8F3' }}
               >
                 <div
-                  className="text-[10px] font-semibold"
+                  className="flex items-center justify-between gap-2"
                   style={{ color: C.teal }}
                 >
-                  ✓ {item.client} · retrait disponible
+                  <span className="text-[10px] font-semibold">
+                    ✓ Retrait disponible
+                  </span>
+                  <span className="text-[9px] font-semibold">
+                    Voir le détail →
+                  </span>
                 </div>
                 <div className="text-[9px] mt-0.5" style={{ color: C.sub }}>
-                  {fmt(item.montant)} {item.devise} · {item.modePaiement}
+                  {retraitsDisponiblesAccueil.length} retrait(s) prêt(s) pour paiement
                 </div>
               </button>
-            ))}
+            )}
           </div>
         </Card>
+
+        {retraitsDisponiblesOuverts && (
+          <div
+            className="fixed inset-0 flex items-center justify-center p-4"
+            style={{
+              zIndex: 120,
+              background: 'rgba(15, 27, 51, 0.48)',
+              backdropFilter: 'blur(2px)',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="retraits-disponibles-title"
+            onClick={() => setRetraitsDisponiblesOuverts(false)}
+          >
+            <div
+              className="w-full max-w-6xl rounded-2xl border shadow-2xl overflow-hidden"
+              style={{
+                background: C.card,
+                borderColor: C.line,
+                maxHeight: '82vh',
+              }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div
+                className="flex items-start justify-between gap-4 p-5"
+                style={{ borderBottom: `1px solid ${C.line}` }}
+              >
+                <div>
+                  <Eyebrow>État cession-retrait</Eyebrow>
+                  <h3
+                    id="retraits-disponibles-title"
+                    className="text-lg font-bold"
+                    style={{ ...F_DISPLAY, color: C.ink }}
+                  >
+                    Retraits disponibles
+                  </h3>
+                  <div className="text-xs mt-1" style={{ color: C.sub }}>
+                    Fonds disponibles pour remise ou règlement au client.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setRetraitsDisponiblesOuverts(false)}
+                  className="w-9 h-9 rounded-xl border flex items-center justify-center"
+                  style={{ borderColor: C.line, color: C.sub }}
+                  aria-label="Fermer"
+                >
+                  <X size={17} />
+                </button>
+              </div>
+
+              <div className="overflow-auto" style={{ maxHeight: '65vh' }}>
+                <table className="w-full" style={{ minWidth: 1050 }}>
+                  <thead
+                    className="sticky top-0"
+                    style={{ background: '#FAFAFC', zIndex: 1 }}
+                  >
+                    <tr>
+                      <Th>Client</Th>
+                      <Th>Chargée de clientèle</Th>
+                      <Th>Montant de retrait disponible</Th>
+                      <Th>Observation du chargé de clientèle</Th>
+                      <Th>Mode de paiement</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {retraitsDisponiblesAccueil.map((item, index) => (
+                      <tr
+                        key={`${item.clientId}-${item.modePaiement}-${index}`}
+                        style={{
+                          borderTop: `1px solid ${C.line}`,
+                          background: index % 2 ? '#FCFCFD' : '#fff',
+                        }}
+                      >
+                        <Td>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRetraitsDisponiblesOuverts(false);
+                              openClient?.(item.clientId);
+                            }}
+                            className="font-semibold text-left hover:underline underline-offset-4"
+                            style={{ color: C.indigo }}
+                            title={`Ouvrir le portefeuille de ${item.client}`}
+                          >
+                            {item.client}
+                          </button>
+                        </Td>
+                        <Td className="whitespace-nowrap">
+                          {item.chargeeClientele || 'Non renseignée'}
+                        </Td>
+                        <Td mono className="whitespace-nowrap">
+                          <span style={{ color: C.teal, fontWeight: 700 }}>
+                            {fmt(Number(item.montant || 0))} {item.devise}
+                          </span>
+                        </Td>
+                        <Td>
+                          <div
+                            className="text-xs leading-relaxed"
+                            style={{ color: C.sub, minWidth: 310 }}
+                          >
+                            {item.observationChargeeClientele ||
+                              'Aucune observation renseignée.'}
+                          </div>
+                        </Td>
+                        <Td>
+                          <Badge tone="teal">
+                            {item.modePaiement || 'Non renseigné'}
+                          </Badge>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div
+                className="flex items-center justify-between gap-3 p-4"
+                style={{
+                  borderTop: `1px solid ${C.line}`,
+                  background: '#FAFAFC',
+                }}
+              >
+                <div className="text-[10px]" style={{ color: C.sub }}>
+                  {retraitsDisponiblesAccueil.length} retrait(s) disponible(s)
+                </div>
+                <div className="flex items-center gap-2">
+                  <Btn
+                    tone="ghost"
+                    onClick={() => setRetraitsDisponiblesOuverts(false)}
+                  >
+                    Fermer
+                  </Btn>
+                  <Btn
+                    onClick={() => {
+                      setRetraitsDisponiblesOuverts(false);
+                      go('cession-retrait');
+                    }}
+                  >
+                    Ouvrir Cession_Retrait
+                  </Btn>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Card className="p-4">
           <div
@@ -12594,6 +12778,9 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     statut: 'Demande reçue',
     dateDemande: '2026-09-09',
     dateSouhaitee: '2026-09-11',
+    chargeeClientele: 'Mariam Diallo',
+    observationChargeeClientele:
+      'Demande de retrait reçue et transmise au gestionnaire pour traitement.',
     modePaiement: 'Chèque',
   },
   {
@@ -12604,6 +12791,9 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     statut: 'Processus lancé',
     dateDemande: '2026-09-09',
     dateSouhaitee: '2026-09-12',
+    chargeeClientele: 'Aïssatou Ndiaye',
+    observationChargeeClientele:
+      'Client informé du lancement du processus de mobilisation de la liquidité.',
     modePaiement: 'Virement bancaire',
   },
   {
@@ -12614,6 +12804,9 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     statut: 'Cession en cours',
     dateDemande: '2026-09-08',
     dateSouhaitee: '2026-09-15',
+    chargeeClientele: 'Nadia Kouamé',
+    observationChargeeClientele:
+      'Cession en cours. Le client sera contacté dès disponibilité complète des fonds.',
     modePaiement: 'Virement bancaire',
   },
   {
@@ -12624,6 +12817,9 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     statut: 'Retrait disponible',
     dateDemande: '2026-09-05',
     dateSouhaitee: '2026-09-09',
+    chargeeClientele: 'Fatou Diarra',
+    observationChargeeClientele:
+      'Liquidité constituée. Le retrait peut être remis au client selon le mode de paiement convenu.',
     modePaiement: 'Chèque',
   },
 ];
@@ -25886,6 +26082,14 @@ export default function App() {
           patch.dateSouhaitee ||
           existing?.dateSouhaitee ||
           CESSION_RETRAIT_REFERENCE_DATE,
+        chargeeClientele:
+          patch.chargeeClientele ||
+          existing?.chargeeClientele ||
+          'Non renseignée',
+        observationChargeeClientele:
+          patch.observationChargeeClientele ||
+          existing?.observationChargeeClientele ||
+          'Aucune observation renseignée.',
         modePaiement: patch.modePaiement || existing?.modePaiement || 'Chèque',
       };
       return existing
