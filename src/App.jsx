@@ -6938,7 +6938,6 @@ function Accueil({
     'Profil de risque': RISK_PROFILE_MIX,
     "Type d'actif": ASSET_MIX,
     'Marché boursier': MARKET_MIX,
-    Devise: CURRENCY_MIX,
     Pays: COUNTRY_MIX,
     Secteur: SECTOR_MIX,
     'Type de portefeuille': PROFILE_TYPE_MIX,
@@ -8120,38 +8119,23 @@ function Accueil({
                   className="text-xs mb-2"
                   style={{ color: C.sub, ...F_BODY }}
                 >
-                  {dim === 'Devise'
-                    ? "Cliquez sur un point de devise pour ouvrir son évolution d'encours."
-                    : 'Cliquez une part pour voir le détail par portefeuille.'}
+                  Cliquez une part pour voir le détail par portefeuille.
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {repartitionCourante.map((d, i) => (
                     <button
                       key={d.name}
-                      onClick={() => {
-                        if (dim === 'Devise') {
-                          setDeviseEncoursSelectionnee(d.name);
-                          setTypePortefeuilleEncours('Tous');
-                          setProfilRisqueEncours('Tous');
-                          setPortefeuilleEncoursSelectionneId('Tous');
-                          setExpositionDeviseOuverte(true);
-                          return;
-                        }
-
-                        setSelection({ dimension: dim, value: d.name });
-                      }}
+                      onClick={() =>
+                        setSelection({ dimension: dim, value: d.name })
+                      }
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium text-left transition-transform active:scale-[0.98]"
                       style={{
-                        borderColor: dim === 'Devise' ? C.indigo : C.line,
-                        background: dim === 'Devise' ? '#F6F7FF' : '#fff',
+                        borderColor: C.line,
+                        background: '#fff',
                         cursor: 'pointer',
                         ...F_BODY,
                       }}
-                      title={
-                        dim === 'Devise'
-                          ? `Ouvrir l'évolution de l'encours en ${d.name}`
-                          : `Voir le détail ${d.name}`
-                      }
+                      title={`Voir le détail ${d.name}`}
                     >
                       <span
                         className="w-2 h-2 rounded-full shrink-0"
@@ -8174,7 +8158,6 @@ function Accueil({
               </>
             )}
             {selection &&
-              dim !== 'Devise' &&
               (() => {
                 const allExpo = CLIENTS.map((c) => ({
                   client: c,
@@ -8386,7 +8369,20 @@ function Accueil({
                 Performance de la gestion neutralisée des dépôts et retraits
               </div>
             </div>
-            <Badge tone="navy">Base 100 · méthode TWR</Badge>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Btn
+                tone="ghost"
+                onClick={() => {
+                  setTypePortefeuilleEncours('Tous');
+                  setProfilRisqueEncours('Tous');
+                  setPortefeuilleEncoursSelectionneId('Tous');
+                  setExpositionDeviseOuverte(true);
+                }}
+              >
+                Variations en devise
+              </Btn>
+              <Badge tone="navy">Base 100 · méthode TWR</Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-4 gap-2 mb-4">
