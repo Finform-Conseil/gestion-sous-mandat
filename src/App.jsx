@@ -5206,16 +5206,19 @@ const HISTORY_PERIODS = [
 /*
  * EXPOSITION DEVISES — ACCUEIL GESTION SOUS MANDAT
  *
- * Chaque point représente la part de l'encours consolidé détenue dans une
- * devise donnée. L'utilisateur sélectionne la devise à afficher et le graphique
- * ne montre qu'une seule courbe à la fois. Tous les encours sont d'abord
- * ramenés dans la même devise de référence avant de calculer les pourcentages.
+ * Le graphique n'affiche qu'une seule courbe à la fois. Chaque point représente
+ * l'encours historique, en valeur monétaire, des portefeuilles correspondant
+ * à la devise sélectionnée.
  *
- * La maquette ne possède pas encore une valorisation historique réelle de
+ * Les filtres permettent de restreindre l'univers par type de portefeuille,
+ * profil de risque ou portefeuille client précis. La date initiale d'affichage
+ * est également modifiable.
+ *
+ * La maquette ne possède pas encore les valorisations historiques réelles de
  * chaque portefeuille. Pour l'affichage de démonstration, on utilise donc la
  * fonction historique déterministe déjà présente dans le prototype. En
- * production, cette fonction devra être remplacée par les valorisations et
- * taux de change historisés à chaque date de situation.
+ * production, cette fonction devra être remplacée par les valorisations réelles
+ * historisées à chaque date de situation.
  */
 const buildCurrencyAumHistory = (
   clients,
@@ -5256,26 +5259,23 @@ const buildCurrencyAumHistory = (
       };
     });
 
-    const totalReference = lignes.reduce(
-      (somme, ligne) => somme + Number(ligne.encoursReference || 0),
-      0
-    );
     const row = {
       date: period.date,
       mois: period.mois,
-      totalReference,
     };
 
     devises.forEach((deviseCode) => {
       const montantDevise = lignes
         .filter((ligne) => ligne.client.devise === deviseCode)
-        .reduce(
-          (somme, ligne) => somme + Number(ligne.encoursReference || 0),
-          0
-        );
+        .reduce((somme, ligne) => {
+          const encoursReference = Number(ligne.encoursReference || 0);
+          return (
+            somme +
+            convertCurrency(encoursReference, 'XOF', deviseCode)
+          );
+        }, 0);
 
-      row[deviseCode] =
-        totalReference > 0 ? (montantDevise / totalReference) * 100 : 0;
+      row[deviseCode] = montantDevise;
     });
 
     return row;
@@ -6788,6 +6788,14 @@ function Accueil({
   const [deviseEncoursSelectionnee, setDeviseEncoursSelectionnee] = useState(
     CLIENTS.find((client) => client.devise)?.devise || ''
   );
+  const [dateInitialeEncours, setDateInitialeEncours] = useState(
+    HISTORY_PERIODS[0]?.date || ''
+  );
+  const [typePortefeuilleEncours, setTypePortefeuilleEncours] =
+    useState('Tous');
+  const [profilRisqueEncours, setProfilRisqueEncours] = useState('Tous');
+  const [portefeuilleEncoursSelectionneId, setPortefeuilleEncoursSelectionneId] =
+    useState('Tous');
   const [profilHistoriquePortefeuilles, setProfilHistoriquePortefeuilles] =
     useState('Global');
   const [historyVisibility, setHistoryVisibility] = useState({
@@ -6925,19 +6933,73 @@ function Accueil({
     0
   );
 
-  const historiqueEncoursParDevise = buildCurrencyAumHistory(CLIENTS);
+  const typesPortefeuillesEncours = Array.from(
+    new Set(
+      CLIENTS.map(
+        (client) => PROFILE_TYPE_LABEL[client.type] || client.type
+      ).filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const profilsRisqueEncours = Array.from(
+    new Set(CLIENTS.map((client) => client.profilRisque).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const portefeuillesEncoursFiltres = CLIENTS.filter((client) => {
+    const typeClient = PROFILE_TYPE_LABEL[client.type] || client.type;
+    const typeOk =
+      typePortefeuilleEncours === 'Tous' ||
+      typeClient === typePortefeuilleEncours;
+    const profilOk =
+      profilRisqueEncours === 'Tous' ||
+      client.profilRisque === profilRisqueEncours;
+
+    return typeOk && profilOk;
+  });
+
+  const portefeuilleEncoursSelectionne =
+    portefeuilleEncoursSelectionneId !== 'Tous'
+      ? portefeuillesEncoursFiltres.find(
+          (client) => client.id === portefeuilleEncoursSelectionneId
+        ) || null
+      : null;
+
+  const universEncoursDevise = portefeuilleEncoursSelectionne
+    ? [portefeuilleEncoursSelectionne]
+    : portefeuillesEncoursFiltres;
+
+  const historiqueEncoursParDevise = buildCurrencyAumHistory(
+    universEncoursDevise
+  );
+
   const devisesEncoursDisponibles = historiqueEncoursParDevise.devises;
   const deviseEncoursActive =
-    devisesEncoursDisponibles.includes(deviseEncoursSelectionnee)
+    portefeuilleEncoursSelectionne?.devise ||
+    (devisesEncoursDisponibles.includes(deviseEncoursSelectionnee)
       ? deviseEncoursSelectionnee
-      : devisesEncoursDisponibles[0] || '';
+      : devisesEncoursDisponibles[0] || '');
+
+  const dateMinimumEncours = HISTORY_PERIODS[0]?.date || '';
+  const dateMaximumEncours =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date || '';
+  const historiqueEncoursAffiche = historiqueEncoursParDevise.data.filter(
+    (point) => !dateInitialeEncours || point.date >= dateInitialeEncours
+  );
+
   const dernierPointEncoursParDevise =
+    historiqueEncoursAffiche[historiqueEncoursAffiche.length - 1] ||
     historiqueEncoursParDevise.data[
       historiqueEncoursParDevise.data.length - 1
-    ] || {};
-  const partEncoursDeviseActuelle = Number(
+    ] ||
+    {};
+
+  const encoursDeviseActuel = Number(
     dernierPointEncoursParDevise[deviseEncoursActive] || 0
   );
+
+  const portefeuilleEncoursSelectValue = portefeuilleEncoursSelectionne
+    ? portefeuilleEncoursSelectionne.id
+    : 'Tous';
 
   const typesAlertesAccueil = ['Rendement', 'Risque', 'Allocation'];
   const statistiquesAlertesAccueil = typesAlertesAccueil.map((type) => ({
@@ -7498,67 +7560,202 @@ function Accueil({
               className="text-base font-bold"
               style={{ ...F_DISPLAY, color: C.ink }}
             >
-              Évolution de la part de l'encours total
+              Évolution de l'encours en monnaie
             </div>
             <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-              Sélectionnez une devise pour afficher uniquement l'évolution de
-              sa part dans l'encours total de la Gestion sous mandat.
+              Sélectionnez une devise puis affinez l'analyse par date initiale,
+              type de portefeuille, profil de risque ou portefeuille client.
+              Une seule courbe est affichée à la fois.
             </div>
           </div>
 
-          <div className="flex items-end gap-3 flex-wrap">
-            <div>
-              <label
-                className="text-[10px] uppercase font-semibold block mb-1"
-                style={{ color: C.sub }}
-              >
-                Devise à afficher
-              </label>
-              <select
-                value={deviseEncoursActive}
-                onChange={(event) =>
-                  setDeviseEncoursSelectionnee(event.target.value)
-                }
-                className="px-3 py-2 rounded-xl border text-sm font-semibold"
-                style={{
-                  minWidth: 150,
-                  borderColor: C.line,
-                  background: '#fff',
-                  color: C.ink,
-                  ...F_BODY,
-                }}
-              >
-                {devisesEncoursDisponibles.map((deviseCode) => (
-                  <option key={deviseCode} value={deviseCode}>
-                    {deviseCode}
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          <div
+            className="px-4 py-2 rounded-xl border"
+            style={{ borderColor: C.line, background: '#FAFAFC' }}
+          >
             <div
-              className="px-4 py-2 rounded-xl border"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}
+              className="text-[9px] uppercase font-semibold"
+              style={{ color: C.sub }}
             >
-              <div
-                className="text-[9px] uppercase font-semibold"
-                style={{ color: C.sub }}
-              >
-                Part actuelle
-              </div>
-              <div
-                className="text-lg font-bold mt-0.5"
-                style={{ color: C.navy, ...F_MONO }}
-              >
-                {partEncoursDeviseActuelle.toFixed(2)}%
-              </div>
+              Encours actuel affiché
             </div>
+            <div
+              className="text-lg font-bold mt-0.5"
+              style={{ color: C.navy, ...F_MONO }}
+            >
+              {fmt(Math.round(encoursDeviseActuel))} {deviseEncoursActive}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="grid grid-cols-5 gap-3 mt-5 p-4 rounded-2xl border"
+          style={{ borderColor: C.line, background: '#FAFAFC' }}
+        >
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Devise
+            </label>
+            <select
+              value={deviseEncoursActive}
+              disabled={Boolean(portefeuilleEncoursSelectionne)}
+              onChange={(event) =>
+                setDeviseEncoursSelectionnee(event.target.value)
+              }
+              className="w-full px-3 py-2 rounded-xl border text-sm font-semibold"
+              style={{
+                borderColor: C.line,
+                background: portefeuilleEncoursSelectionne ? '#F0F1F5' : '#fff',
+                color: C.ink,
+                ...F_BODY,
+              }}
+              title={
+                portefeuilleEncoursSelectionne
+                  ? 'La devise est celle du portefeuille sélectionné.'
+                  : 'Choisir la devise à analyser.'
+              }
+            >
+              {devisesEncoursDisponibles.map((deviseCode) => (
+                <option key={deviseCode} value={deviseCode}>
+                  {deviseCode}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Date initiale
+            </label>
+            <input
+              type="date"
+              min={dateMinimumEncours}
+              max={dateMaximumEncours}
+              value={dateInitialeEncours}
+              onChange={(event) => setDateInitialeEncours(event.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.ink,
+                ...F_MONO,
+              }}
+            />
+          </div>
+
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Type de portefeuille
+            </label>
+            <select
+              value={typePortefeuilleEncours}
+              onChange={(event) => {
+                setTypePortefeuilleEncours(event.target.value);
+                setPortefeuilleEncoursSelectionneId('Tous');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.ink,
+                ...F_BODY,
+              }}
+            >
+              <option value="Tous">Tous</option>
+              {typesPortefeuillesEncours.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Profil de risque
+            </label>
+            <select
+              value={profilRisqueEncours}
+              onChange={(event) => {
+                setProfilRisqueEncours(event.target.value);
+                setPortefeuilleEncoursSelectionneId('Tous');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.ink,
+                ...F_BODY,
+              }}
+            >
+              <option value="Tous">Tous</option>
+              {profilsRisqueEncours.map((profil) => (
+                <option key={profil} value={profil}>
+                  {profil}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              className="text-[10px] uppercase font-semibold block mb-1"
+              style={{ color: C.sub }}
+            >
+              Portefeuille client
+            </label>
+            <select
+              value={portefeuilleEncoursSelectValue}
+              onChange={(event) => {
+                const portefeuilleId = event.target.value;
+                setPortefeuilleEncoursSelectionneId(portefeuilleId);
+
+                const portefeuille =
+                  portefeuilleId === 'Tous'
+                    ? null
+                    : portefeuillesEncoursFiltres.find(
+                        (client) => client.id === portefeuilleId
+                      );
+
+                if (portefeuille?.devise) {
+                  setDeviseEncoursSelectionnee(portefeuille.devise);
+                }
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.ink,
+                ...F_BODY,
+              }}
+            >
+              <option value="Tous">
+                Tous les portefeuilles filtrés
+              </option>
+              {portefeuillesEncoursFiltres.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.nom} · {client.marche} · {client.devise}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
         <div className="mt-5">
           <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span
                 className="inline-block w-5 h-1 rounded-full"
                 style={{ background: C.indigo }}
@@ -7569,56 +7766,87 @@ function Accueil({
               >
                 {deviseEncoursActive}
               </span>
+              {portefeuilleEncoursSelectionne && (
+                <Badge tone="gold">
+                  {portefeuilleEncoursSelectionne.nom}
+                </Badge>
+              )}
+              {!portefeuilleEncoursSelectionne &&
+                typePortefeuilleEncours !== 'Tous' && (
+                  <Badge tone="slate">{typePortefeuilleEncours}</Badge>
+                )}
+              {!portefeuilleEncoursSelectionne &&
+                profilRisqueEncours !== 'Tous' && (
+                  <Badge tone="slate">{profilRisqueEncours}</Badge>
+                )}
             </div>
-            <Badge tone="navy">Part de l'encours total · %</Badge>
+            <Badge tone="navy">
+              Encours · {deviseEncoursActive}
+            </Badge>
           </div>
 
-          <ResponsiveContainer width="100%" height={310}>
-            <LineChart
-              data={historiqueEncoursParDevise.data}
-              margin={{ top: 12, right: 20, left: 4, bottom: 4 }}
-            >
-              <CartesianGrid stroke={C.line} vertical={false} />
-              <XAxis
-                dataKey="mois"
-                tick={{ fontSize: 10, fill: C.sub }}
-                axisLine={{ stroke: C.line }}
-                tickLine={false}
-              />
-              <YAxis
-                domain={[0, 100]}
-                tick={{ fontSize: 10, fill: C.sub }}
-                axisLine={false}
-                tickLine={false}
-                width={42}
-                tickFormatter={(value) => `${value}%`}
-              />
-              <Tooltip
-                formatter={(value) => [
-                  `${Number(value || 0).toFixed(2)}%`,
-                  deviseEncoursActive,
-                ]}
-                labelFormatter={(label) => `Situation · ${label}`}
-                contentStyle={{
-                  borderRadius: 10,
-                  border: `1px solid ${C.line}`,
-                  fontSize: 11,
-                }}
-              />
-              {deviseEncoursActive && (
+          {historiqueEncoursAffiche.length > 0 && deviseEncoursActive ? (
+            <ResponsiveContainer width="100%" height={320}>
+              <LineChart
+                data={historiqueEncoursAffiche}
+                margin={{ top: 12, right: 20, left: 20, bottom: 4 }}
+              >
+                <CartesianGrid stroke={C.line} vertical={false} />
+                <XAxis
+                  dataKey="mois"
+                  tick={{ fontSize: 10, fill: C.sub }}
+                  axisLine={{ stroke: C.line }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10, fill: C.sub }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={88}
+                  tickFormatter={(value) => fmtCompactMontant(value)}
+                />
+                <Tooltip
+                  formatter={(value) => [
+                    `${fmt(Math.round(Number(value || 0)))} ${deviseEncoursActive}`,
+                    portefeuilleEncoursSelectionne
+                      ? portefeuilleEncoursSelectionne.nom
+                      : `Encours ${deviseEncoursActive}`,
+                  ]}
+                  labelFormatter={(label) => `Situation · ${label}`}
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: `1px solid ${C.line}`,
+                    fontSize: 11,
+                  }}
+                />
                 <Line
                   type="monotone"
                   dataKey={deviseEncoursActive}
-                  name={deviseEncoursActive}
+                  name={
+                    portefeuilleEncoursSelectionne
+                      ? portefeuilleEncoursSelectionne.nom
+                      : `Encours ${deviseEncoursActive}`
+                  }
                   stroke={C.indigo}
                   strokeWidth={3}
                   dot={false}
                   activeDot={{ r: 5 }}
                   isAnimationActive={false}
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div
+              className="h-72 rounded-2xl border flex items-center justify-center text-sm"
+              style={{
+                borderColor: C.line,
+                background: '#FAFAFC',
+                color: C.sub,
+              }}
+            >
+              Aucune donnée disponible avec ces filtres et cette date initiale.
+            </div>
+          )}
         </div>
 
         <div
@@ -7626,13 +7854,16 @@ function Accueil({
           style={{ borderTop: `1px solid ${C.line}`, color: C.sub }}
         >
           <span>
-            Lecture : {partEncoursDeviseActuelle.toFixed(2)}% signifie que la
-            devise {deviseEncoursActive} représente actuellement cette part de
-            l'encours consolidé.
+            {portefeuilleEncoursSelectionne
+              ? `Courbe du portefeuille ${portefeuilleEncoursSelectionne.nom} en ${deviseEncoursActive}.`
+              : `Courbe agrégée des portefeuilles filtrés libellés en ${deviseEncoursActive}.`}
+          </span>
+          <span>
+            Période affichée depuis le {dateInitialeEncours || dateMinimumEncours}.
           </span>
           <span>
             Maquette : historique déterministe · remplacer par les valorisations
-            et FX historisés en production.
+            historisées réelles en production.
           </span>
         </div>
       </Card>
