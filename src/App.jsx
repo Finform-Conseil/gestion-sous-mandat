@@ -6783,6 +6783,8 @@ function Accueil({
   const [selection, setSelection] = useState(null);
   const [retraitsDisponiblesOuverts, setRetraitsDisponiblesOuverts] =
     useState(false);
+  const [expositionDeviseOuverte, setExpositionDeviseOuverte] =
+    useState(false);
   const [seuilExpo, setSeuilExpo] = useState(0);
   const [rechercheClient, setRechercheClient] = useState('');
   const [deviseEncoursSelectionnee, setDeviseEncoursSelectionnee] = useState(
@@ -6813,6 +6815,7 @@ function Accueil({
     'Profil de risque': RISK_PROFILE_MIX,
     "Type d'actif": ASSET_MIX,
     'Marché boursier': MARKET_MIX,
+    Devise: CURRENCY_MIX,
     Pays: COUNTRY_MIX,
     Secteur: SECTOR_MIX,
     'Type de portefeuille': PROFILE_TYPE_MIX,
@@ -7552,42 +7555,90 @@ function Accueil({
         </Card>
       </div>
 
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div>
-            <Eyebrow>Exposition par devise</Eyebrow>
-            <div
-              className="text-base font-bold"
-              style={{ ...F_DISPLAY, color: C.ink }}
-            >
-              Évolution de l'encours en monnaie
-            </div>
-            <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-              Sélectionnez une devise puis affinez l'analyse par date initiale,
-              type de portefeuille, profil de risque ou portefeuille client.
-              Une seule courbe est affichée à la fois.
-            </div>
-          </div>
-
+      {expositionDeviseOuverte && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{
+            zIndex: 130,
+            background: 'rgba(15, 27, 51, 0.52)',
+            backdropFilter: 'blur(3px)',
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="exposition-devise-title"
+          onClick={() => setExpositionDeviseOuverte(false)}
+        >
           <div
-            className="px-4 py-2 rounded-xl border"
-            style={{ borderColor: C.line, background: '#FAFAFC' }}
+            className="w-full max-w-7xl rounded-2xl border shadow-2xl overflow-hidden"
+            style={{
+              background: C.card,
+              borderColor: C.line,
+              maxHeight: '90vh',
+            }}
+            onClick={(event) => event.stopPropagation()}
           >
             <div
-              className="text-[9px] uppercase font-semibold"
-              style={{ color: C.sub }}
+              className="flex items-start justify-between gap-4 p-5"
+              style={{ borderBottom: `1px solid ${C.line}` }}
             >
-              Encours actuel affiché
-            </div>
-            <div
-              className="text-lg font-bold mt-0.5"
-              style={{ color: C.navy, ...F_MONO }}
-            >
-              {fmt(Math.round(encoursDeviseActuel))} {deviseEncoursActive}
-            </div>
-          </div>
-        </div>
+              <div>
+                <Eyebrow>Exposition par devise</Eyebrow>
+                <h3
+                  id="exposition-devise-title"
+                  className="text-xl font-bold"
+                  style={{ ...F_DISPLAY, color: C.ink }}
+                >
+                  Évolution de l'encours en {deviseEncoursActive}
+                </h3>
+                <div
+                  className="text-xs mt-1 max-w-3xl"
+                  style={{ color: C.sub }}
+                >
+                  Analyse de l'évolution monétaire de l'encours. Vous pouvez
+                  modifier la date initiale, le type de portefeuille, le profil
+                  de risque ou isoler un portefeuille client précis.
+                </div>
+              </div>
 
+              <div className="flex items-start gap-3">
+                <div
+                  className="px-4 py-2 rounded-xl border text-right"
+                  style={{ borderColor: C.line, background: '#FAFAFC' }}
+                >
+                  <div
+                    className="text-[9px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    Encours actuel affiché
+                  </div>
+                  <div
+                    className="text-lg font-bold mt-0.5"
+                    style={{ color: C.navy, ...F_MONO }}
+                  >
+                    {fmt(Math.round(encoursDeviseActuel))} {deviseEncoursActive}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setExpositionDeviseOuverte(false)}
+                  className="w-10 h-10 rounded-xl border flex items-center justify-center"
+                  style={{
+                    borderColor: C.line,
+                    color: C.sub,
+                    background: '#fff',
+                  }}
+                  aria-label="Fermer l'exposition par devise"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div
+              className="overflow-y-auto p-5"
+              style={{ maxHeight: 'calc(90vh - 105px)' }}
+            >
         <div
           className="grid grid-cols-5 gap-3 mt-5 p-4 rounded-2xl border"
           style={{ borderColor: C.line, background: '#FAFAFC' }}
@@ -7866,7 +7917,10 @@ function Accueil({
             historisées réelles en production.
           </span>
         </div>
-      </Card>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
@@ -7908,17 +7962,38 @@ function Accueil({
                   className="text-xs mb-2"
                   style={{ color: C.sub, ...F_BODY }}
                 >
-                  Cliquez une part pour voir le détail par portefeuille.
+                  {dim === 'Devise'
+                    ? "Cliquez sur un point de devise pour ouvrir son évolution d'encours."
+                    : 'Cliquez une part pour voir le détail par portefeuille.'}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {repartitionCourante.map((d, i) => (
                     <button
                       key={d.name}
-                      onClick={() =>
-                        setSelection({ dimension: dim, value: d.name })
+                      onClick={() => {
+                        if (dim === 'Devise') {
+                          setDeviseEncoursSelectionnee(d.name);
+                          setTypePortefeuilleEncours('Tous');
+                          setProfilRisqueEncours('Tous');
+                          setPortefeuilleEncoursSelectionneId('Tous');
+                          setExpositionDeviseOuverte(true);
+                          return;
+                        }
+
+                        setSelection({ dimension: dim, value: d.name });
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium text-left transition-transform active:scale-[0.98]"
+                      style={{
+                        borderColor: dim === 'Devise' ? C.indigo : C.line,
+                        background: dim === 'Devise' ? '#F6F7FF' : '#fff',
+                        cursor: 'pointer',
+                        ...F_BODY,
+                      }}
+                      title={
+                        dim === 'Devise'
+                          ? `Ouvrir l'évolution de l'encours en ${d.name}`
+                          : `Voir le détail ${d.name}`
                       }
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium text-left"
-                      style={{ borderColor: C.line, ...F_BODY }}
                     >
                       <span
                         className="w-2 h-2 rounded-full shrink-0"
@@ -7941,6 +8016,7 @@ function Accueil({
               </>
             )}
             {selection &&
+              dim !== 'Devise' &&
               (() => {
                 const allExpo = CLIENTS.map((c) => ({
                   client: c,
