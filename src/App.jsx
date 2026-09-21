@@ -2204,7 +2204,86 @@ const construirePortefeuilleGenere = (spec, index) => {
 const CLIENTS_GENERES = PORTEFEUILLES_GENERES_SPECS.map(
   construirePortefeuilleGenere
 );
-const CLIENTS = [...CLIENTS_ORIGINAUX, ...CLIENTS_GENERES];
+
+/*
+ * PORTEFEUILLES MULTI-DEVISES
+ *
+ * `devise` reste la devise de référence / de tenue du portefeuille.
+ * `expositionsDevises` représente la répartition des investissements par
+ * devise. Chaque portefeuille détient volontairement plusieurs devises afin
+ * que l'analyse d'exposition puisse être faite portefeuille par portefeuille.
+ *
+ * La génération est déterministe : un même portefeuille conserve toujours la
+ * même ventilation à chaque rendu de la maquette.
+ */
+const DEVISES_INVESTISSEMENT = Object.keys(FX);
+
+const construireExpositionsDevises = (client, index) => {
+  const deviseReference = client.devise;
+  const autresDevises = DEVISES_INVESTISSEMENT.filter(
+    (devise) => devise !== deviseReference
+  );
+
+  if (autresDevises.length === 0) {
+    return { [deviseReference]: 100 };
+  }
+
+  const seed = liquidityHistorySeed(
+    `${client.id}-${client.nom}-${client.marche}-${index}`
+  );
+
+  // Entre 48 % et 60 % de l'encours reste dans la devise de référence.
+  const poidsReference = 48 + (seed % 4) * 4;
+  const reste = 100 - poidsReference;
+
+  // Deux ou trois devises étrangères sont retenues de manière déterministe.
+  const nombreDevisesEtrangeres = Math.min(
+    autresDevises.length,
+    2 + (seed % 2)
+  );
+  const devisesEtrangeres = [];
+
+  for (
+    let offset = 0;
+    devisesEtrangeres.length < nombreDevisesEtrangeres &&
+    offset < autresDevises.length * 3;
+    offset += 1
+  ) {
+    const candidate =
+      autresDevises[(seed + offset * 2 + index) % autresDevises.length];
+
+    if (!devisesEtrangeres.includes(candidate)) {
+      devisesEtrangeres.push(candidate);
+    }
+  }
+
+  const repartition = {
+    [deviseReference]: poidsReference,
+  };
+
+  if (devisesEtrangeres.length === 1) {
+    repartition[devisesEtrangeres[0]] = reste;
+  } else if (devisesEtrangeres.length === 2) {
+    const premier = Math.round(reste * 0.62);
+    repartition[devisesEtrangeres[0]] = premier;
+    repartition[devisesEtrangeres[1]] = reste - premier;
+  } else {
+    const premier = Math.round(reste * 0.5);
+    const deuxieme = Math.round(reste * 0.3);
+    repartition[devisesEtrangeres[0]] = premier;
+    repartition[devisesEtrangeres[1]] = deuxieme;
+    repartition[devisesEtrangeres[2]] = reste - premier - deuxieme;
+  }
+
+  return repartition;
+};
+
+const CLIENTS_BRUTS = [...CLIENTS_ORIGINAUX, ...CLIENTS_GENERES];
+
+const CLIENTS = CLIENTS_BRUTS.map((client, index) => ({
+  ...client,
+  expositionsDevises: construireExpositionsDevises(client, index),
+}));
 
 const PROFILE_TYPE_LABEL = {
   Privé: 'Particulier',
@@ -2242,7 +2321,37 @@ const PROFILE_TYPE_MIX = aggregateEncoursBy(
   (c) => PROFILE_TYPE_LABEL[c.type] || c.type
 );
 const RISK_PROFILE_MIX = aggregateEncoursBy((c) => c.profilRisque);
-const CURRENCY_MIX = aggregateEncoursBy((c) => c.devise);
+
+const aggregateCurrencyExposure = () => {
+  const montantsReference = {};
+  let totalReference = 0;
+
+  CLIENTS.forEach((client) => {
+    const encoursReference = toRef(client.encours, client.devise);
+    const expositions =
+      client.expositionsDevises || { [client.devise]: 100 };
+
+    totalReference += encoursReference;
+
+    Object.entries(expositions).forEach(([devise, pourcentage]) => {
+      montantsReference[devise] =
+        (montantsReference[devise] || 0) +
+        (encoursReference * Number(pourcentage || 0)) / 100;
+    });
+  });
+
+  return Object.entries(montantsReference)
+    .map(([name, montant]) => ({
+      name,
+      value:
+        totalReference > 0
+          ? Number(((montant / totalReference) * 100).toFixed(1))
+          : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
+};
+
+const CURRENCY_MIX = aggregateCurrencyExposure();
 
 const CORR_SECTEURS_LABELS = [
   'Banques',
@@ -5225,7 +5334,13 @@ const buildCurrencyAumHistory = (
   periods = HISTORY_PERIODS
 ) => {
   const devises = Array.from(
-    new Set((clients || []).map((client) => client.devise).filter(Boolean))
+    new Set(
+      (clients || []).flatMap((client) =>
+        Object.keys(
+          client.expositionsDevises || { [client.devise]: 100 }
+        )
+      )
+    )
   );
   const dateReference = parseIsoLocalDate(
     periods[periods.length - 1]?.date || formatIsoLocalDate(new Date())
@@ -5265,15 +5380,23 @@ const buildCurrencyAumHistory = (
     };
 
     devises.forEach((deviseCode) => {
-      const montantDevise = lignes
-        .filter((ligne) => ligne.client.devise === deviseCode)
-        .reduce((somme, ligne) => {
-          const encoursReference = Number(ligne.encoursReference || 0);
-          return (
-            somme +
-            convertCurrency(encoursReference, 'XOF', deviseCode)
-          );
-        }, 0);
+      const montantDevise = lignes.reduce((somme, ligne) => {
+        const encoursReference = Number(ligne.encoursReference || 0);
+        const expositions =
+          ligne.client.expositionsDevises || {
+            [ligne.client.devise]: 100,
+          };
+        const poidsDevise = Number(expositions[deviseCode] || 0) / 100;
+
+        if (poidsDevise <= 0) return somme;
+
+        const expositionReference = encoursReference * poidsDevise;
+
+        return (
+          somme +
+          convertCurrency(expositionReference, 'XOF', deviseCode)
+        );
+      }, 0);
 
       row[deviseCode] = montantDevise;
     });
@@ -6977,10 +7100,9 @@ function Accueil({
 
   const devisesEncoursDisponibles = historiqueEncoursParDevise.devises;
   const deviseEncoursActive =
-    portefeuilleEncoursSelectionne?.devise ||
-    (devisesEncoursDisponibles.includes(deviseEncoursSelectionnee)
+    devisesEncoursDisponibles.includes(deviseEncoursSelectionnee)
       ? deviseEncoursSelectionnee
-      : devisesEncoursDisponibles[0] || '');
+      : devisesEncoursDisponibles[0] || '';
 
   const dateMinimumEncours = HISTORY_PERIODS[0]?.date || '';
   const dateMaximumEncours =
@@ -7652,28 +7774,37 @@ function Accueil({
             </label>
             <select
               value={deviseEncoursActive}
-              disabled={Boolean(portefeuilleEncoursSelectionne)}
               onChange={(event) =>
                 setDeviseEncoursSelectionnee(event.target.value)
               }
               className="w-full px-3 py-2 rounded-xl border text-sm font-semibold"
               style={{
                 borderColor: C.line,
-                background: portefeuilleEncoursSelectionne ? '#F0F1F5' : '#fff',
+                background: '#fff',
                 color: C.ink,
                 ...F_BODY,
               }}
               title={
                 portefeuilleEncoursSelectionne
-                  ? 'La devise est celle du portefeuille sélectionné.'
+                  ? 'Choisir une devise détenue dans ce portefeuille.'
                   : 'Choisir la devise à analyser.'
               }
             >
-              {devisesEncoursDisponibles.map((deviseCode) => (
-                <option key={deviseCode} value={deviseCode}>
-                  {deviseCode}
-                </option>
-              ))}
+              {devisesEncoursDisponibles.map((deviseCode) => {
+                const poids =
+                  portefeuilleEncoursSelectionne?.expositionsDevises?.[
+                    deviseCode
+                  ];
+
+                return (
+                  <option key={deviseCode} value={deviseCode}>
+                    {deviseCode}
+                    {Number.isFinite(Number(poids))
+                      ? ` · ${Number(poids).toFixed(0)}%`
+                      : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -7780,8 +7911,18 @@ function Accueil({
                         (client) => client.id === portefeuilleId
                       );
 
-                if (portefeuille?.devise) {
-                  setDeviseEncoursSelectionnee(portefeuille.devise);
+                if (portefeuille) {
+                  const devisesPortefeuille = Object.keys(
+                    portefeuille.expositionsDevises || {
+                      [portefeuille.devise]: 100,
+                    }
+                  );
+
+                  setDeviseEncoursSelectionnee((deviseCourante) =>
+                    devisesPortefeuille.includes(deviseCourante)
+                      ? deviseCourante
+                      : devisesPortefeuille[0] || portefeuille.devise
+                  );
                 }
               }}
               className="w-full px-3 py-2 rounded-xl border text-sm"
@@ -7797,7 +7938,10 @@ function Accueil({
               </option>
               {portefeuillesEncoursFiltres.map((client) => (
                 <option key={client.id} value={client.id}>
-                  {client.nom} · {client.marche} · {client.devise}
+                  {client.nom} · {client.marche} · réf. {client.devise} ·{' '}
+                  {Object.keys(
+                    client.expositionsDevises || { [client.devise]: 100 }
+                  ).join('/')}
                 </option>
               ))}
             </select>
@@ -7818,9 +7962,23 @@ function Accueil({
                 {deviseEncoursActive}
               </span>
               {portefeuilleEncoursSelectionne && (
-                <Badge tone="gold">
-                  {portefeuilleEncoursSelectionne.nom}
-                </Badge>
+                <>
+                  <Badge tone="gold">
+                    {portefeuilleEncoursSelectionne.nom}
+                  </Badge>
+                  {Object.entries(
+                    portefeuilleEncoursSelectionne.expositionsDevises || {
+                      [portefeuilleEncoursSelectionne.devise]: 100,
+                    }
+                  ).map(([devise, poids]) => (
+                    <Badge
+                      key={`${portefeuilleEncoursSelectionne.id}-${devise}`}
+                      tone={devise === deviseEncoursActive ? 'navy' : 'slate'}
+                    >
+                      {devise} {Number(poids).toFixed(0)}%
+                    </Badge>
+                  ))}
+                </>
               )}
               {!portefeuilleEncoursSelectionne &&
                 typePortefeuilleEncours !== 'Tous' && (
@@ -7906,8 +8064,8 @@ function Accueil({
         >
           <span>
             {portefeuilleEncoursSelectionne
-              ? `Courbe du portefeuille ${portefeuilleEncoursSelectionne.nom} en ${deviseEncoursActive}.`
-              : `Courbe agrégée des portefeuilles filtrés libellés en ${deviseEncoursActive}.`}
+              ? `Courbe de l'exposition ${deviseEncoursActive} du portefeuille ${portefeuilleEncoursSelectionne.nom}.`
+              : `Courbe agrégée des investissements exposés à la devise ${deviseEncoursActive}.`}
           </span>
           <span>
             Période affichée depuis le {dateInitialeEncours || dateMinimumEncours}.
