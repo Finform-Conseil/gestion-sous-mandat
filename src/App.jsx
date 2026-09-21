@@ -5206,10 +5206,10 @@ const HISTORY_PERIODS = [
 /*
  * EXPOSITION DEVISES — ACCUEIL GESTION SOUS MANDAT
  *
- * Chaque point représente la part de l'encours consolidé détenue dans chaque
- * devise. Tous les encours sont d'abord ramenés dans la même devise de
- * référence avant de calculer les pourcentages, ce qui permet d'additionner
- * correctement XOF, NGN, GHS, etc.
+ * Chaque point représente la part de l'encours consolidé détenue dans une
+ * devise donnée. L'utilisateur sélectionne la devise à afficher et le graphique
+ * ne montre qu'une seule courbe à la fois. Tous les encours sont d'abord
+ * ramenés dans la même devise de référence avant de calculer les pourcentages.
  *
  * La maquette ne possède pas encore une valorisation historique réelle de
  * chaque portefeuille. Pour l'affichage de démonstration, on utilise donc la
@@ -5219,14 +5219,10 @@ const HISTORY_PERIODS = [
  */
 const buildCurrencyAumHistory = (
   clients,
-  portefeuilleSelectionneId = null,
   periods = HISTORY_PERIODS
 ) => {
   const devises = Array.from(
     new Set((clients || []).map((client) => client.devise).filter(Boolean))
-  );
-  const portefeuilleSelectionne = (clients || []).find(
-    (client) => client.id === portefeuilleSelectionneId
   );
   const dateReference = parseIsoLocalDate(
     periods[periods.length - 1]?.date || formatIsoLocalDate(new Date())
@@ -5277,20 +5273,10 @@ const buildCurrencyAumHistory = (
           (somme, ligne) => somme + Number(ligne.encoursReference || 0),
           0
         );
+
       row[deviseCode] =
         totalReference > 0 ? (montantDevise / totalReference) * 100 : 0;
     });
-
-    const lignePortefeuille = portefeuilleSelectionne
-      ? lignes.find(
-          (ligne) => ligne.client.id === portefeuilleSelectionne.id
-        )
-      : null;
-    row.portefeuilleSelectionne =
-      totalReference > 0 && lignePortefeuille
-        ? (Number(lignePortefeuille.encoursReference || 0) / totalReference) *
-          100
-        : 0;
 
     return row;
   });
@@ -5298,7 +5284,6 @@ const buildCurrencyAumHistory = (
   return {
     devises,
     data,
-    portefeuilleSelectionne,
   };
 };
 
@@ -6800,10 +6785,9 @@ function Accueil({
     useState(false);
   const [seuilExpo, setSeuilExpo] = useState(0);
   const [rechercheClient, setRechercheClient] = useState('');
-  const [recherchePortefeuilleDevise, setRecherchePortefeuilleDevise] =
-    useState('');
-  const [portefeuilleDeviseSelectionneId, setPortefeuilleDeviseSelectionneId] =
-    useState(null);
+  const [deviseEncoursSelectionnee, setDeviseEncoursSelectionnee] = useState(
+    CLIENTS.find((client) => client.devise)?.devise || ''
+  );
   const [profilHistoriquePortefeuilles, setProfilHistoriquePortefeuilles] =
     useState('Global');
   const [historyVisibility, setHistoryVisibility] = useState({
@@ -6941,27 +6925,19 @@ function Accueil({
     0
   );
 
-  const historiqueEncoursParDevise = buildCurrencyAumHistory(
-    CLIENTS,
-    portefeuilleDeviseSelectionneId
-  );
-  const portefeuilleDeviseSelectionne =
-    historiqueEncoursParDevise.portefeuilleSelectionne;
-  const recherchePortefeuilleDeviseNormalisee = recherchePortefeuilleDevise
-    .trim()
-    .toLowerCase();
-  const suggestionsPortefeuillesDevise = recherchePortefeuilleDeviseNormalisee
-    ? CLIENTS.filter((client) => {
-        const texte = `${client.nom} ${client.id} ${client.marche} ${
-          client.devise
-        } ${client.pays || ''}`.toLowerCase();
-        return texte.includes(recherchePortefeuilleDeviseNormalisee);
-      }).slice(0, 8)
-    : [];
+  const historiqueEncoursParDevise = buildCurrencyAumHistory(CLIENTS);
+  const devisesEncoursDisponibles = historiqueEncoursParDevise.devises;
+  const deviseEncoursActive =
+    devisesEncoursDisponibles.includes(deviseEncoursSelectionnee)
+      ? deviseEncoursSelectionnee
+      : devisesEncoursDisponibles[0] || '';
   const dernierPointEncoursParDevise =
     historiqueEncoursParDevise.data[
       historiqueEncoursParDevise.data.length - 1
     ] || {};
+  const partEncoursDeviseActuelle = Number(
+    dernierPointEncoursParDevise[deviseEncoursActive] || 0
+  );
 
   const typesAlertesAccueil = ['Rendement', 'Risque', 'Allocation'];
   const statistiquesAlertesAccueil = typesAlertesAccueil.map((type) => ({
@@ -7522,258 +7498,127 @@ function Accueil({
               className="text-base font-bold"
               style={{ ...F_DISPLAY, color: C.ink }}
             >
-              Évolution de la part de l'encours total par devise
+              Évolution de la part de l'encours total
             </div>
             <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-              Chaque courbe mesure la part de l'encours consolidé représentée
-              par une devise. Sélectionnez un portefeuille pour superposer sa
-              propre part de l'encours total sur le même graphique.
+              Sélectionnez une devise pour afficher uniquement l'évolution de
+              sa part dans l'encours total de la Gestion sous mandat.
             </div>
           </div>
-          <Badge tone="navy">Part de l'encours total · %</Badge>
-        </div>
 
-        <div className="grid grid-cols-3 gap-4 mt-4 items-start">
-          <div className="col-span-1 relative" style={{ zIndex: 20 }}>
-            <label
-              className="text-xs font-semibold block mb-1.5"
-              style={{ color: C.sub }}
-            >
-              Rechercher un portefeuille
-            </label>
-            <div className="relative">
-              <Search
-                size={15}
-                className="absolute left-3 top-1/2 -translate-y-1/2"
+          <div className="flex items-end gap-3 flex-wrap">
+            <div>
+              <label
+                className="text-[10px] uppercase font-semibold block mb-1"
                 style={{ color: C.sub }}
-              />
-              <input
-                type="text"
-                value={recherchePortefeuilleDevise}
-                onChange={(event) => {
-                  const valeur = event.target.value;
-                  setRecherchePortefeuilleDevise(valeur);
-                  if (
-                    portefeuilleDeviseSelectionne &&
-                    valeur !== portefeuilleDeviseSelectionne.nom
-                  ) {
-                    setPortefeuilleDeviseSelectionneId(null);
-                  }
+              >
+                Devise à afficher
+              </label>
+              <select
+                value={deviseEncoursActive}
+                onChange={(event) =>
+                  setDeviseEncoursSelectionnee(event.target.value)
+                }
+                className="px-3 py-2 rounded-xl border text-sm font-semibold"
+                style={{
+                  minWidth: 150,
+                  borderColor: C.line,
+                  background: '#fff',
+                  color: C.ink,
+                  ...F_BODY,
                 }}
-                placeholder="Nom, marché, devise…"
-                className="w-full pl-9 pr-9 py-2.5 rounded-xl border text-sm"
-                style={{ borderColor: C.line, background: '#fff', ...F_BODY }}
-              />
-              {recherchePortefeuilleDevise && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRecherchePortefeuilleDevise('');
-                    setPortefeuilleDeviseSelectionneId(null);
-                  }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg flex items-center justify-center"
-                  style={{ color: C.sub }}
-                  aria-label="Effacer la recherche de portefeuille"
-                >
-                  <X size={14} />
-                </button>
-              )}
+              >
+                {devisesEncoursDisponibles.map((deviseCode) => (
+                  <option key={deviseCode} value={deviseCode}>
+                    {deviseCode}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            {recherchePortefeuilleDeviseNormalisee &&
-              !portefeuilleDeviseSelectionne && (
-                <div
-                  className="absolute left-0 right-0 mt-1 rounded-xl border shadow-lg overflow-hidden"
-                  style={{
-                    borderColor: C.line,
-                    background: '#fff',
-                    maxHeight: 260,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {suggestionsPortefeuillesDevise.length > 0 ? (
-                    suggestionsPortefeuillesDevise.map((client) => (
-                      <button
-                        key={client.id}
-                        type="button"
-                        onClick={() => {
-                          setPortefeuilleDeviseSelectionneId(client.id);
-                          setRecherchePortefeuilleDevise(client.nom);
-                        }}
-                        className="w-full px-3 py-2.5 text-left flex items-center justify-between gap-3 hover:bg-slate-50"
-                        style={{ borderTop: `1px solid ${C.line}` }}
-                      >
-                        <span className="min-w-0">
-                          <span
-                            className="block text-xs font-semibold truncate"
-                            style={{ color: C.ink }}
-                          >
-                            {client.nom}
-                          </span>
-                          <span
-                            className="block text-[10px] mt-0.5"
-                            style={{ color: C.sub }}
-                          >
-                            {client.marche} · {client.pays}
-                          </span>
-                        </span>
-                        <Badge tone="slate">{client.devise}</Badge>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-3 py-3 text-xs" style={{ color: C.sub }}>
-                      Aucun portefeuille trouvé.
-                    </div>
-                  )}
-                </div>
-              )}
 
             <div
-              className="mt-3 p-3 rounded-xl border"
+              className="px-4 py-2 rounded-xl border"
               style={{ borderColor: C.line, background: '#FAFAFC' }}
             >
-              {portefeuilleDeviseSelectionne ? (
-                <>
-                  <div
-                    className="text-[10px] uppercase font-semibold"
-                    style={{ color: C.sub }}
-                  >
-                    Portefeuille comparé
-                  </div>
-                  <div
-                    className="text-sm font-bold mt-1"
-                    style={{ color: C.ink }}
-                  >
-                    {portefeuilleDeviseSelectionne.nom}
-                  </div>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <Badge tone="navy">
-                      {portefeuilleDeviseSelectionne.marche}
-                    </Badge>
-                    <Badge tone="slate">
-                      {portefeuilleDeviseSelectionne.devise}
-                    </Badge>
-                    <span
-                      className="text-[10px] font-semibold"
-                      style={{ color: C.coral, ...F_MONO }}
-                    >
-                      {Number(
-                        dernierPointEncoursParDevise.portefeuilleSelectionne ||
-                          0
-                      ).toFixed(2)}%
-                      {' '}de l'encours total
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs leading-relaxed" style={{ color: C.sub }}>
-                  Recherchez puis sélectionnez un portefeuille pour afficher
-                  sa courbe individuelle en pointillés sur le graphique.
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="col-span-2">
-            <div className="flex items-center gap-4 flex-wrap mb-2">
-              {historiqueEncoursParDevise.devises.map((deviseCode, index) => (
-                <div
-                  key={deviseCode}
-                  className="flex items-center gap-1.5 text-xs font-semibold"
-                  style={{ color: C.sub }}
-                >
-                  <span
-                    className="inline-block w-3 h-1 rounded-full"
-                    style={{
-                      background:
-                        PALETTE[index % Math.min(PALETTE.length, 4)],
-                    }}
-                  />
-                  <span>{deviseCode}</span>
-                  <span style={{ color: C.ink, ...F_MONO }}>
-                    {Number(dernierPointEncoursParDevise[deviseCode] || 0).toFixed(
-                      1
-                    )}%
-                  </span>
-                </div>
-              ))}
-              {portefeuilleDeviseSelectionne && (
-                <div
-                  className="flex items-center gap-1.5 text-xs font-semibold"
-                  style={{ color: C.coral }}
-                >
-                  <span
-                    className="inline-block w-4 border-t-2 border-dashed"
-                    style={{ borderColor: C.coral }}
-                  />
-                  {portefeuilleDeviseSelectionne.nom}
-                </div>
-              )}
-            </div>
-
-            <ResponsiveContainer width="100%" height={285}>
-              <LineChart
-                data={historiqueEncoursParDevise.data}
-                margin={{ top: 12, right: 20, left: 4, bottom: 4 }}
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
               >
-                <CartesianGrid stroke={C.line} vertical={false} />
-                <XAxis
-                  dataKey="mois"
-                  tick={{ fontSize: 10, fill: C.sub }}
-                  axisLine={{ stroke: C.line }}
-                  tickLine={false}
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  tick={{ fontSize: 10, fill: C.sub }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={42}
-                  tickFormatter={(value) => `${value}%`}
-                />
-                <Tooltip
-                  formatter={(value, name) => [
-                    `${Number(value || 0).toFixed(2)}%`,
-                    name,
-                  ]}
-                  labelFormatter={(label) => `Situation · ${label}`}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: `1px solid ${C.line}`,
-                    fontSize: 11,
-                  }}
-                />
-                {historiqueEncoursParDevise.devises.map(
-                  (deviseCode, index) => (
-                    <Line
-                      key={deviseCode}
-                      type="monotone"
-                      dataKey={deviseCode}
-                      name={`Encours ${deviseCode}`}
-                      stroke={PALETTE[index % Math.min(PALETTE.length, 4)]}
-                      strokeWidth={2.4}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      isAnimationActive={false}
-                    />
-                  )
-                )}
-                {portefeuilleDeviseSelectionne && (
-                  <Line
-                    type="monotone"
-                    dataKey="portefeuilleSelectionne"
-                    name={`Portefeuille · ${portefeuilleDeviseSelectionne.nom}`}
-                    stroke={C.coral}
-                    strokeWidth={3}
-                    strokeDasharray="8 5"
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                    isAnimationActive={false}
-                  />
-                )}
-              </LineChart>
-            </ResponsiveContainer>
+                Part actuelle
+              </div>
+              <div
+                className="text-lg font-bold mt-0.5"
+                style={{ color: C.navy, ...F_MONO }}
+              >
+                {partEncoursDeviseActuelle.toFixed(2)}%
+              </div>
+            </div>
           </div>
+        </div>
+
+        <div className="mt-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-5 h-1 rounded-full"
+                style={{ background: C.indigo }}
+              />
+              <span
+                className="text-xs font-semibold"
+                style={{ color: C.ink }}
+              >
+                {deviseEncoursActive}
+              </span>
+            </div>
+            <Badge tone="navy">Part de l'encours total · %</Badge>
+          </div>
+
+          <ResponsiveContainer width="100%" height={310}>
+            <LineChart
+              data={historiqueEncoursParDevise.data}
+              margin={{ top: 12, right: 20, left: 4, bottom: 4 }}
+            >
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis
+                dataKey="mois"
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={{ stroke: C.line }}
+                tickLine={false}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                width={42}
+                tickFormatter={(value) => `${value}%`}
+              />
+              <Tooltip
+                formatter={(value) => [
+                  `${Number(value || 0).toFixed(2)}%`,
+                  deviseEncoursActive,
+                ]}
+                labelFormatter={(label) => `Situation · ${label}`}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: `1px solid ${C.line}`,
+                  fontSize: 11,
+                }}
+              />
+              {deviseEncoursActive && (
+                <Line
+                  type="monotone"
+                  dataKey={deviseEncoursActive}
+                  name={deviseEncoursActive}
+                  stroke={C.indigo}
+                  strokeWidth={3}
+                  dot={false}
+                  activeDot={{ r: 5 }}
+                  isAnimationActive={false}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
         </div>
 
         <div
@@ -7781,8 +7626,9 @@ function Accueil({
           style={{ borderTop: `1px solid ${C.line}`, color: C.sub }}
         >
           <span>
-            Lecture : 40% en NGN signifie que 40% de l'encours consolidé est
-            porté par des portefeuilles libellés en NGN à cette date.
+            Lecture : {partEncoursDeviseActuelle.toFixed(2)}% signifie que la
+            devise {deviseEncoursActive} représente actuellement cette part de
+            l'encours consolidé.
           </span>
           <span>
             Maquette : historique déterministe · remplacer par les valorisations
