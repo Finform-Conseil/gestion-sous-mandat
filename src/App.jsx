@@ -70,6 +70,31 @@ const PALETTE = [C.navy, C.gold, C.teal, C.indigo, C.coral, '#8B93A7'];
 
 /* ---------------------------------- DATA ---------------------------------- */
 const FX = { XOF: 1, NGN: 1.35, GHS: 78, USD: 615, EUR: 655.957 };
+
+/* ---------------------- BASE OPÉRATIONNELLE GSM ---------------------- */
+/*
+ * Cette API contient uniquement les données métier / opérationnelles :
+ * clients, portefeuilles, allocations, expositions devises, flux financiers
+ * et Cession_Retrait. Les données de marché restent dans leur source séparée.
+ */
+const GSM_OPERATIONAL_API =
+  typeof process !== 'undefined' &&
+  process?.env?.NEXT_PUBLIC_GSM_API_URL
+    ? process.env.NEXT_PUBLIC_GSM_API_URL
+    : 'http://127.0.0.1:8001';
+
+const gsmOperationalUrl = (path = '') =>
+  `${GSM_OPERATIONAL_API}${path.startsWith('/') ? path : `/${path}`}`;
+
+const loadGsmOperationalSnapshot = async () => {
+  const response = await fetch(gsmOperationalUrl('/api/snapshot'), {
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`Base opérationnelle indisponible (${response.status})`);
+  }
+  return response.json();
+};
 const fmt = (n) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n);
 const fmtPrice = (n) =>
@@ -2280,7 +2305,7 @@ const construireExpositionsDevises = (client, index) => {
 
 const CLIENTS_BRUTS = [...CLIENTS_ORIGINAUX, ...CLIENTS_GENERES];
 
-const CLIENTS = CLIENTS_BRUTS.map((client, index) => ({
+let CLIENTS = CLIENTS_BRUTS.map((client, index) => ({
   ...client,
   expositionsDevises: construireExpositionsDevises(client, index),
 }));
@@ -2303,10 +2328,10 @@ const TITRE_SECTEUR = {
   'GCB BANK': 'Banques',
   PALMCI: 'Agro-industrie',
 };
-function aggregateEncoursBy(keyFn) {
+function aggregateEncoursBy(keyFn, clients = CLIENTS) {
   const map = {};
   let total = 0;
-  CLIENTS.forEach((c) => {
+  clients.forEach((c) => {
     const key = keyFn(c);
     const v = toRef(c.encours, c.devise);
     map[key] = (map[key] || 0) + v;
@@ -2322,11 +2347,11 @@ const PROFILE_TYPE_MIX = aggregateEncoursBy(
 );
 const RISK_PROFILE_MIX = aggregateEncoursBy((c) => c.profilRisque);
 
-const aggregateCurrencyExposure = () => {
+const aggregateCurrencyExposure = (clients = CLIENTS) => {
   const montantsReference = {};
   let totalReference = 0;
 
-  CLIENTS.forEach((client) => {
+  clients.forEach((client) => {
     const encoursReference = toRef(client.encours, client.devise);
     const expositions =
       client.expositionsDevises || { [client.devise]: 100 };
@@ -5240,28 +5265,34 @@ const executionsDemo = (m) => {
 };
 
 const ASSET_KEYS = ['Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité'];
-const totalEncoursReference = CLIENTS.reduce(
-  (somme, client) => somme + toRef(client.encours, client.devise),
-  0
-);
-const ASSET_MIX = ASSET_KEYS.map((name) => {
-  const valeur = CLIENTS.reduce(
-    (somme, client) =>
-      somme +
-      toRef(
-        (client.encours * Number(client.alloc[name] || 0)) / 100,
-        client.devise
-      ),
+
+const buildAssetMix = (clients = CLIENTS) => {
+  const totalEncoursReference = clients.reduce(
+    (somme, client) => somme + toRef(client.encours, client.devise),
     0
   );
-  return {
-    name,
-    value:
-      totalEncoursReference > 0
-        ? Math.round((valeur / totalEncoursReference) * 100)
-        : 0,
-  };
-});
+
+  return ASSET_KEYS.map((name) => {
+    const valeur = clients.reduce(
+      (somme, client) =>
+        somme +
+        toRef(
+          (client.encours * Number(client.alloc?.[name] || 0)) / 100,
+          client.devise
+        ),
+      0
+    );
+    return {
+      name,
+      value:
+        totalEncoursReference > 0
+          ? Math.round((valeur / totalEncoursReference) * 100)
+          : 0,
+    };
+  });
+};
+
+const ASSET_MIX = buildAssetMix();
 const MARKET_MIX = aggregateEncoursBy(
   (client) => `${client.marche} (${client.devise})`
 );
@@ -5452,6 +5483,32 @@ const historicalEventPeriodIndex = (periods, date) => {
 };
 
 const buildHistoricalPortfolioEvents = (client) => {
+  const persistedEvents = Array.isArray(client?.cashEvents)
+    ? client.cashEvents
+    : [];
+
+  if (persistedEvents.length > 0) {
+    return persistedEvents
+      .map((event) => ({
+        id: event.id,
+        type: event.type,
+        libelle: event.libelle || event.type,
+        date: event.date,
+        montant: Number(event.montant || 0),
+        devise: event.devise || client.devise,
+        clientId: client.id,
+        client: client.nom,
+        marche: client.marche,
+        profilRisque: client.profilRisque,
+        statut: event.statut || 'Réalisé',
+        source: event.source || 'DATABASE',
+      }))
+      .filter((event) => HISTORICAL_EVENT_TYPES.includes(event.type))
+      .sort(
+        (a, b) => historicalEventDate(a.date) - historicalEventDate(b.date)
+      );
+  }
+
   const situation = buildSituationDepuisOuverture(client);
   const expositions =
     client.expositionsDevises || { [client.devise]: 100 };
@@ -7253,13 +7310,31 @@ function Accueil({
       [dataKey]: !current[dataKey],
     }));
   };
+  const profileTypeMixAccueil = aggregateEncoursBy(
+    (client) => PROFILE_TYPE_LABEL[client.type] || client.type,
+    CLIENTS
+  );
+  const riskProfileMixAccueil = aggregateEncoursBy(
+    (client) => client.profilRisque,
+    CLIENTS
+  );
+  const assetMixAccueil = buildAssetMix(CLIENTS);
+  const marketMixAccueil = aggregateEncoursBy(
+    (client) => `${client.marche} (${client.devise})`,
+    CLIENTS
+  );
+  const countryMixAccueil = aggregateEncoursBy(
+    (client) => client.pays,
+    CLIENTS
+  );
+
   const dims = {
-    'Profil de risque': RISK_PROFILE_MIX,
-    "Type d'actif": ASSET_MIX,
-    'Marché boursier': MARKET_MIX,
-    Pays: COUNTRY_MIX,
+    'Profil de risque': riskProfileMixAccueil,
+    "Type d'actif": assetMixAccueil,
+    'Marché boursier': marketMixAccueil,
+    Pays: countryMixAccueil,
     Secteur: SECTOR_MIX,
-    'Type de portefeuille': PROFILE_TYPE_MIX,
+    'Type de portefeuille': profileTypeMixAccueil,
   };
   const totalRef = CLIENTS.reduce(
     (s, c) => s + convertCurrency(c.encours, c.devise, devise),
@@ -18994,13 +19069,33 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
     0
   );
 
+  const assetMixAnalyse = buildAssetMix(clientsFiltres);
+  const marketMixAnalyse = aggregateEncoursBy(
+    (client) => `${client.marche} (${client.devise})`,
+    clientsFiltres
+  );
+  const countryMixAnalyse = aggregateEncoursBy(
+    (client) => client.pays,
+    clientsFiltres
+  );
+
   const encoursParDevise = clientsFiltres.reduce((acc, client) => {
-    const montantReference = convertCurrency(
-      client.encours,
-      client.devise,
-      devise
-    );
-    acc[client.devise] = (acc[client.devise] || 0) + montantReference;
+    const encoursReference = toRef(client.encours, client.devise);
+    const expositions =
+      client.expositionsDevises || { [client.devise]: 100 };
+
+    Object.entries(expositions).forEach(([deviseExposition, poids]) => {
+      const expositionReference =
+        encoursReference * (Number(poids || 0) / 100);
+      const montantAffichage = convertCurrency(
+        expositionReference,
+        'XOF',
+        devise
+      );
+      acc[deviseExposition] =
+        (acc[deviseExposition] || 0) + montantAffichage;
+    });
+
     return acc;
   }, {});
 
@@ -21272,9 +21367,9 @@ function Comite({ devise = 'XOF', go }) {
         <Eyebrow>Exposition générale du gestionnaire</Eyebrow>
         <div className="grid grid-cols-2 gap-6 mt-2">
           {[
-            ["Type d'actif", ASSET_MIX],
-            ['Marché / devise', MARKET_MIX],
-            ['Pays', COUNTRY_MIX],
+            ["Type d'actif", assetMixAnalyse],
+            ['Marché / devise', marketMixAnalyse],
+            ['Pays', countryMixAnalyse],
             ['Secteur', SECTOR_MIX],
           ].map(([t, d]) => {
             const data = d.map((s) => ({
@@ -27053,6 +27148,9 @@ function Documentation({ mode = 'gestionnaire' }) {
 /* --------------------------------- APP --------------------------------- */
 export default function App() {
   const [workspace, setWorkspace] = useState('gestionnaire');
+  const [operationalDbStatus, setOperationalDbStatus] = useState('Connexion');
+  const [operationalDbUpdatedAt, setOperationalDbUpdatedAt] = useState(null);
+  const [, setOperationalDbRevision] = useState(0);
   const [screen, setScreen] = useState('accueil');
   const [clientScreen, setClientScreen] = useState('client-dashboard');
   const [clientCtx, setClientCtx] = useState({});
@@ -27089,6 +27187,31 @@ export default function App() {
       return DEFAULT_STATIC_WATCHLIST_TITLES;
     }
   });
+
+  const chargerBaseOperationnelle = async () => {
+    setOperationalDbStatus('Connexion');
+    try {
+      const snapshot = await loadGsmOperationalSnapshot();
+      if (Array.isArray(snapshot?.clients) && snapshot.clients.length > 0) {
+        CLIENTS = snapshot.clients;
+      }
+      if (Array.isArray(snapshot?.withdrawalRequests)) {
+        setCessionRetraitEtats(snapshot.withdrawalRequests);
+      }
+      setOperationalDbUpdatedAt(snapshot?.generatedAt || new Date().toISOString());
+      setOperationalDbStatus('Connectée');
+      setOperationalDbRevision((revision) => revision + 1);
+      return snapshot;
+    } catch (error) {
+      console.warn('[GSM DB] Fallback sur les données locales :', error);
+      setOperationalDbStatus('Mode local');
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    chargerBaseOperationnelle();
+  }, []);
 
   const persistWatchlist = (next) => {
     if (typeof window !== 'undefined') {
@@ -27374,6 +27497,71 @@ export default function App() {
                 );
               })}
             </nav>
+            {workspace === 'gestionnaire' && (
+              <div
+                className="mt-6 p-3 rounded-2xl"
+                style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.10)',
+                }}
+              >
+                <div
+                  className="text-[9px] uppercase tracking-widest font-semibold"
+                  style={{ color: '#9AA5C4' }}
+                >
+                  Base opérationnelle
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-1">
+                  <span
+                    className="text-[11px] font-semibold"
+                    style={{
+                      color:
+                        operationalDbStatus === 'Connectée'
+                          ? '#7FE0C2'
+                          : operationalDbStatus === 'Mode local'
+                          ? '#F7D48A'
+                          : '#C7CEE3',
+                    }}
+                  >
+                    {operationalDbStatus}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={chargerBaseOperationnelle}
+                    className="text-[10px] font-semibold"
+                    style={{ color: C.gold }}
+                    title="Recharger les données métier"
+                  >
+                    ↻ Synchroniser
+                  </button>
+                </div>
+                {operationalDbUpdatedAt && (
+                  <div className="text-[9px] mt-1" style={{ color: '#9AA5C4' }}>
+                    MAJ{' '}
+                    {new Date(operationalDbUpdatedAt).toLocaleTimeString('fr-FR', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    typeof window !== 'undefined' &&
+                    window.open(gsmOperationalUrl('/admin'), '_blank', 'noopener,noreferrer')
+                  }
+                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
+                  style={{
+                    background: 'rgba(201,150,47,0.16)',
+                    color: C.gold,
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  Administrer les données
+                </button>
+              </div>
+            )}
+
             <div
               className="mt-8 pt-5 text-[11px]"
               style={{
