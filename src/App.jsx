@@ -5410,6 +5410,324 @@ const buildCurrencyAumHistory = (
   };
 };
 
+/*
+ * ÉVÉNEMENTS SUR LES COURBES D'ENCOURS
+ *
+ * Les marqueurs sont purement informatifs :
+ * - Dépôt / Retrait : mouvements de capital client ;
+ * - Coupon / Dividende : revenus financiers reçus par le portefeuille.
+ *
+ * Les dépôts/retraits proviennent de l'historique déterministe déjà utilisé
+ * dans la maquette. Les coupons/dividendes reçus sont générés de manière
+ * déterministe à partir de l'encours et de l'allocation du portefeuille.
+ * En production, remplacer ces événements par les écritures réelles de cash,
+ * corporate actions et revenus financiers enregistrées en base.
+ */
+const HISTORICAL_EVENT_TYPES = ['Dépôt', 'Retrait', 'Coupon', 'Dividende'];
+
+const historicalEventColor = (type) => {
+  if (type === 'Retrait') return C.coral;
+  if (type === 'Dépôt') return C.teal;
+  if (type === 'Coupon') return C.gold;
+  return C.indigo;
+};
+
+const historicalEventDate = (date) =>
+  date instanceof Date ? date : parseIsoLocalDate(String(date).slice(0, 10));
+
+const historicalEventPeriodIndex = (periods, date) => {
+  const eventDate = historicalEventDate(date);
+
+  return periods.findIndex((period, index) => {
+    const fin = parseIsoLocalDate(period.date);
+    if (index === 0) {
+      const debut = new Date(fin);
+      debut.setMonth(debut.getMonth() - 1);
+      return eventDate > debut && eventDate <= fin;
+    }
+
+    const debut = parseIsoLocalDate(periods[index - 1].date);
+    return eventDate > debut && eventDate <= fin;
+  });
+};
+
+const buildHistoricalPortfolioEvents = (client) => {
+  const situation = buildSituationDepuisOuverture(client);
+  const expositions =
+    client.expositionsDevises || { [client.devise]: 100 };
+  const evenements = [];
+
+  // Dépôts et retraits ventilés sur les devises d'investissement du portefeuille.
+  situation.flux.forEach((flux) => {
+    const montantReference = toRef(
+      Number(flux.montant || 0),
+      flux.devise || client.devise
+    );
+
+    Object.entries(expositions).forEach(([deviseExposition, poids]) => {
+      const poidsNumerique = Number(poids || 0) / 100;
+      if (poidsNumerique <= 0) return;
+
+      const montant = convertCurrency(
+        montantReference * poidsNumerique,
+        'XOF',
+        deviseExposition
+      );
+
+      evenements.push({
+        id: `${flux.id}-${deviseExposition}`,
+        type: flux.type,
+        libelle: flux.libelle,
+        date: flux.date,
+        montant,
+        devise: deviseExposition,
+        clientId: client.id,
+        client: client.nom,
+        marche: client.marche,
+        profilRisque: client.profilRisque,
+        statut: 'Réalisé',
+      });
+    });
+  });
+
+  const debutHistorique = parseIsoLocalDate(HISTORY_PERIODS[0]?.date);
+  debutHistorique.setMonth(debutHistorique.getMonth() - 1);
+  const dateEntree = parseIsoLocalDate(
+    client.dateEntree || HISTORY_PERIODS[0]?.date
+  );
+  const debutActif =
+    dateEntree > debutHistorique ? dateEntree : debutHistorique;
+  const finHistorique = parseIsoLocalDate(
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date
+  );
+
+  if (debutActif <= finHistorique) {
+    const seed = liquidityHistorySeed(
+      `${client.id}-${client.nom}-revenus-historiques`
+    );
+    const allocationActions = Math.max(
+      0,
+      Number(client.alloc?.Actions || 0) / 100
+    );
+    const allocationObligations = Math.max(
+      0,
+      (Number(client.alloc?.['Obl. souveraines'] || 0) +
+        Number(client.alloc?.['Obl. privées'] || 0)) /
+        100
+    );
+    const encoursReference = toRef(
+      Number(client.encours || 0),
+      client.devise
+    );
+
+    Object.entries(expositions).forEach(
+      ([deviseExposition, poids], deviseIndex) => {
+        const poidsNumerique = Number(poids || 0) / 100;
+        if (poidsNumerique <= 0) return;
+
+        const expositionMonetaire = convertCurrency(
+          encoursReference * poidsNumerique,
+          'XOF',
+          deviseExposition
+        );
+
+        if (allocationObligations > 0.05) {
+          const ratioDateCoupon =
+            0.24 + ((seed + deviseIndex * 7) % 22) / 100;
+          const tauxCouponDemo =
+            0.0045 + ((seed + deviseIndex * 11) % 6) * 0.0007;
+
+          evenements.push({
+            id: `${client.id}-COUPON-${deviseExposition}`,
+            type: 'Coupon',
+            libelle: 'Coupon encaissé sur titres obligataires',
+            date: dateFluxClientEntre(
+              debutActif,
+              finHistorique,
+              ratioDateCoupon
+            ),
+            montant: Math.max(
+              1,
+              Math.round(
+                expositionMonetaire *
+                  allocationObligations *
+                  tauxCouponDemo
+              )
+            ),
+            devise: deviseExposition,
+            clientId: client.id,
+            client: client.nom,
+            marche: client.marche,
+            profilRisque: client.profilRisque,
+            statut: 'Reçu',
+          });
+        }
+
+        if (allocationActions > 0.05) {
+          const ratioDateDividende =
+            0.64 + ((seed + deviseIndex * 13) % 24) / 100;
+          const tauxDividendeDemo =
+            0.0035 + ((seed + deviseIndex * 17) % 7) * 0.0006;
+
+          evenements.push({
+            id: `${client.id}-DIV-${deviseExposition}`,
+            type: 'Dividende',
+            libelle: 'Dividende reçu sur portefeuille actions',
+            date: dateFluxClientEntre(
+              debutActif,
+              finHistorique,
+              Math.min(0.94, ratioDateDividende)
+            ),
+            montant: Math.max(
+              1,
+              Math.round(
+                expositionMonetaire * allocationActions * tauxDividendeDemo
+              )
+            ),
+            devise: deviseExposition,
+            clientId: client.id,
+            client: client.nom,
+            marche: client.marche,
+            profilRisque: client.profilRisque,
+            statut: 'Reçu',
+          });
+        }
+      }
+    );
+  }
+
+  return evenements.sort(
+    (a, b) => historicalEventDate(a.date) - historicalEventDate(b.date)
+  );
+};
+
+const attachHistoricalEventsToSeries = (
+  data,
+  clients,
+  deviseAffichage,
+  deviseExposition = null
+) => {
+  const rows = data.map((row) => ({ ...row, evenements: [] }));
+
+  (clients || []).forEach((client) => {
+    buildHistoricalPortfolioEvents(client).forEach((event) => {
+      if (deviseExposition && event.devise !== deviseExposition) return;
+
+      const index = historicalEventPeriodIndex(rows, event.date);
+      if (index < 0) return;
+
+      const montantAffichage = convertCurrency(
+        Number(event.montant || 0),
+        event.devise,
+        deviseAffichage
+      );
+
+      rows[index].evenements.push({
+        ...event,
+        montantAffichage,
+        deviseAffichage,
+      });
+    });
+  });
+
+  return rows;
+};
+
+function HistoricalEventDot({ cx, cy, payload }) {
+  const evenements = payload?.evenements || [];
+  if (!evenements.length || cx == null || cy == null) return null;
+
+  const types = Array.from(new Set(evenements.map((event) => event.type)));
+  const couleur =
+    types.length === 1 ? historicalEventColor(types[0]) : C.navy;
+
+  return (
+    <g style={{ cursor: 'pointer' }}>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={7}
+        fill="#fff"
+        stroke={couleur}
+        strokeWidth={2.5}
+      />
+      <circle cx={cx} cy={cy} r={3.2} fill={couleur} />
+    </g>
+  );
+}
+
+function HistoricalEventsTooltipBlock({ evenements = [], devise }) {
+  if (!evenements.length) return null;
+
+  const synthese = HISTORICAL_EVENT_TYPES.map((type) => {
+    const lignes = evenements.filter((event) => event.type === type);
+    const total = lignes.reduce(
+      (somme, event) => somme + Number(event.montantAffichage || 0),
+      0
+    );
+    return { type, lignes, total };
+  }).filter((item) => item.lignes.length > 0);
+
+  return (
+    <div
+      className="pt-2 mt-2"
+      style={{ borderTop: `1px solid ${C.line}` }}
+    >
+      <div
+        className="text-[10px] uppercase font-bold mb-1.5"
+        style={{ color: C.ink }}
+      >
+        Événements de la période
+      </div>
+
+      <div className="space-y-1">
+        {synthese.map((item) => (
+          <div
+            key={item.type}
+            className="flex items-center justify-between gap-4"
+          >
+            <span className="flex items-center gap-1.5">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: historicalEventColor(item.type) }}
+              />
+              {item.type}
+              {item.lignes.length > 1 ? ` (${item.lignes.length})` : ''}
+            </span>
+            <b style={{ color: historicalEventColor(item.type), ...F_MONO }}>
+              {item.type === 'Retrait' ? '-' : '+'}
+              {fmt(Math.round(item.total))} {devise}
+            </b>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-2 space-y-1">
+        {evenements.slice(0, 4).map((event) => (
+          <div
+            key={event.id}
+            className="text-[9px] leading-relaxed"
+            style={{ color: C.sub }}
+          >
+            <b style={{ color: C.ink }}>
+              {historicalEventDate(event.date).toLocaleDateString('fr-FR')}
+            </b>
+            {' · '}
+            {event.client}
+            {' · '}
+            {event.libelle}
+          </div>
+        ))}
+        {evenements.length > 4 && (
+          <div className="text-[9px]" style={{ color: C.sub }}>
+            + {evenements.length - 4} autre(s) événement(s)
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const HISTORY_GESTION_REFERENCE = HISTORY_PERIODS.map(
   (_, index) => 100 + index * 1.6 + Math.sin(index) * 2.2
 );
@@ -5434,32 +5752,33 @@ const buildHistoryTwr = (encoursActuel, deviseAffichage) => {
     depots: 0,
     retraits: 0,
     fluxNet: 0,
+    evenements: [],
   }));
 
-  // Agrégation des mouvements de capital par mois. Les dépôts sont positifs,
-  // les retraits négatifs. Ils sont convertis dans la devise d'affichage.
+  // Agrégation mensuelle des événements. Seuls les dépôts/retraits sont des
+  // flux externes neutralisés dans le TWR. Coupons et dividendes restent des
+  // revenus de portefeuille et sont affichés uniquement comme marqueurs.
   CLIENTS.forEach((client) => {
-    const situation = buildSituationDepuisOuverture(client);
-    situation.flux.forEach((flux) => {
-      const dateFlux =
-        flux.date instanceof Date ? flux.date : new Date(flux.date);
-      const index = periods.findIndex((period, periodIndex) => {
-        if (periodIndex === 0) return false;
-        const debut = parseIsoLocalDate(periods[periodIndex - 1].date);
-        const fin = parseIsoLocalDate(period.date);
-        return dateFlux > debut && dateFlux <= fin;
-      });
+    buildHistoricalPortfolioEvents(client).forEach((event) => {
+      const index = historicalEventPeriodIndex(periods, event.date);
       if (index < 0) return;
 
       const montant = convertCurrency(
-        Number(flux.montant || 0),
-        flux.devise || client.devise,
+        Number(event.montant || 0),
+        event.devise,
         deviseAffichage
       );
-      if (flux.type === 'Retrait') {
+
+      periods[index].evenements.push({
+        ...event,
+        montantAffichage: montant,
+        deviseAffichage,
+      });
+
+      if (event.type === 'Retrait') {
         periods[index].retraits += montant;
         periods[index].fluxNet -= montant;
-      } else {
+      } else if (event.type === 'Dépôt') {
         periods[index].depots += montant;
         periods[index].fluxNet += montant;
       }
@@ -7106,7 +7425,14 @@ function Accueil({
   const dateMinimumEncours = HISTORY_PERIODS[0]?.date || '';
   const dateMaximumEncours =
     HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date || '';
-  const historiqueEncoursAffiche = historiqueEncoursParDevise.data.filter(
+  const historiqueEncoursAvecEvenements = attachHistoricalEventsToSeries(
+    historiqueEncoursParDevise.data,
+    universEncoursDevise,
+    deviseEncoursActive,
+    deviseEncoursActive
+  );
+
+  const historiqueEncoursAffiche = historiqueEncoursAvecEvenements.filter(
     (point) => !dateInitialeEncours || point.date >= dateInitialeEncours
   );
 
@@ -8014,17 +8340,45 @@ function Accueil({
                   tickFormatter={(value) => fmtCompactMontant(value)}
                 />
                 <Tooltip
-                  formatter={(value) => [
-                    `${fmt(Math.round(Number(value || 0)))} ${deviseEncoursActive}`,
-                    portefeuilleEncoursSelectionne
-                      ? portefeuilleEncoursSelectionne.nom
-                      : `Encours ${deviseEncoursActive}`,
-                  ]}
-                  labelFormatter={(label) => `Situation · ${label}`}
-                  contentStyle={{
-                    borderRadius: 10,
-                    border: `1px solid ${C.line}`,
-                    fontSize: 11,
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const point = payload[0]?.payload;
+                    if (!point) return null;
+
+                    return (
+                      <div
+                        className="rounded-xl border p-3 text-xs shadow-sm"
+                        style={{
+                          background: '#fff',
+                          borderColor: C.line,
+                          minWidth: 280,
+                          ...F_BODY,
+                        }}
+                      >
+                        <div
+                          className="font-bold mb-2"
+                          style={{ color: C.ink }}
+                        >
+                          Situation · {label}
+                        </div>
+                        <div style={{ color: C.sub }}>
+                          Encours :{' '}
+                          <b style={{ color: C.navy, ...F_MONO }}>
+                            {fmt(
+                              Math.round(
+                                Number(point[deviseEncoursActive] || 0)
+                              )
+                            )}{' '}
+                            {deviseEncoursActive}
+                          </b>
+                        </div>
+
+                        <HistoricalEventsTooltipBlock
+                          evenements={point.evenements}
+                          devise={deviseEncoursActive}
+                        />
+                      </div>
+                    );
                   }}
                 />
                 <Line
@@ -8037,8 +8391,8 @@ function Accueil({
                   }
                   stroke={C.indigo}
                   strokeWidth={3}
-                  dot={false}
-                  activeDot={{ r: 5 }}
+                  dot={(props) => <HistoricalEventDot {...props} />}
+                  activeDot={{ r: 7 }}
                   isAnimationActive={false}
                 />
               </LineChart>
@@ -8055,6 +8409,27 @@ function Accueil({
               Aucune donnée disponible avec ces filtres et cette date initiale.
             </div>
           )}
+
+          <div
+            className="flex items-center gap-4 flex-wrap mt-2 text-[9px]"
+            style={{ color: C.sub }}
+          >
+            {HISTORICAL_EVENT_TYPES.map((type) => (
+              <span key={`popup-${type}`} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full border-2"
+                  style={{
+                    borderColor: historicalEventColor(type),
+                    background: '#fff',
+                  }}
+                />
+                {type}
+              </span>
+            ))}
+            <span>
+              Les points correspondent aux événements enregistrés sur la période.
+            </span>
+          </div>
         </div>
 
         <div
@@ -8553,6 +8928,11 @@ function Accueil({
                             {fmt(Math.abs(point.fluxNet))} {devise}
                           </b>
                         </div>
+
+                        <HistoricalEventsTooltipBlock
+                          evenements={point.evenements}
+                          devise={devise}
+                        />
                       </div>
                     </div>
                   );
@@ -8565,7 +8945,8 @@ function Accueil({
                   name="Gestion globale (TWR)"
                   stroke={C.navy}
                   strokeWidth={2.8}
-                  dot={false}
+                  dot={(props) => <HistoricalEventDot {...props} />}
+                  activeDot={{ r: 7 }}
                 />
               )}
               {historyVisibility.brvm && (
@@ -8597,15 +8978,34 @@ function Accueil({
             onToggle={toggleHistorySeries}
           />
           <div
+            className="flex items-center gap-4 flex-wrap mt-2 text-[9px]"
+            style={{ color: C.sub }}
+          >
+            {HISTORICAL_EVENT_TYPES.map((type) => (
+              <span key={type} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-full border-2"
+                  style={{
+                    borderColor: historicalEventColor(type),
+                    background: '#fff',
+                  }}
+                />
+                {type}
+              </span>
+            ))}
+            <span>Survolez un point pour voir le résumé des mouvements.</span>
+          </div>
+          <div
             className="mt-3 rounded-xl px-3 py-2 text-[10px]"
             style={{ background: '#F7F8FB', color: C.sub, ...F_BODY }}
           >
             <b style={{ color: C.ink }}>Lecture :</b> la courbe « Gestion
-            globale (TWR) » mesure uniquement la performance de gestion. Un
-            dépôt ou un retrait modifie l'encours brut affiché dans l'infobulle,
-            mais son montant est neutralisé avant le calcul du rendement de la
-            période. En production, le TWR sera chaîné à chaque mouvement de
-            capital réel.
+            globale (TWR) » mesure uniquement la performance de gestion. Les
+            points signalent les dépôts, retraits, coupons et dividendes reçus
+            pendant chaque période. Dépôts et retraits sont neutralisés dans le
+            calcul du TWR ; coupons et dividendes restent des revenus de
+            portefeuille. En production, ces marqueurs seront alimentés par les
+            mouvements et revenus réellement comptabilisés.
           </div>
         </Card>
 
