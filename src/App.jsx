@@ -17568,50 +17568,6 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
               </div>
             </div>
 
-            <div
-              className="mt-5 p-4 rounded-2xl border"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}
-            >
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div>
-                  <div
-                    className="text-[10px] uppercase font-bold"
-                    style={{ color: C.sub }}
-                  >
-                    Règles système non modifiables
-                  </div>
-                  <div className="text-xs mt-1" style={{ color: C.ink }}>
-                    Elles protègent le workflow même si aucune contrainte gérant
-                    n'est ajoutée.
-                  </div>
-                </div>
-                <Badge tone="teal">Toujours actives</Badge>
-              </div>
-
-              <div className="flex flex-wrap gap-2 mt-3">
-                {[
-                  'Acheteur différent du vendeur',
-                  'Cession interne : obligations non cotées uniquement',
-                  'Actions et obligations cotées : marché coté uniquement',
-                  'Même marché de référence que la ligne cédée',
-                  'Même devise de référence que le titre',
-                  "Capacité d'achat positive",
-                  `Profil conforme après achat · tolérance ±${CESSION_RETRAIT_TOLERANCE} pts`,
-                ].map((rule) => (
-                  <span
-                    key={rule}
-                    className="px-2.5 py-1.5 rounded-xl text-[10px] font-semibold"
-                    style={{
-                      background: '#EAF8F3',
-                      color: '#13795B',
-                      border: '1px solid #CBEADF',
-                    }}
-                  >
-                    ✓ {rule}
-                  </span>
-                ))}
-              </div>
-            </div>
 
             <div className="mt-5">
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -18315,60 +18271,6 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-4 gap-3 mt-4">
-                {[
-                  {
-                    label: 'Univers système',
-                    value: contrepartieUniversInitial,
-                    detail: 'candidatures ligne/client après règles fixes',
-                  },
-                  {
-                    label: 'Éligibles',
-                    value: contrepartieCandidaturesEligibles,
-                    detail: 'après contraintes obligatoires',
-                  },
-                  {
-                    label: 'Exclus',
-                    value: contrepartieCandidaturesExclues,
-                    detail: 'profil, capacité ou contraintes gérant',
-                  },
-                  {
-                    label: 'Couverture interne estimée',
-                    value: `${fmt(
-                      Math.round(contrepartieCapaciteRef)
-                    )} ${devise}`,
-                    detail: 'après plafonds et priorités',
-                  },
-                ].map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="p-3 rounded-xl border"
-                    style={{
-                      borderColor: C.line,
-                      background: '#fff',
-                    }}
-                  >
-                    <div
-                      className="text-[9px] uppercase font-semibold"
-                      style={{ color: C.sub }}
-                    >
-                      {stat.label}
-                    </div>
-                    <div
-                      className="text-base font-bold mt-1"
-                      style={{ color: C.ink, ...F_MONO }}
-                    >
-                      {stat.value}
-                    </div>
-                    <div
-                      className="text-[9px] mt-1"
-                      style={{ color: C.sub }}
-                    >
-                      {stat.detail}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="flex items-center justify-between gap-3 flex-wrap mt-5">
