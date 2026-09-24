@@ -14764,6 +14764,190 @@ const cessionInterneUniqueOptions = (values) =>
 const cessionInterneClientTypeLabel = (client) =>
   PROFILE_TYPE_LABEL[client?.type] || client?.type || 'Non renseigné';
 
+/*
+ * Métadonnées de titres utilisées par les contraintes de contrepartie.
+ * Elles sont construites à partir de l'univers marché déjà présent dans la
+ * maquette : aucune liste de titres n'est codée manuellement dans le moteur.
+ */
+const cessionInterneInstrumentMeta = (instrumentLike) => {
+  const nom =
+    typeof instrumentLike === 'string'
+      ? instrumentLike
+      : instrumentLike?.titre ||
+        instrumentLike?.nom ||
+        instrumentLike?.instrument?.nom ||
+        '';
+  const marche =
+    typeof instrumentLike === 'string'
+      ? undefined
+      : instrumentLike?.marche ||
+        instrumentLike?.instrument?.marche;
+
+  const instrument =
+    resolveMarketInstrument(nom, marche) ||
+    CLIENT_TRADABLE_MARKETS.find(
+      (item) =>
+        item.nom === nom && (!marche || item.marche === marche)
+    ) ||
+    {};
+
+  const actionSource = Object.entries(BOURSES_ACTIVE_CONFIG)
+    .flatMap(([code, config]) =>
+      (config.instruments || []).map((item) => ({
+        ...item,
+        marche: code,
+        devise: config.devise,
+      }))
+    )
+    .find(
+      (item) =>
+        item.nom === nom && (!marche || item.marche === marche)
+    );
+
+  const reco = RECOS.find(
+    (item) =>
+      item.titre === nom && (!marche || item.marche === marche)
+  );
+  const bondMeta = BOND_MARKET_META[nom] || {};
+  const type =
+    instrument.type ||
+    (bondMeta.emetteur ? 'Obligation' : actionSource ? 'Action' : '');
+  const assetClass = cessionAssetClass({
+    ...instrument,
+    nom,
+    type,
+  });
+
+  const cours = Number(
+    instrument.cours ??
+      actionSource?.cours ??
+      instrumentLike?.prix ??
+      0
+  );
+  const coursMin = Number(
+    instrument.coursMin ?? actionSource?.coursMin ?? cours
+  );
+  const coursMax = Number(
+    instrument.coursMax ?? actionSource?.coursMax ?? cours
+  );
+
+  const amplitudePct =
+    cours > 0
+      ? (Math.abs(coursMax - coursMin) / cours) * 100
+      : 0;
+
+  const secteur =
+    instrument.secteur ||
+    actionSource?.secteur ||
+    reco?.secteur ||
+    (assetClass === 'Obl. souveraines'
+      ? 'Souverain'
+      : assetClass === 'Obl. privées'
+      ? 'Corporate'
+      : 'Non renseigné');
+
+  const emetteur =
+    bondMeta.emetteur ||
+    instrument.emetteur ||
+    (type === 'Action' ? nom : 'Non renseigné');
+
+  return {
+    nom,
+    type: type || 'Non renseigné',
+    assetClass,
+    marche:
+      instrument.marche ||
+      actionSource?.marche ||
+      marche ||
+      'Non renseigné',
+    devise:
+      instrument.devise ||
+      actionSource?.devise ||
+      instrumentLike?.devise ||
+      'Non renseigné',
+    secteur,
+    emetteur,
+    cours,
+    variation: Number(
+      instrument.variation ?? actionSource?.variation ?? 0
+    ),
+    volumeJour: Number(
+      instrument.volumeJour ??
+        actionSource?.volume ??
+        instrumentLike?.volumeJour ??
+        0
+    ),
+    amplitudePct,
+    coupon:
+      bondMeta.coupon == null ? null : Number(bondMeta.coupon),
+    rendement:
+      bondMeta.rendement == null ? null : Number(bondMeta.rendement),
+    duration:
+      bondMeta.duration == null ? null : Number(bondMeta.duration),
+    echeance:
+      bondMeta.echeance == null ? null : Number(bondMeta.echeance),
+  };
+};
+
+const CESSION_INTERNE_TITLE_UNIVERSE = CLIENT_TRADABLE_MARKETS.map(
+  cessionInterneInstrumentMeta
+).filter((item) => item.nom);
+
+const cessionInterneBuyerTitleMetrics = (
+  buyer,
+  order,
+  candidateAmount = 0
+) => {
+  const encours = Math.max(1, Number(buyer?.encours || 0));
+  const orderMeta = cessionInterneInstrumentMeta(order);
+  const investedClasses = [
+    'Actions',
+    'Obl. souveraines',
+    'Obl. privées',
+  ];
+
+  let currentTitleValue = 0;
+  let currentSectorValue = 0;
+  let currentIssuerValue = 0;
+
+  investedClasses.forEach((assetClass) => {
+    cessionSimulatedHoldings(buyer, assetClass).forEach((holding) => {
+      const meta = cessionInterneInstrumentMeta(holding.instrument);
+      const value = Number(holding.holdingValue || 0);
+
+      if (meta.nom === orderMeta.nom) {
+        currentTitleValue += value;
+      }
+      if (
+        orderMeta.secteur !== 'Non renseigné' &&
+        meta.secteur === orderMeta.secteur
+      ) {
+        currentSectorValue += value;
+      }
+      if (
+        orderMeta.emetteur !== 'Non renseigné' &&
+        meta.emetteur === orderMeta.emetteur
+      ) {
+        currentIssuerValue += value;
+      }
+    });
+  });
+
+  const amount = Math.max(0, Number(candidateAmount || 0));
+
+  return {
+    meta: orderMeta,
+    alreadyHeld: currentTitleValue > 0,
+    titleWeightBeforePct: (currentTitleValue / encours) * 100,
+    titleWeightAfterPct:
+      ((currentTitleValue + amount) / encours) * 100,
+    sectorWeightAfterPct:
+      ((currentSectorValue + amount) / encours) * 100,
+    issuerWeightAfterPct:
+      ((currentIssuerValue + amount) / encours) * 100,
+  };
+};
+
 const cessionInterneConstraintOptions = {
   client_type: () =>
     cessionInterneUniqueOptions(CLIENTS.map(cessionInterneClientTypeLabel)),
@@ -14788,6 +14972,34 @@ const cessionInterneConstraintOptions = {
         value: client.id,
         label: `${client.nom} · ${client.marche} · ${client.devise}`,
       })),
+  title_name: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.nom)
+    ),
+  title_asset_class: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.assetClass)
+    ),
+  title_instrument_type: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.type)
+    ),
+  title_sector: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.secteur)
+    ),
+  title_issuer: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.emetteur)
+    ),
+  title_market: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.marche)
+    ),
+  title_currency: () =>
+    cessionInterneUniqueOptions(
+      CESSION_INTERNE_TITLE_UNIVERSE.map((item) => item.devise)
+    ),
   manager_scope: () => [
     { value: 'same', label: 'Même gestionnaire que le vendeur' },
     { value: 'other', label: 'Autre gestionnaire uniquement' },
@@ -14875,6 +15087,208 @@ const CESSION_INTERNE_CONSTRAINT_CATALOG = [
     multiple: true,
     operators: ['est dans', "n'est pas dans"],
     defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_name',
+    category: 'Titres',
+    label: 'Titre précis',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_asset_class',
+    category: 'Titres',
+    label: 'Classe d’actifs du titre',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_instrument_type',
+    category: 'Titres',
+    label: 'Type d’instrument',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_sector',
+    category: 'Titres',
+    label: 'Secteur du titre',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_issuer',
+    category: 'Titres',
+    label: 'Émetteur du titre',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_market',
+    category: 'Titres',
+    label: 'Marché du titre',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_currency',
+    category: 'Titres',
+    label: 'Devise du titre',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'title_already_held',
+    category: 'Titres',
+    label: 'Titre déjà détenu par la contrepartie',
+    kind: 'boolean',
+    operators: ['='],
+    defaultOperator: '=',
+    defaultValue: true,
+  },
+  {
+    key: 'max_title_weight_after_pct',
+    category: 'Titres',
+    label: 'Poids maximum du titre après achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 10,
+  },
+  {
+    key: 'max_sector_weight_after_pct',
+    category: 'Titres',
+    label: 'Poids maximum du secteur après achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 30,
+  },
+  {
+    key: 'max_issuer_weight_after_pct',
+    category: 'Titres',
+    label: 'Poids maximum de l’émetteur après achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 15,
+  },
+  {
+    key: 'min_title_daily_volume',
+    category: 'Titres',
+    label: 'Volume journalier minimum du titre',
+    kind: 'number',
+    unit: 'titres',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 1000,
+  },
+  {
+    key: 'min_title_daily_variation',
+    category: 'Titres',
+    label: 'Variation journalière minimale du titre',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: -5,
+  },
+  {
+    key: 'max_title_daily_variation',
+    category: 'Titres',
+    label: 'Variation journalière maximale du titre',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 5,
+  },
+  {
+    key: 'max_title_amplitude_pct',
+    category: 'Titres',
+    label: 'Amplitude intrajournalière maximale du titre',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 5,
+  },
+  {
+    key: 'min_title_price',
+    category: 'Titres',
+    label: 'Cours minimum du titre',
+    kind: 'number',
+    unit: 'devise titre',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 0,
+  },
+  {
+    key: 'max_title_price',
+    category: 'Titres',
+    label: 'Cours maximum du titre',
+    kind: 'number',
+    unit: 'devise titre',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 1000000,
+  },
+  {
+    key: 'min_bond_coupon',
+    category: 'Titres',
+    label: 'Coupon minimum — obligations',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 5,
+  },
+  {
+    key: 'min_bond_yield',
+    category: 'Titres',
+    label: 'Rendement minimum — obligations',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 5,
+  },
+  {
+    key: 'max_bond_duration',
+    category: 'Titres',
+    label: 'Duration maximale — obligations',
+    kind: 'number',
+    unit: 'années',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 5,
+  },
+  {
+    key: 'max_bond_maturity_year',
+    category: 'Titres',
+    label: 'Année d’échéance maximale — obligations',
+    kind: 'number',
+    unit: 'année',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 2035,
   },
   {
     key: 'min_assets',
@@ -15168,6 +15582,12 @@ const cessionInterneConstraintActualValue = (
     orderCurrencyExposureBefore +
       (Number(candidate.amount || 0) / encours) * 100
   );
+  const titleMetrics = cessionInterneBuyerTitleMetrics(
+    buyer,
+    order,
+    candidate.amount
+  );
+  const titleMeta = titleMetrics.meta;
 
   switch (definition?.key) {
     case 'client_type':
@@ -15188,6 +15608,46 @@ const cessionInterneConstraintActualValue = (
       return buyerManager === sellerManager ? 'same' : 'other';
     case 'client':
       return buyer.id;
+    case 'title_name':
+      return titleMeta.nom;
+    case 'title_asset_class':
+      return titleMeta.assetClass;
+    case 'title_instrument_type':
+      return titleMeta.type;
+    case 'title_sector':
+      return titleMeta.secteur;
+    case 'title_issuer':
+      return titleMeta.emetteur;
+    case 'title_market':
+      return titleMeta.marche;
+    case 'title_currency':
+      return titleMeta.devise;
+    case 'title_already_held':
+      return titleMetrics.alreadyHeld;
+    case 'max_title_weight_after_pct':
+      return titleMetrics.titleWeightAfterPct;
+    case 'max_sector_weight_after_pct':
+      return titleMetrics.sectorWeightAfterPct;
+    case 'max_issuer_weight_after_pct':
+      return titleMetrics.issuerWeightAfterPct;
+    case 'min_title_daily_volume':
+      return titleMeta.volumeJour;
+    case 'min_title_daily_variation':
+    case 'max_title_daily_variation':
+      return titleMeta.variation;
+    case 'max_title_amplitude_pct':
+      return titleMeta.amplitudePct;
+    case 'min_title_price':
+    case 'max_title_price':
+      return titleMeta.cours;
+    case 'min_bond_coupon':
+      return titleMeta.coupon;
+    case 'min_bond_yield':
+      return titleMeta.rendement;
+    case 'max_bond_duration':
+      return titleMeta.duration;
+    case 'max_bond_maturity_year':
+      return titleMeta.echeance;
     case 'min_assets':
     case 'max_assets':
       return Number(buyer.encours || 0);
@@ -15668,6 +16128,11 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
   ).length;
   const contraintesInformations = contrepartieContraintesActives.filter(
     (constraint) => constraint.mode === 'Information'
+  ).length;
+  const contraintesTitres = contrepartieContraintesActives.filter(
+    (constraint) =>
+      cessionInterneConstraintDefinition(constraint.type)?.category ===
+      'Titres'
   ).length;
 
   const contrepartiePreviewMatches = plans.flatMap((plan) =>
@@ -16766,10 +17231,11 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   style={{ color: C.sub }}
                 >
                   Le gérant peut définir les clients qui pourront devenir
-                  contreparties de la cession. Les règles système restent
-                  toujours actives ; les contraintes « Obligatoire » éliminent
-                  un candidat, les « Préférence » servent au classement et les
-                  « Information » sont uniquement documentaires.
+                  contreparties et ajouter des contraintes sur les titres
+                  concernés par la cession. Les règles système restent toujours
+                  actives ; les contraintes « Obligatoire » éliminent un
+                  candidat ou une ligne incompatible, les « Préférence » servent
+                  au classement et les « Information » sont documentaires.
                 </div>
                 {!cessionInterneReady && (
                   <div
@@ -16864,9 +17330,10 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     Contraintes choisies par le gérant
                   </div>
                   <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
-                    Ajoutez autant de critères que nécessaire. Les listes de
-                    pays, marchés, profils, gestionnaires et clients sont
-                    construites à partir des portefeuilles disponibles.
+                    Ajoutez autant de critères que nécessaire, y compris sur
+                    les titres à céder. Les listes de titres, secteurs,
+                    émetteurs, pays, marchés, profils, gestionnaires et clients
+                    sont construites à partir des données disponibles.
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -16918,337 +17385,507 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   contreparties.
                 </div>
               ) : (
-                <div className="space-y-3 mt-3">
-                  {contrepartieContraintes.map((constraint, index) => {
-                    const definition =
-                      cessionInterneConstraintDefinition(constraint.type);
-                    const options =
-                      definition?.kind === 'enum'
-                        ? cessionInterneConstraintOptions[
-                            definition.key
-                          ]?.() || []
-                        : [];
-                    const selectedValues = Array.isArray(constraint.value)
-                      ? constraint.value
-                      : [constraint.value].filter(Boolean);
+                <div
+                  className="mt-3 rounded-2xl border overflow-hidden"
+                  style={{
+                    borderColor: C.line,
+                    background: '#fff',
+                  }}
+                >
+                  <div
+                    className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+                    style={{
+                      background: '#FAFAFC',
+                      borderBottom: `1px solid ${C.line}`,
+                    }}
+                  >
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      Tableau des contraintes · hauteur limitée
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge tone="navy">
+                        {contrepartieContraintes.length} ligne(s)
+                      </Badge>
+                      <Badge tone="gold">
+                        {contraintesTitres} sur titre(s)
+                      </Badge>
+                      <span className="text-[9px]" style={{ color: C.sub }}>
+                        Faites défiler verticalement pour voir les contraintes
+                        supplémentaires.
+                      </span>
+                    </div>
+                  </div>
 
-                    return (
-                      <div
-                        key={constraint.id}
-                        className="p-4 rounded-2xl border"
+                  <div
+                    className="overflow-auto"
+                    style={{
+                      maxHeight: 430,
+                      scrollbarGutter: 'stable',
+                    }}
+                  >
+                    <table
+                      className="w-full"
+                      style={{ minWidth: 1580, borderCollapse: 'separate', borderSpacing: 0 }}
+                    >
+                      <thead
                         style={{
-                          borderColor:
-                            constraint.active === false
-                              ? '#E6E8ED'
-                              : constraint.mode === 'Obligatoire'
-                              ? C.navy
-                              : constraint.mode === 'Préférence'
-                              ? C.gold
-                              : C.line,
-                          background:
-                            constraint.active === false
-                              ? '#F7F8FA'
-                              : '#fff',
+                          position: 'sticky',
+                          top: 0,
+                          zIndex: 5,
+                          background: '#F5F6F9',
                         }}
                       >
-                        <div className="grid grid-cols-12 gap-3 items-start">
-                          <div className="col-span-1">
-                            <label
-                              className="text-[9px] uppercase font-semibold block mb-1"
-                              style={{ color: C.sub }}
-                            >
-                              Actif
-                            </label>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateContrepartieContrainte(
-                                  constraint.id,
-                                  { active: constraint.active === false }
-                                )
-                              }
-                              className="w-full px-2 py-2 rounded-xl text-xs font-bold"
+                        <tr>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 45 }}
+                          >
+                            #
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 75 }}
+                          >
+                            Actif
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 105 }}
+                          >
+                            Famille
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, minWidth: 320 }}
+                          >
+                            Contrainte
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 145 }}
+                          >
+                            Niveau
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 120 }}
+                          >
+                            Opérateur
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, minWidth: 330 }}
+                          >
+                            Valeur / sélection
+                          </th>
+                          <th
+                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, minWidth: 310 }}
+                          >
+                            Résumé
+                          </th>
+                          <th
+                            className="px-3 py-2 text-center text-[9px] uppercase font-semibold"
+                            style={{ color: C.sub, width: 75 }}
+                          >
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {contrepartieContraintes.map((constraint, index) => {
+                          const definition =
+                            cessionInterneConstraintDefinition(
+                              constraint.type
+                            );
+                          const options =
+                            definition?.kind === 'enum'
+                              ? cessionInterneConstraintOptions[
+                                  definition.key
+                                ]?.() || []
+                              : [];
+                          const selectedValues = Array.isArray(
+                            constraint.value
+                          )
+                            ? constraint.value
+                            : [constraint.value].filter(Boolean);
+
+                          return (
+                            <tr
+                              key={constraint.id}
                               style={{
+                                borderTop: `1px solid ${C.line}`,
                                 background:
                                   constraint.active === false
-                                    ? '#EEF0F4'
-                                    : '#EAF8F3',
-                                color:
-                                  constraint.active === false
-                                    ? C.sub
-                                    : C.teal,
+                                    ? '#F7F8FA'
+                                    : definition?.category === 'Titres'
+                                    ? '#FFFCF4'
+                                    : index % 2
+                                    ? '#FCFCFD'
+                                    : '#fff',
                               }}
                             >
-                              {constraint.active === false ? 'Non' : 'Oui'}
-                            </button>
-                          </div>
+                              <td
+                                className="px-3 py-3 align-top text-xs font-bold"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                  color: C.sub,
+                                  ...F_MONO,
+                                }}
+                              >
+                                {index + 1}
+                              </td>
 
-                          <div className="col-span-3">
-                            <label
-                              className="text-[9px] uppercase font-semibold block mb-1"
-                              style={{ color: C.sub }}
-                            >
-                              Type de contrainte
-                            </label>
-                            <select
-                              value={constraint.type}
-                              onChange={(event) =>
-                                changerTypeContrepartieContrainte(
-                                  constraint.id,
-                                  event.target.value
-                                )
-                              }
-                              className="w-full px-3 py-2 rounded-xl border text-xs"
-                              style={{
-                                borderColor: C.line,
-                                background: '#fff',
-                              }}
-                            >
-                              {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
-                                (item) => (
-                                  <option key={item.key} value={item.key}>
-                                    {item.category} · {item.label}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateContrepartieContrainte(
+                                      constraint.id,
+                                      {
+                                        active:
+                                          constraint.active === false,
+                                      }
+                                    )
+                                  }
+                                  className="w-full px-2 py-2 rounded-xl text-[10px] font-bold"
+                                  style={{
+                                    background:
+                                      constraint.active === false
+                                        ? '#EEF0F4'
+                                        : '#EAF8F3',
+                                    color:
+                                      constraint.active === false
+                                        ? C.sub
+                                        : C.teal,
+                                  }}
+                                >
+                                  {constraint.active === false
+                                    ? 'Non'
+                                    : 'Oui'}
+                                </button>
+                              </td>
 
-                          <div className="col-span-2">
-                            <label
-                              className="text-[9px] uppercase font-semibold block mb-1"
-                              style={{ color: C.sub }}
-                            >
-                              Niveau
-                            </label>
-                            <select
-                              value={constraint.mode}
-                              onChange={(event) =>
-                                updateContrepartieContrainte(
-                                  constraint.id,
-                                  { mode: event.target.value }
-                                )
-                              }
-                              className="w-full px-3 py-2 rounded-xl border text-xs"
-                              style={{
-                                borderColor: C.line,
-                                background: '#fff',
-                              }}
-                            >
-                              {CESSION_INTERNE_CONSTRAINT_MODES.map(
-                                (mode) => (
-                                  <option key={mode} value={mode}>
-                                    {mode}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <Badge
+                                  tone={
+                                    definition?.category === 'Titres'
+                                      ? 'gold'
+                                      : 'slate'
+                                  }
+                                >
+                                  {definition?.category || 'Autre'}
+                                </Badge>
+                              </td>
 
-                          <div className="col-span-2">
-                            <label
-                              className="text-[9px] uppercase font-semibold block mb-1"
-                              style={{ color: C.sub }}
-                            >
-                              Opérateur
-                            </label>
-                            <select
-                              value={constraint.operator}
-                              onChange={(event) =>
-                                updateContrepartieContrainte(
-                                  constraint.id,
-                                  { operator: event.target.value }
-                                )
-                              }
-                              className="w-full px-3 py-2 rounded-xl border text-xs"
-                              style={{
-                                borderColor: C.line,
-                                background: '#fff',
-                              }}
-                            >
-                              {(definition?.operators || ['=']).map(
-                                (operator) => (
-                                  <option
-                                    key={operator}
-                                    value={operator}
-                                  >
-                                    {operator}
-                                  </option>
-                                )
-                              )}
-                            </select>
-                          </div>
-
-                          <div className="col-span-3">
-                            <label
-                              className="text-[9px] uppercase font-semibold block mb-1"
-                              style={{ color: C.sub }}
-                            >
-                              Valeur / sélection
-                            </label>
-
-                            {definition?.kind === 'enum' &&
-                              definition.multiple && (
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
                                 <select
-                                  multiple
-                                  value={selectedValues}
+                                  value={constraint.type}
+                                  onChange={(event) =>
+                                    changerTypeContrepartieContrainte(
+                                      constraint.id,
+                                      event.target.value
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                  style={{
+                                    borderColor: C.line,
+                                    background: '#fff',
+                                  }}
+                                >
+                                  {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
+                                    (item) => (
+                                      <option
+                                        key={item.key}
+                                        value={item.key}
+                                      >
+                                        {item.category} · {item.label}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </td>
+
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <select
+                                  value={constraint.mode}
+                                  onChange={(event) =>
+                                    updateContrepartieContrainte(
+                                      constraint.id,
+                                      { mode: event.target.value }
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                  style={{
+                                    borderColor: C.line,
+                                    background: '#fff',
+                                  }}
+                                >
+                                  {CESSION_INTERNE_CONSTRAINT_MODES.map(
+                                    (mode) => (
+                                      <option key={mode} value={mode}>
+                                        {mode}
+                                      </option>
+                                    )
+                                  )}
+                                </select>
+                              </td>
+
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <select
+                                  value={constraint.operator}
                                   onChange={(event) =>
                                     updateContrepartieContrainte(
                                       constraint.id,
                                       {
-                                        value: Array.from(
-                                          event.target.selectedOptions
-                                        ).map((option) => option.value),
+                                        operator: event.target.value,
                                       }
                                     )
                                   }
-                                  className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
-                                  style={{
-                                    borderColor: C.line,
-                                    background: '#fff',
-                                    minHeight: 72,
-                                  }}
-                                >
-                                  {options.map((option) => (
-                                    <option
-                                      key={option.value}
-                                      value={option.value}
-                                    >
-                                      {option.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-
-                            {definition?.kind === 'enum' &&
-                              !definition.multiple && (
-                                <select
-                                  value={constraint.value || ''}
-                                  onChange={(event) =>
-                                    updateContrepartieContrainte(
-                                      constraint.id,
-                                      { value: event.target.value }
-                                    )
-                                  }
                                   className="w-full px-3 py-2 rounded-xl border text-xs"
                                   style={{
                                     borderColor: C.line,
                                     background: '#fff',
                                   }}
                                 >
-                                  {options.map((option) => (
-                                    <option
-                                      key={option.value}
-                                      value={option.value}
-                                    >
-                                      {option.label}
-                                    </option>
-                                  ))}
+                                  {(definition?.operators || ['=']).map(
+                                    (operator) => (
+                                      <option
+                                        key={operator}
+                                        value={operator}
+                                      >
+                                        {operator}
+                                      </option>
+                                    )
+                                  )}
                                 </select>
-                              )}
+                              </td>
 
-                            {definition?.kind === 'boolean' && (
-                              <select
-                                value={
-                                  constraint.value === true ||
-                                  String(constraint.value) === 'true'
-                                    ? 'true'
-                                    : 'false'
-                                }
-                                onChange={(event) =>
-                                  updateContrepartieContrainte(
-                                    constraint.id,
-                                    {
-                                      value:
-                                        event.target.value === 'true',
-                                    }
-                                  )
-                                }
-                                className="w-full px-3 py-2 rounded-xl border text-xs"
+                              <td
+                                className="px-3 py-3 align-top"
                                 style={{
-                                  borderColor: C.line,
-                                  background: '#fff',
+                                  borderTop: `1px solid ${C.line}`,
                                 }}
                               >
-                                <option value="true">Oui</option>
-                                <option value="false">Non</option>
-                              </select>
-                            )}
+                                {definition?.kind === 'enum' &&
+                                  definition.multiple && (
+                                    <select
+                                      multiple
+                                      value={selectedValues}
+                                      onChange={(event) =>
+                                        updateContrepartieContrainte(
+                                          constraint.id,
+                                          {
+                                            value: Array.from(
+                                              event.target
+                                                .selectedOptions
+                                            ).map(
+                                              (option) =>
+                                                option.value
+                                            ),
+                                          }
+                                        )
+                                      }
+                                      className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
+                                      style={{
+                                        borderColor: C.line,
+                                        background: '#fff',
+                                        minHeight: 64,
+                                      }}
+                                    >
+                                      {options.map((option) => (
+                                        <option
+                                          key={option.value}
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
 
-                            {definition?.kind === 'number' && (
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="number"
-                                  value={constraint.value ?? ''}
-                                  onChange={(event) =>
-                                    updateContrepartieContrainte(
-                                      constraint.id,
-                                      { value: event.target.value }
+                                {definition?.kind === 'enum' &&
+                                  !definition.multiple && (
+                                    <select
+                                      value={constraint.value || ''}
+                                      onChange={(event) =>
+                                        updateContrepartieContrainte(
+                                          constraint.id,
+                                          {
+                                            value:
+                                              event.target.value,
+                                          }
+                                        )
+                                      }
+                                      className="w-full px-3 py-2 rounded-xl border text-xs"
+                                      style={{
+                                        borderColor: C.line,
+                                        background: '#fff',
+                                      }}
+                                    >
+                                      {options.map((option) => (
+                                        <option
+                                          key={option.value}
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+
+                                {definition?.kind === 'boolean' && (
+                                  <select
+                                    value={
+                                      constraint.value === true ||
+                                      String(constraint.value) ===
+                                        'true'
+                                        ? 'true'
+                                        : 'false'
+                                    }
+                                    onChange={(event) =>
+                                      updateContrepartieContrainte(
+                                        constraint.id,
+                                        {
+                                          value:
+                                            event.target.value ===
+                                            'true',
+                                        }
+                                      )
+                                    }
+                                    className="w-full px-3 py-2 rounded-xl border text-xs"
+                                    style={{
+                                      borderColor: C.line,
+                                      background: '#fff',
+                                    }}
+                                  >
+                                    <option value="true">Oui</option>
+                                    <option value="false">Non</option>
+                                  </select>
+                                )}
+
+                                {definition?.kind === 'number' && (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      value={
+                                        constraint.value ?? ''
+                                      }
+                                      onChange={(event) =>
+                                        updateContrepartieContrainte(
+                                          constraint.id,
+                                          {
+                                            value:
+                                              event.target.value,
+                                          }
+                                        )
+                                      }
+                                      className="w-full px-3 py-2 rounded-xl border text-xs"
+                                      style={{
+                                        borderColor: C.line,
+                                        background: '#fff',
+                                        ...F_MONO,
+                                      }}
+                                    />
+                                    {definition.unit && (
+                                      <span
+                                        className="text-[9px] whitespace-nowrap"
+                                        style={{ color: C.sub }}
+                                      >
+                                        {definition.unit}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td
+                                className="px-3 py-3 align-top"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <div
+                                  className="text-[10px] leading-relaxed"
+                                  style={{ color: C.ink }}
+                                >
+                                  {cessionInterneConstraintLabel(
+                                    constraint
+                                  )}
+                                </div>
+                                <div className="mt-1">
+                                  <Badge
+                                    tone={
+                                      constraint.mode ===
+                                      'Obligatoire'
+                                        ? 'navy'
+                                        : constraint.mode ===
+                                          'Préférence'
+                                        ? 'gold'
+                                        : 'slate'
+                                    }
+                                  >
+                                    {constraint.mode}
+                                  </Badge>
+                                </div>
+                              </td>
+
+                              <td
+                                className="px-3 py-3 align-top text-center"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    supprimerContrepartieContrainte(
+                                      constraint.id
                                     )
                                   }
-                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                  className="w-9 h-9 rounded-xl border inline-flex items-center justify-center"
                                   style={{
-                                    borderColor: C.line,
+                                    borderColor: '#F0D2CF',
+                                    color: C.coral,
                                     background: '#fff',
-                                    ...F_MONO,
                                   }}
-                                />
-                                {definition.unit && (
-                                  <span
-                                    className="text-[9px] whitespace-nowrap"
-                                    style={{ color: C.sub }}
-                                  >
-                                    {definition.unit}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="col-span-1 flex justify-end">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                supprimerContrepartieContrainte(
-                                  constraint.id
-                                )
-                              }
-                              className="w-9 h-9 rounded-xl border flex items-center justify-center mt-4"
-                              style={{
-                                borderColor: C.line,
-                                color: C.coral,
-                                background: '#fff',
-                              }}
-                              title="Supprimer la contrainte"
-                            >
-                              <X size={15} />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div
-                          className="text-[9px] mt-2 flex items-center justify-between gap-3 flex-wrap"
-                          style={{ color: C.sub }}
-                        >
-                          <span>
-                            #{index + 1} ·{' '}
-                            {cessionInterneConstraintLabel(constraint)}
-                          </span>
-                          <Badge
-                            tone={
-                              constraint.mode === 'Obligatoire'
-                                ? 'navy'
-                                : constraint.mode === 'Préférence'
-                                ? 'gold'
-                                : 'slate'
-                            }
-                          >
-                            {constraint.mode}
-                          </Badge>
-                        </div>
-                      </div>
-                    );
-                  })}
+                                  title="Supprimer la contrainte"
+                                >
+                                  <X size={15} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
@@ -17282,6 +17919,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   </Badge>
                   <Badge tone="slate">
                     {contraintesInformations} information(s)
+                  </Badge>
+                  <Badge tone="gold">
+                    {contraintesTitres} sur titre(s)
                   </Badge>
                 </div>
               </div>
