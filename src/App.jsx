@@ -14732,6 +14732,699 @@ const cessionApplyManagerEdits = (
   };
 };
 
+
+/* ------------------- CONTRAINTES CONTREPARTIES — VALIDATION GÉRANT ------------------- */
+/*
+ * Trois niveaux sont distingués :
+ * 1. Règles système : non désactivables (vendeur ≠ acheteur, même marché,
+ *    même devise de référence, capacité d'achat positive, profil conforme).
+ * 2. Contraintes gérant : filtres et plafonds choisis avant la cession interne.
+ * 3. Préférences : servent au classement sans rendre le client inéligible.
+ *
+ * Les options de listes sont dérivées dynamiquement des portefeuilles CLIENTS.
+ * Cela évite de coder en dur les pays, marchés, profils, gestionnaires ou clients.
+ */
+const CESSION_INTERNE_CONSTRAINT_MODES = [
+  'Obligatoire',
+  'Préférence',
+  'Information',
+];
+
+const cessionInterneUniqueOptions = (values) =>
+  Array.from(
+    new Set(
+      (values || [])
+        .map((value) => String(value ?? '').trim())
+        .filter(Boolean)
+    )
+  )
+    .sort((a, b) => a.localeCompare(b, 'fr'))
+    .map((value) => ({ value, label: value }));
+
+const cessionInterneClientTypeLabel = (client) =>
+  PROFILE_TYPE_LABEL[client?.type] || client?.type || 'Non renseigné';
+
+const cessionInterneConstraintOptions = {
+  client_type: () =>
+    cessionInterneUniqueOptions(CLIENTS.map(cessionInterneClientTypeLabel)),
+  risk_profile: () =>
+    cessionInterneUniqueOptions(CLIENTS.map((client) => client.profilRisque)),
+  risk_level: () =>
+    cessionInterneUniqueOptions(CLIENTS.map((client) => client.risque)),
+  country: () =>
+    cessionInterneUniqueOptions(CLIENTS.map((client) => client.pays)),
+  market: () =>
+    cessionInterneUniqueOptions(CLIENTS.map((client) => client.marche)),
+  currency: () =>
+    cessionInterneUniqueOptions(CLIENTS.map((client) => client.devise)),
+  manager: () =>
+    cessionInterneUniqueOptions(
+      CLIENTS.map((client) => cessionInterneGestionnaire(client))
+    ),
+  client: () =>
+    [...CLIENTS]
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+      .map((client) => ({
+        value: client.id,
+        label: `${client.nom} · ${client.marche} · ${client.devise}`,
+      })),
+  manager_scope: () => [
+    { value: 'same', label: 'Même gestionnaire que le vendeur' },
+    { value: 'other', label: 'Autre gestionnaire uniquement' },
+  ],
+};
+
+const CESSION_INTERNE_CONSTRAINT_CATALOG = [
+  {
+    key: 'client_type',
+    category: 'Client',
+    label: 'Type de portefeuille',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'risk_profile',
+    category: 'Profil',
+    label: 'Profil de risque',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'risk_level',
+    category: 'Profil',
+    label: 'Niveau de risque',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'country',
+    category: 'Client',
+    label: 'Pays du portefeuille',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'market',
+    category: 'Marché',
+    label: 'Marché du portefeuille',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'currency',
+    category: 'Devise',
+    label: 'Devise de référence',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'manager',
+    category: 'Gestionnaire',
+    label: 'Gestionnaires autorisés',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'manager_scope',
+    category: 'Gestionnaire',
+    label: 'Périmètre gestionnaire',
+    kind: 'enum',
+    multiple: false,
+    operators: ['='],
+    defaultOperator: '=',
+  },
+  {
+    key: 'client',
+    category: 'Client',
+    label: 'Clients / portefeuilles nommément sélectionnés',
+    kind: 'enum',
+    multiple: true,
+    operators: ['est dans', "n'est pas dans"],
+    defaultOperator: 'est dans',
+  },
+  {
+    key: 'min_assets',
+    category: 'Encours',
+    label: 'Encours minimum du portefeuille',
+    kind: 'number',
+    unit: 'devise portefeuille',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 100000000,
+  },
+  {
+    key: 'max_assets',
+    category: 'Encours',
+    label: 'Encours maximum du portefeuille',
+    kind: 'number',
+    unit: 'devise portefeuille',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 5000000000,
+  },
+  {
+    key: 'min_cash_before_pct',
+    category: 'Liquidité',
+    label: 'Liquidité avant achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 8,
+  },
+  {
+    key: 'min_cash_after_pct',
+    category: 'Liquidité',
+    label: 'Liquidité après achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 5,
+  },
+  {
+    key: 'liquidity_above_target_pct',
+    category: 'Liquidité',
+    label: 'Excédent de liquidité vs cible avant achat',
+    kind: 'number',
+    unit: 'pts',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 0,
+  },
+  {
+    key: 'max_asset_after_pct',
+    category: 'Allocation',
+    label: 'Poids maximum de la classe achetée après opération',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 60,
+  },
+  {
+    key: 'max_deviation_after',
+    category: 'Allocation',
+    label: 'Écart maximum au profil cible après achat',
+    kind: 'number',
+    unit: 'pts',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: CESSION_RETRAIT_TOLERANCE,
+  },
+  {
+    key: 'profile_not_degraded',
+    category: 'Profil',
+    label: 'Ne pas dégrader le profil',
+    kind: 'boolean',
+    operators: ['='],
+    defaultOperator: '=',
+    defaultValue: true,
+  },
+  {
+    key: 'asset_underweight_before',
+    category: 'Allocation',
+    label: 'Classe d’actifs sous-pondérée avant achat',
+    kind: 'boolean',
+    operators: ['='],
+    defaultOperator: '=',
+    defaultValue: true,
+  },
+  {
+    key: 'min_profile_improvement',
+    category: 'Profil',
+    label: 'Amélioration minimale du profil',
+    kind: 'number',
+    unit: 'pts',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 0,
+  },
+  {
+    key: 'min_capacity',
+    category: 'Capacité',
+    label: 'Capacité d’achat minimale',
+    kind: 'number',
+    unit: 'devise de la ligne',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 10000000,
+  },
+  {
+    key: 'min_amount_per_client',
+    category: 'Capacité',
+    label: 'Montant minimum à affecter à un client',
+    kind: 'number',
+    unit: 'devise de la ligne',
+    operators: ['≥'],
+    defaultOperator: '≥',
+    defaultValue: 1000000,
+  },
+  {
+    key: 'max_amount_per_client',
+    category: 'Capacité',
+    label: 'Montant maximum par client',
+    kind: 'number',
+    unit: 'devise de la ligne',
+    operators: ['≤'],
+    defaultOperator: '≤',
+    defaultValue: 100000000,
+    scope: 'capacity',
+  },
+  {
+    key: 'max_order_share_pct',
+    category: 'Capacité',
+    label: 'Part maximale de la cession absorbée par un client',
+    kind: 'number',
+    unit: '% de la ligne',
+    operators: ['≤'],
+    defaultOperator: '≤',
+    defaultValue: 50,
+    scope: 'capacity',
+  },
+  {
+    key: 'max_buyers_per_line',
+    category: 'Capacité',
+    label: 'Nombre maximal de clients acheteurs par ligne',
+    kind: 'number',
+    unit: 'clients',
+    operators: ['≤'],
+    defaultOperator: '≤',
+    defaultValue: 5,
+    scope: 'allocation',
+  },
+  {
+    key: 'full_coverage_single_client',
+    category: 'Capacité',
+    label: 'Exiger qu’un client puisse couvrir toute la ligne',
+    kind: 'boolean',
+    operators: ['='],
+    defaultOperator: '=',
+    defaultValue: true,
+  },
+  {
+    key: 'min_portfolio_age_months',
+    category: 'Client',
+    label: 'Ancienneté minimale du portefeuille',
+    kind: 'number',
+    unit: 'mois',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 3,
+  },
+  {
+    key: 'max_order_currency_exposure_after_pct',
+    category: 'Devise',
+    label: 'Exposition maximale à la devise du titre après achat',
+    kind: 'number',
+    unit: '%',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 70,
+  },
+  {
+    key: 'max_alerts',
+    category: 'Risque',
+    label: 'Nombre maximal d’alertes actives',
+    kind: 'number',
+    unit: 'alertes',
+    operators: ['≤', '≥'],
+    defaultOperator: '≤',
+    defaultValue: 2,
+  },
+  {
+    key: 'min_performance',
+    category: 'Performance',
+    label: 'Performance minimale du portefeuille',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 0,
+  },
+  {
+    key: 'min_profitability',
+    category: 'Performance',
+    label: 'Rentabilité minimale du portefeuille',
+    kind: 'number',
+    unit: '%',
+    operators: ['≥', '≤'],
+    defaultOperator: '≥',
+    defaultValue: 0,
+  },
+];
+
+const cessionInterneConstraintDefinition = (type) =>
+  CESSION_INTERNE_CONSTRAINT_CATALOG.find((item) => item.key === type);
+
+const cessionInterneDefaultConstraintValue = (definition) => {
+  if (!definition) return '';
+  if (definition.kind === 'enum') {
+    const options =
+      cessionInterneConstraintOptions[definition.key]?.() || [];
+    if (definition.multiple) {
+      return options[0]?.value ? [options[0].value] : [];
+    }
+    return options[0]?.value || '';
+  }
+  if (definition.kind === 'boolean') {
+    return definition.defaultValue ?? true;
+  }
+  return definition.defaultValue ?? 0;
+};
+
+const cessionInterneCreateConstraint = (type) => {
+  const definition =
+    cessionInterneConstraintDefinition(type) ||
+    CESSION_INTERNE_CONSTRAINT_CATALOG[0];
+
+  return {
+    id: `cc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: definition.key,
+    mode: 'Obligatoire',
+    operator: definition.defaultOperator,
+    value: cessionInterneDefaultConstraintValue(definition),
+    active: true,
+  };
+};
+
+const cessionInterneConstraintNumericCompare = (
+  actual,
+  operator,
+  expected
+) => {
+  const left = Number(actual);
+  const right = Number(expected);
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+  if (operator === '≤') return left <= right;
+  if (operator === '≥') return left >= right;
+  if (operator === '<') return left < right;
+  if (operator === '>') return left > right;
+  return left === right;
+};
+
+const cessionInternePortfolioAgeMonths = (buyer) => {
+  const entry = parseIsoLocalDate(
+    buyer?.dateEntree || CESSION_RETRAIT_REFERENCE_DATE
+  );
+  const reference = parseIsoLocalDate(CESSION_RETRAIT_REFERENCE_DATE);
+  return Math.max(
+    0,
+    (reference - entry) / (86_400_000 * 30.4375)
+  );
+};
+
+const cessionInterneConstraintActualValue = (
+  definition,
+  candidate,
+  order,
+  seller
+) => {
+  const buyer = candidate.buyer;
+  const sellerManager = cessionInterneGestionnaire(seller);
+  const buyerManager = candidate.gestionnaire;
+  const targetCashPct = Number(buyer.cible?.Liquidité || 0);
+  const orderCurrencyExposureBefore = Number(
+    buyer.expositionsDevises?.[order.devise] ||
+      (buyer.devise === order.devise ? 100 : 0)
+  );
+  const encours = Math.max(1, Number(buyer.encours || 0));
+  const orderCurrencyExposureAfter = Math.min(
+    100,
+    orderCurrencyExposureBefore +
+      (Number(candidate.amount || 0) / encours) * 100
+  );
+
+  switch (definition?.key) {
+    case 'client_type':
+      return cessionInterneClientTypeLabel(buyer);
+    case 'risk_profile':
+      return buyer.profilRisque || 'Non renseigné';
+    case 'risk_level':
+      return buyer.risque || 'Non renseigné';
+    case 'country':
+      return buyer.pays || 'Non renseigné';
+    case 'market':
+      return buyer.marche || 'Non renseigné';
+    case 'currency':
+      return buyer.devise || 'Non renseigné';
+    case 'manager':
+      return buyerManager;
+    case 'manager_scope':
+      return buyerManager === sellerManager ? 'same' : 'other';
+    case 'client':
+      return buyer.id;
+    case 'min_assets':
+    case 'max_assets':
+      return Number(buyer.encours || 0);
+    case 'min_cash_before_pct':
+      return Number(candidate.cashBeforePct || 0);
+    case 'min_cash_after_pct':
+      return Number(candidate.cashAfterPct || 0);
+    case 'liquidity_above_target_pct':
+      return Number(candidate.cashBeforePct || 0) - targetCashPct;
+    case 'max_asset_after_pct':
+      return Number(candidate.allocationAfter?.[order.assetClass] || 0);
+    case 'max_deviation_after':
+      return Number(candidate.afterDeviation || 0);
+    case 'profile_not_degraded':
+      return Number(candidate.profileImprovement || 0) >= -0.0001;
+    case 'asset_underweight_before':
+      return Number(candidate.assetGapBefore || 0) <= 0;
+    case 'min_profile_improvement':
+      return Number(candidate.profileImprovement || 0);
+    case 'min_capacity':
+    case 'min_amount_per_client':
+      return Number(candidate.capacity || 0);
+    case 'full_coverage_single_client':
+      return (
+        Number(candidate.capacity || 0) + 0.0001 >=
+        Number(order.montantBrut || 0)
+      );
+    case 'min_portfolio_age_months':
+      return cessionInternePortfolioAgeMonths(buyer);
+    case 'max_order_currency_exposure_after_pct':
+      return orderCurrencyExposureAfter;
+    case 'max_alerts':
+      return Number(buyer.alertes || 0);
+    case 'min_performance':
+      return Number(buyer.perf || 0);
+    case 'min_profitability':
+      return Number(buyer.rentabilite || 0);
+    default:
+      return null;
+  }
+};
+
+const cessionInterneConstraintPasses = (
+  definition,
+  constraint,
+  actual
+) => {
+  if (!definition) return true;
+
+  if (definition.kind === 'enum') {
+    const selected = Array.isArray(constraint.value)
+      ? constraint.value.map(String)
+      : [String(constraint.value || '')].filter(Boolean);
+
+    if (!selected.length) return true;
+
+    if (constraint.operator === "n'est pas dans") {
+      return !selected.includes(String(actual));
+    }
+    if (constraint.operator === '=') {
+      return String(actual) === selected[0];
+    }
+    return selected.includes(String(actual));
+  }
+
+  if (definition.kind === 'boolean') {
+    const expected =
+      constraint.value === true || String(constraint.value) === 'true';
+    return Boolean(actual) === expected;
+  }
+
+  return cessionInterneConstraintNumericCompare(
+    actual,
+    constraint.operator,
+    constraint.value
+  );
+};
+
+const cessionInterneConstraintCapacityLimit = (
+  order,
+  constraints = []
+) => {
+  let limit = Infinity;
+
+  constraints
+    .filter(
+      (constraint) =>
+        constraint?.active !== false &&
+        constraint?.mode === 'Obligatoire'
+    )
+    .forEach((constraint) => {
+      const definition = cessionInterneConstraintDefinition(
+        constraint.type
+      );
+      if (definition?.scope !== 'capacity') return;
+
+      const value = Math.max(0, Number(constraint.value || 0));
+      if (definition.key === 'max_amount_per_client' && value > 0) {
+        limit = Math.min(limit, value);
+      }
+      if (definition.key === 'max_order_share_pct' && value > 0) {
+        limit = Math.min(
+          limit,
+          (Number(order.montantBrut || 0) * value) / 100
+        );
+      }
+    });
+
+  return limit;
+};
+
+const cessionInterneMaxBuyersForLine = (constraints = []) => {
+  const limits = constraints
+    .filter(
+      (constraint) =>
+        constraint?.active !== false &&
+        constraint?.mode === 'Obligatoire' &&
+        constraint?.type === 'max_buyers_per_line'
+    )
+    .map((constraint) => Math.max(1, Math.floor(Number(constraint.value || 1))))
+    .filter(Number.isFinite);
+
+  return limits.length ? Math.min(...limits) : Infinity;
+};
+
+const cessionInterneAssessCandidate = (
+  candidate,
+  order,
+  seller,
+  constraints = []
+) => {
+  const results = [];
+  let hardEligible = true;
+  let preferenceScore = 0;
+  let preferenceMatched = 0;
+  let preferenceTotal = 0;
+
+  constraints
+    .filter((constraint) => constraint?.active !== false)
+    .forEach((constraint) => {
+      const definition = cessionInterneConstraintDefinition(
+        constraint.type
+      );
+
+      if (!definition || definition.scope === 'allocation') return;
+
+      // Les contraintes de capacité obligatoires ont déjà plafonné la quantité.
+      // Elles restent visibles dans le diagnostic mais ne rendent pas le client
+      // inéligible simplement parce que sa capacité brute était supérieure.
+      if (
+        definition.scope === 'capacity' &&
+        constraint.mode === 'Obligatoire'
+      ) {
+        results.push({
+          id: constraint.id,
+          label: definition.label,
+          mode: constraint.mode,
+          passed: true,
+          actual: Number(candidate.capacity || 0),
+          note: 'Plafond appliqué à la capacité de contrepartie.',
+        });
+        return;
+      }
+
+      const actual = cessionInterneConstraintActualValue(
+        definition,
+        candidate,
+        order,
+        seller
+      );
+      const passed = cessionInterneConstraintPasses(
+        definition,
+        constraint,
+        actual
+      );
+
+      results.push({
+        id: constraint.id,
+        label: definition.label,
+        mode: constraint.mode,
+        passed,
+        actual,
+      });
+
+      if (constraint.mode === 'Obligatoire' && !passed) {
+        hardEligible = false;
+      }
+
+      if (constraint.mode === 'Préférence') {
+        preferenceTotal += 1;
+        if (passed) {
+          preferenceMatched += 1;
+          preferenceScore += 1;
+        }
+      }
+    });
+
+  return {
+    ...candidate,
+    constraintResults: results,
+    hardEligible,
+    preferenceScore,
+    preferenceMatched,
+    preferenceTotal,
+  };
+};
+
+const cessionInterneConstraintLabel = (constraint) => {
+  const definition = cessionInterneConstraintDefinition(
+    constraint?.type
+  );
+  if (!definition) return 'Contrainte';
+
+  const value =
+    definition.kind === 'enum'
+      ? (Array.isArray(constraint.value)
+          ? constraint.value
+          : [constraint.value]
+        )
+          .filter(Boolean)
+          .map((raw) => {
+            const options =
+              cessionInterneConstraintOptions[definition.key]?.() || [];
+            return (
+              options.find((option) => option.value === raw)?.label || raw
+            );
+          })
+          .join(', ')
+      : definition.kind === 'boolean'
+      ? constraint.value === true || String(constraint.value) === 'true'
+        ? 'Oui'
+        : 'Non'
+      : `${constraint.value ?? ''}${definition.unit ? ` ${definition.unit}` : ''}`;
+
+  return `${definition.label} ${constraint.operator || ''} ${value}`.trim();
+};
+
 function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
   const [requests, setRequests] = useState(() =>
     CLIENTS.reduce((map, client) => {
@@ -14756,6 +15449,88 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
   const [editionPlans, setEditionPlans] = useState(false);
   const [managerEdits, setManagerEdits] = useState({});
   const [managerTitleEdits, setManagerTitleEdits] = useState({});
+  const [contrepartieContraintes, setContrepartieContraintes] = useState([]);
+  const [contrepartieModeleMessage, setContrepartieModeleMessage] =
+    useState('');
+
+  const updateContrepartieContrainte = (constraintId, patch) => {
+    setContrepartieContraintes((current) =>
+      current.map((constraint) =>
+        constraint.id === constraintId
+          ? { ...constraint, ...patch }
+          : constraint
+      )
+    );
+  };
+
+  const ajouterContrepartieContrainte = () => {
+    const premiereDefinition = CESSION_INTERNE_CONSTRAINT_CATALOG[0];
+    setContrepartieContraintes((current) => [
+      ...current,
+      cessionInterneCreateConstraint(premiereDefinition.key),
+    ]);
+  };
+
+  const supprimerContrepartieContrainte = (constraintId) => {
+    setContrepartieContraintes((current) =>
+      current.filter((constraint) => constraint.id !== constraintId)
+    );
+  };
+
+  const changerTypeContrepartieContrainte = (
+    constraintId,
+    nextType
+  ) => {
+    const definition = cessionInterneConstraintDefinition(nextType);
+    if (!definition) return;
+
+    updateContrepartieContrainte(constraintId, {
+      type: nextType,
+      operator: definition.defaultOperator,
+      value: cessionInterneDefaultConstraintValue(definition),
+    });
+  };
+
+  const sauvegarderModeleContrepartie = () => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(
+      'opcvm-gsm-cession-interne-constraints',
+      JSON.stringify(contrepartieContraintes)
+    );
+    setContrepartieModeleMessage(
+      'Modèle de contraintes enregistré dans ce navigateur.'
+    );
+  };
+
+  const chargerModeleContrepartie = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(
+        'opcvm-gsm-cession-interne-constraints'
+      );
+      if (!raw) {
+        setContrepartieModeleMessage(
+          'Aucun modèle de contraintes enregistré.'
+        );
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('Format invalide');
+      setContrepartieContraintes(parsed);
+      setContrepartieModeleMessage('Modèle de contraintes chargé.');
+    } catch (error) {
+      setContrepartieModeleMessage(
+        `Impossible de charger le modèle : ${error.message}`
+      );
+    }
+  };
+
+  const reinitialiserContraintesContrepartie = () => {
+    setContrepartieContraintes([]);
+    setContrepartieModeleMessage(
+      'Contraintes gérant réinitialisées. Les règles système restent actives.'
+    );
+  };
 
   const updateRequest = (clientId, patch) => {
     setRequests((current) => ({
@@ -14882,6 +15657,52 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
   const cessionInterneReady =
     plans.length > 0 && plans.every((plan) => !plan.invalidWithdrawal);
 
+  const contrepartieContraintesActives = contrepartieContraintes.filter(
+    (constraint) => constraint.active !== false
+  );
+  const contraintesObligatoires = contrepartieContraintesActives.filter(
+    (constraint) => constraint.mode === 'Obligatoire'
+  ).length;
+  const contraintesPreferences = contrepartieContraintesActives.filter(
+    (constraint) => constraint.mode === 'Préférence'
+  ).length;
+  const contraintesInformations = contrepartieContraintesActives.filter(
+    (constraint) => constraint.mode === 'Information'
+  ).length;
+
+  const contrepartiePreviewMatches = plans.flatMap((plan) =>
+    (plan.orders || []).map((order) =>
+      cessionInterneMatchOrder(
+        order,
+        contrepartieContraintesActives
+      )
+    )
+  );
+  const contrepartieUniversInitial = contrepartiePreviewMatches.reduce(
+    (sum, match) => sum + Number(match.systemUniverseCount || 0),
+    0
+  );
+  const contrepartieCandidaturesEligibles =
+    contrepartiePreviewMatches.reduce(
+      (sum, match) => sum + Number(match.eligible?.length || 0),
+      0
+    );
+  const contrepartieCandidaturesExclues =
+    contrepartiePreviewMatches.reduce(
+      (sum, match) => sum + Number(match.excluded?.length || 0),
+      0
+    );
+  const contrepartieCapaciteRef = contrepartiePreviewMatches.reduce(
+    (sum, match) =>
+      sum +
+      convertCurrency(
+        Number(match.amountMatched || 0),
+        match.order?.devise || devise,
+        devise
+      ),
+    0
+  );
+
   const ouvrirCessionInterne = () => {
     if (!cessionInterneReady) return;
 
@@ -14900,6 +15721,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
       plans,
       strategie,
       participationMax,
+      counterpartyConstraints: contrepartieContraintesActives,
       source: 'cession-retrait',
     });
   };
@@ -15933,23 +16755,21 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
           </Card>
 
           <Card className="p-5" style={{ borderColor: C.gold }}>
-            <div className="flex items-center justify-between gap-5 flex-wrap">
+            <div className="flex items-start justify-between gap-5 flex-wrap">
               <div>
                 <Eyebrow>4 · Validation gérant</Eyebrow>
                 <div className="text-base font-bold" style={{ color: C.ink }}>
-                  Rechercher d'abord une contrepartie interne
+                  Contraintes d’éligibilité des contreparties
                 </div>
                 <div
-                  className="text-xs mt-1 max-w-3xl"
+                  className="text-xs mt-1 max-w-4xl"
                   style={{ color: C.sub }}
                 >
-                  Avant toute exposition au marché, la SGI recherche dans les
-                  portefeuilles de l'ensemble de ses gestionnaires les clients
-                  capables d'acheter les titres proposés sans dégrader leur
-                  propre profil d'allocation. Le reliquat éventuel pourra
-                  ensuite être traité sur le marché. Les quantités modifiées par
-                  le gérant sont celles qui seront transmises à cette
-                  vérification.
+                  Le gérant peut définir les clients qui pourront devenir
+                  contreparties de la cession. Les règles système restent
+                  toujours actives ; les contraintes « Obligatoire » éliminent
+                  un candidat, les « Préférence » servent au classement et les
+                  « Information » sont uniquement documentaires.
                 </div>
                 {!cessionInterneReady && (
                   <div
@@ -15972,36 +16792,582 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   </div>
                 )}
               </div>
+
               <div className="flex items-center gap-2 flex-wrap">
                 {plansModifies > 0 && (
                   <Badge tone="gold">
-                    {plansModifies} plan(s) ajusté(s) par le gérant
+                    {plansModifies} plan(s) ajusté(s)
                   </Badge>
                 )}
-                <Btn tone="ghost" onClick={() => setOptimisationVisible(false)}>
+                <Badge tone="navy">
+                  {contrepartieContraintesActives.length} contrainte(s) gérant
+                </Badge>
+                <Btn
+                  tone="ghost"
+                  onClick={() => setOptimisationVisible(false)}
+                >
                   Masquer la simulation
                 </Btn>
-                <button
-                  type="button"
-                  disabled={!cessionInterneReady}
-                  onClick={ouvrirCessionInterne}
-                  className="px-3.5 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97]"
-                  style={{
-                    background: cessionInterneReady ? C.navy : '#E6E8ED',
-                    color: cessionInterneReady ? '#fff' : '#8B93A7',
-                    border: 'none',
-                    cursor: cessionInterneReady ? 'pointer' : 'not-allowed',
-                    ...F_BODY,
-                  }}
-                  title={
-                    cessionInterneReady
-                      ? 'Vérifier les contreparties internes à partir du plan retenu'
-                      : 'Le retrait dépasse la limite de 95 % ou le solde minimum du compte'
-                  }
-                >
-                  Cession interne
-                </button>
               </div>
+            </div>
+
+            <div
+              className="mt-5 p-4 rounded-2xl border"
+              style={{ borderColor: C.line, background: '#FAFAFC' }}
+            >
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div
+                    className="text-[10px] uppercase font-bold"
+                    style={{ color: C.sub }}
+                  >
+                    Règles système non modifiables
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: C.ink }}>
+                    Elles protègent le workflow même si aucune contrainte gérant
+                    n'est ajoutée.
+                  </div>
+                </div>
+                <Badge tone="teal">Toujours actives</Badge>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mt-3">
+                {[
+                  'Acheteur différent du vendeur',
+                  'Même marché que la ligne cédée',
+                  'Même devise de référence que le titre',
+                  "Capacité d'achat positive",
+                  `Profil conforme après achat · tolérance ±${CESSION_RETRAIT_TOLERANCE} pts`,
+                ].map((rule) => (
+                  <span
+                    key={rule}
+                    className="px-2.5 py-1.5 rounded-xl text-[10px] font-semibold"
+                    style={{
+                      background: '#EAF8F3',
+                      color: '#13795B',
+                      border: '1px solid #CBEADF',
+                    }}
+                  >
+                    ✓ {rule}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: C.ink }}
+                  >
+                    Contraintes choisies par le gérant
+                  </div>
+                  <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
+                    Ajoutez autant de critères que nécessaire. Les listes de
+                    pays, marchés, profils, gestionnaires et clients sont
+                    construites à partir des portefeuilles disponibles.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Btn
+                    tone="ghost"
+                    onClick={chargerModeleContrepartie}
+                  >
+                    Charger modèle
+                  </Btn>
+                  <Btn
+                    tone="ghost"
+                    onClick={sauvegarderModeleContrepartie}
+                  >
+                    Enregistrer modèle
+                  </Btn>
+                  <Btn
+                    tone="ghost"
+                    onClick={reinitialiserContraintesContrepartie}
+                  >
+                    Réinitialiser
+                  </Btn>
+                  <Btn onClick={ajouterContrepartieContrainte}>
+                    + Ajouter une contrainte
+                  </Btn>
+                </div>
+              </div>
+
+              {contrepartieModeleMessage && (
+                <div
+                  className="text-[10px] mt-2"
+                  style={{ color: C.sub }}
+                >
+                  {contrepartieModeleMessage}
+                </div>
+              )}
+
+              {contrepartieContraintes.length === 0 ? (
+                <div
+                  className="mt-3 p-4 rounded-2xl border text-xs"
+                  style={{
+                    borderColor: C.line,
+                    background: '#fff',
+                    color: C.sub,
+                  }}
+                >
+                  Aucune contrainte supplémentaire : la recherche utilisera
+                  uniquement les règles système. Cliquez sur « + Ajouter une
+                  contrainte » pour restreindre ou prioriser l'univers des
+                  contreparties.
+                </div>
+              ) : (
+                <div className="space-y-3 mt-3">
+                  {contrepartieContraintes.map((constraint, index) => {
+                    const definition =
+                      cessionInterneConstraintDefinition(constraint.type);
+                    const options =
+                      definition?.kind === 'enum'
+                        ? cessionInterneConstraintOptions[
+                            definition.key
+                          ]?.() || []
+                        : [];
+                    const selectedValues = Array.isArray(constraint.value)
+                      ? constraint.value
+                      : [constraint.value].filter(Boolean);
+
+                    return (
+                      <div
+                        key={constraint.id}
+                        className="p-4 rounded-2xl border"
+                        style={{
+                          borderColor:
+                            constraint.active === false
+                              ? '#E6E8ED'
+                              : constraint.mode === 'Obligatoire'
+                              ? C.navy
+                              : constraint.mode === 'Préférence'
+                              ? C.gold
+                              : C.line,
+                          background:
+                            constraint.active === false
+                              ? '#F7F8FA'
+                              : '#fff',
+                        }}
+                      >
+                        <div className="grid grid-cols-12 gap-3 items-start">
+                          <div className="col-span-1">
+                            <label
+                              className="text-[9px] uppercase font-semibold block mb-1"
+                              style={{ color: C.sub }}
+                            >
+                              Actif
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateContrepartieContrainte(
+                                  constraint.id,
+                                  { active: constraint.active === false }
+                                )
+                              }
+                              className="w-full px-2 py-2 rounded-xl text-xs font-bold"
+                              style={{
+                                background:
+                                  constraint.active === false
+                                    ? '#EEF0F4'
+                                    : '#EAF8F3',
+                                color:
+                                  constraint.active === false
+                                    ? C.sub
+                                    : C.teal,
+                              }}
+                            >
+                              {constraint.active === false ? 'Non' : 'Oui'}
+                            </button>
+                          </div>
+
+                          <div className="col-span-3">
+                            <label
+                              className="text-[9px] uppercase font-semibold block mb-1"
+                              style={{ color: C.sub }}
+                            >
+                              Type de contrainte
+                            </label>
+                            <select
+                              value={constraint.type}
+                              onChange={(event) =>
+                                changerTypeContrepartieContrainte(
+                                  constraint.id,
+                                  event.target.value
+                                )
+                              }
+                              className="w-full px-3 py-2 rounded-xl border text-xs"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                              }}
+                            >
+                              {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
+                                (item) => (
+                                  <option key={item.key} value={item.key}>
+                                    {item.category} · {item.label}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </div>
+
+                          <div className="col-span-2">
+                            <label
+                              className="text-[9px] uppercase font-semibold block mb-1"
+                              style={{ color: C.sub }}
+                            >
+                              Niveau
+                            </label>
+                            <select
+                              value={constraint.mode}
+                              onChange={(event) =>
+                                updateContrepartieContrainte(
+                                  constraint.id,
+                                  { mode: event.target.value }
+                                )
+                              }
+                              className="w-full px-3 py-2 rounded-xl border text-xs"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                              }}
+                            >
+                              {CESSION_INTERNE_CONSTRAINT_MODES.map(
+                                (mode) => (
+                                  <option key={mode} value={mode}>
+                                    {mode}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </div>
+
+                          <div className="col-span-2">
+                            <label
+                              className="text-[9px] uppercase font-semibold block mb-1"
+                              style={{ color: C.sub }}
+                            >
+                              Opérateur
+                            </label>
+                            <select
+                              value={constraint.operator}
+                              onChange={(event) =>
+                                updateContrepartieContrainte(
+                                  constraint.id,
+                                  { operator: event.target.value }
+                                )
+                              }
+                              className="w-full px-3 py-2 rounded-xl border text-xs"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                              }}
+                            >
+                              {(definition?.operators || ['=']).map(
+                                (operator) => (
+                                  <option
+                                    key={operator}
+                                    value={operator}
+                                  >
+                                    {operator}
+                                  </option>
+                                )
+                              )}
+                            </select>
+                          </div>
+
+                          <div className="col-span-3">
+                            <label
+                              className="text-[9px] uppercase font-semibold block mb-1"
+                              style={{ color: C.sub }}
+                            >
+                              Valeur / sélection
+                            </label>
+
+                            {definition?.kind === 'enum' &&
+                              definition.multiple && (
+                                <select
+                                  multiple
+                                  value={selectedValues}
+                                  onChange={(event) =>
+                                    updateContrepartieContrainte(
+                                      constraint.id,
+                                      {
+                                        value: Array.from(
+                                          event.target.selectedOptions
+                                        ).map((option) => option.value),
+                                      }
+                                    )
+                                  }
+                                  className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
+                                  style={{
+                                    borderColor: C.line,
+                                    background: '#fff',
+                                    minHeight: 72,
+                                  }}
+                                >
+                                  {options.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+
+                            {definition?.kind === 'enum' &&
+                              !definition.multiple && (
+                                <select
+                                  value={constraint.value || ''}
+                                  onChange={(event) =>
+                                    updateContrepartieContrainte(
+                                      constraint.id,
+                                      { value: event.target.value }
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                  style={{
+                                    borderColor: C.line,
+                                    background: '#fff',
+                                  }}
+                                >
+                                  {options.map((option) => (
+                                    <option
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+
+                            {definition?.kind === 'boolean' && (
+                              <select
+                                value={
+                                  constraint.value === true ||
+                                  String(constraint.value) === 'true'
+                                    ? 'true'
+                                    : 'false'
+                                }
+                                onChange={(event) =>
+                                  updateContrepartieContrainte(
+                                    constraint.id,
+                                    {
+                                      value:
+                                        event.target.value === 'true',
+                                    }
+                                  )
+                                }
+                                className="w-full px-3 py-2 rounded-xl border text-xs"
+                                style={{
+                                  borderColor: C.line,
+                                  background: '#fff',
+                                }}
+                              >
+                                <option value="true">Oui</option>
+                                <option value="false">Non</option>
+                              </select>
+                            )}
+
+                            {definition?.kind === 'number' && (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  value={constraint.value ?? ''}
+                                  onChange={(event) =>
+                                    updateContrepartieContrainte(
+                                      constraint.id,
+                                      { value: event.target.value }
+                                    )
+                                  }
+                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                  style={{
+                                    borderColor: C.line,
+                                    background: '#fff',
+                                    ...F_MONO,
+                                  }}
+                                />
+                                {definition.unit && (
+                                  <span
+                                    className="text-[9px] whitespace-nowrap"
+                                    style={{ color: C.sub }}
+                                  >
+                                    {definition.unit}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="col-span-1 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                supprimerContrepartieContrainte(
+                                  constraint.id
+                                )
+                              }
+                              className="w-9 h-9 rounded-xl border flex items-center justify-center mt-4"
+                              style={{
+                                borderColor: C.line,
+                                color: C.coral,
+                                background: '#fff',
+                              }}
+                              title="Supprimer la contrainte"
+                            >
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          className="text-[9px] mt-2 flex items-center justify-between gap-3 flex-wrap"
+                          style={{ color: C.sub }}
+                        >
+                          <span>
+                            #{index + 1} ·{' '}
+                            {cessionInterneConstraintLabel(constraint)}
+                          </span>
+                          <Badge
+                            tone={
+                              constraint.mode === 'Obligatoire'
+                                ? 'navy'
+                                : constraint.mode === 'Préférence'
+                                ? 'gold'
+                                : 'slate'
+                            }
+                          >
+                            {constraint.mode}
+                          </Badge>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div
+              className="mt-5 p-4 rounded-2xl border"
+              style={{
+                borderColor: C.line,
+                background: '#FBFCFE',
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div
+                    className="text-[10px] uppercase font-bold"
+                    style={{ color: C.sub }}
+                  >
+                    Synthèse avant lancement
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: C.ink }}>
+                    Impact des contraintes sur l'univers de contreparties des
+                    lignes de cession actuellement retenues.
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge tone="navy">
+                    {contraintesObligatoires} obligatoire(s)
+                  </Badge>
+                  <Badge tone="gold">
+                    {contraintesPreferences} préférence(s)
+                  </Badge>
+                  <Badge tone="slate">
+                    {contraintesInformations} information(s)
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-4 gap-3 mt-4">
+                {[
+                  {
+                    label: 'Univers système',
+                    value: contrepartieUniversInitial,
+                    detail: 'candidatures ligne/client après règles fixes',
+                  },
+                  {
+                    label: 'Éligibles',
+                    value: contrepartieCandidaturesEligibles,
+                    detail: 'après contraintes obligatoires',
+                  },
+                  {
+                    label: 'Exclus',
+                    value: contrepartieCandidaturesExclues,
+                    detail: 'profil, capacité ou contraintes gérant',
+                  },
+                  {
+                    label: 'Couverture interne estimée',
+                    value: `${fmt(
+                      Math.round(contrepartieCapaciteRef)
+                    )} ${devise}`,
+                    detail: 'après plafonds et priorités',
+                  },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="p-3 rounded-xl border"
+                    style={{
+                      borderColor: C.line,
+                      background: '#fff',
+                    }}
+                  >
+                    <div
+                      className="text-[9px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      {stat.label}
+                    </div>
+                    <div
+                      className="text-base font-bold mt-1"
+                      style={{ color: C.ink, ...F_MONO }}
+                    >
+                      {stat.value}
+                    </div>
+                    <div
+                      className="text-[9px] mt-1"
+                      style={{ color: C.sub }}
+                    >
+                      {stat.detail}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3 flex-wrap mt-5">
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Les contraintes sont transmises avec les plans retenus à la page
+                de Cession interne et sont recalculées pour chaque ligne.
+              </div>
+
+              <button
+                type="button"
+                disabled={!cessionInterneReady}
+                onClick={ouvrirCessionInterne}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97]"
+                style={{
+                  background: cessionInterneReady ? C.navy : '#E6E8ED',
+                  color: cessionInterneReady ? '#fff' : '#8B93A7',
+                  border: 'none',
+                  cursor: cessionInterneReady ? 'pointer' : 'not-allowed',
+                  ...F_BODY,
+                }}
+                title={
+                  cessionInterneReady
+                    ? 'Lancer la recherche avec les contraintes sélectionnées'
+                    : 'Le retrait dépasse la limite de 95 % ou le solde minimum du compte'
+                }
+              >
+                Cession interne →
+              </button>
             </div>
           </Card>
         </>
@@ -16128,55 +17494,155 @@ const cessionInterneCandidate = (buyer, order, amountRequested) => {
   };
 };
 
-const cessionInterneMatchOrder = (order) => {
+const cessionInterneMatchOrder = (
+  order,
+  constraints = []
+) => {
   let remaining = Number(order.montantBrut || 0);
   const seller = CLIENTS.find((client) => client.id === order.clientId);
 
-  const eligible = CLIENTS.filter(
+  // Règles système non désactivables.
+  const systemUniverse = CLIENTS.filter(
     (buyer) =>
       buyer.id !== order.clientId &&
       buyer.marche === order.marche &&
       buyer.devise === order.devise
-  )
-    .map((buyer) => cessionInterneCandidate(buyer, order, remaining))
-    .filter((candidate) => candidate.capacity > 0)
+  );
+
+  const capacityLimit = cessionInterneConstraintCapacityLimit(
+    order,
+    constraints
+  );
+
+  const assessed = systemUniverse.map((buyer) => {
+    const requestedAmount = Math.min(
+      remaining,
+      Number.isFinite(capacityLimit) ? capacityLimit : remaining
+    );
+    const candidate = cessionInterneCandidate(
+      buyer,
+      order,
+      requestedAmount
+    );
+    const assessedCandidate = cessionInterneAssessCandidate(
+      candidate,
+      order,
+      seller,
+      constraints
+    );
+
+    const exclusionReasons = [];
+    if (candidate.capacity <= 0 || candidate.quantity <= 0) {
+      exclusionReasons.push("Capacité d'achat insuffisante");
+    }
+    if (!candidate.compliantAfter) {
+      exclusionReasons.push(
+        `Profil hors tolérance ±${CESSION_RETRAIT_TOLERANCE} pts après achat`
+      );
+    }
+    assessedCandidate.constraintResults
+      .filter(
+        (result) =>
+          result.mode === 'Obligatoire' && result.passed === false
+      )
+      .forEach((result) => {
+        exclusionReasons.push(`Contrainte : ${result.label}`);
+      });
+
+    return {
+      ...assessedCandidate,
+      exclusionReasons,
+      eligibleForAllocation:
+        candidate.capacity > 0 &&
+        candidate.quantity > 0 &&
+        candidate.compliantAfter &&
+        assessedCandidate.hardEligible,
+    };
+  });
+
+  const eligible = assessed
+    .filter((candidate) => candidate.eligibleForAllocation)
     .sort((a, b) => {
-      // 1. Les achats qui améliorent le profil sont prioritaires.
+      // 1. Préférences gérant satisfaites.
+      if (b.preferenceScore !== a.preferenceScore) {
+        return b.preferenceScore - a.preferenceScore;
+      }
+      // 2. Amélioration du profil.
       if (b.profileImprovement !== a.profileImprovement) {
         return b.profileImprovement - a.profileImprovement;
       }
-      // 2. Puis la capacité financière.
+      // 3. Capacité financière.
       return b.capacity - a.capacity;
     });
 
+  const excluded = assessed.filter(
+    (candidate) => !candidate.eligibleForAllocation
+  );
+
   const allocations = [];
+  const maxBuyers = cessionInterneMaxBuyersForLine(constraints);
+
   for (const baseCandidate of eligible) {
     if (remaining < Number(order.prix || 0)) break;
+    if (allocations.length >= maxBuyers) break;
+
+    const requestedAmount = Math.min(
+      remaining,
+      Number.isFinite(capacityLimit) ? capacityLimit : remaining
+    );
+
     const candidate = cessionInterneCandidate(
       baseCandidate.buyer,
       order,
-      remaining
+      requestedAmount
     );
-    if (candidate.quantity <= 0 || !candidate.compliantAfter) continue;
-    allocations.push(candidate);
-    remaining = Math.max(0, remaining - candidate.amount);
+    const assessedCandidate = cessionInterneAssessCandidate(
+      candidate,
+      order,
+      seller,
+      constraints
+    );
+
+    if (
+      candidate.quantity <= 0 ||
+      !candidate.compliantAfter ||
+      !assessedCandidate.hardEligible
+    ) {
+      continue;
+    }
+
+    allocations.push(assessedCandidate);
+    remaining = Math.max(0, remaining - assessedCandidate.amount);
   }
 
   return {
     order,
     seller,
     sellerGestionnaire: cessionInterneGestionnaire(seller),
+    constraints,
+    systemUniverseCount: systemUniverse.length,
     eligible,
+    excluded,
     allocations,
-    amountMatched: allocations.reduce((sum, item) => sum + item.amount, 0),
+    amountMatched: allocations.reduce(
+      (sum, item) => sum + item.amount,
+      0
+    ),
     remaining,
   };
 };
 
 function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
   const plans = Array.isArray(ctx?.plans) ? ctx.plans : [];
+  const counterpartyConstraints = Array.isArray(
+    ctx?.counterpartyConstraints
+  )
+    ? ctx.counterpartyConstraints
+    : [];
   const orders = plans.flatMap((plan) => plan.orders || []);
-  const matches = orders.map(cessionInterneMatchOrder);
+  const matches = orders.map((order) =>
+    cessionInterneMatchOrder(order, counterpartyConstraints)
+  );
   const [orderIndex, setOrderIndex] = useState(0);
   const [interneValidee, setInterneValidee] = useState(false);
   const [retraitDisponible, setRetraitDisponible] = useState(false);
@@ -16300,6 +17766,9 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             {CESSION_INTERNE_GESTIONNAIRES.length} gestionnaires simulés
           </Badge>
           <Badge tone="gold">Priorité interne avant marché</Badge>
+          <Badge tone="teal">
+            {counterpartyConstraints.length} contrainte(s) gérant
+          </Badge>
         </div>
       </div>
 
@@ -16362,6 +17831,56 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
           </Card>
         ))}
       </div>
+
+      <Card className="p-5">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>Contraintes transmises par le gérant</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Univers de contreparties filtré avant rapprochement
+            </div>
+          </div>
+          <Badge tone="navy">
+            {counterpartyConstraints.filter(
+              (constraint) => constraint.mode === 'Obligatoire'
+            ).length}{' '}
+            obligatoire(s)
+          </Badge>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mt-3">
+          {counterpartyConstraints.length === 0 ? (
+            <span className="text-xs" style={{ color: C.sub }}>
+              Aucune contrainte gérant supplémentaire. Les règles système
+              non désactivables s'appliquent seules.
+            </span>
+          ) : (
+            counterpartyConstraints.map((constraint) => (
+              <span
+                key={constraint.id}
+                className="px-2.5 py-1.5 rounded-xl text-[10px]"
+                style={{
+                  background:
+                    constraint.mode === 'Obligatoire'
+                      ? '#EEF1F7'
+                      : constraint.mode === 'Préférence'
+                      ? '#FBF1DD'
+                      : '#F3F4F6',
+                  color:
+                    constraint.mode === 'Obligatoire'
+                      ? C.navy
+                      : constraint.mode === 'Préférence'
+                      ? '#8A6A16'
+                      : C.sub,
+                }}
+              >
+                {constraint.mode} ·{' '}
+                {cessionInterneConstraintLabel(constraint)}
+              </span>
+            ))
+          )}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -16452,12 +17971,17 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                   Impact de l'achat sur le respect du profil
                 </div>
               </div>
-              <Badge tone="slate">
-                {selectedMatch.eligible.length} candidat(s)
-              </Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge tone="teal">
+                  {selectedMatch.eligible.length} éligible(s)
+                </Badge>
+                <Badge tone="coral">
+                  {selectedMatch.excluded.length} exclu(s)
+                </Badge>
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1450 }}>
+              <table className="w-full" style={{ minWidth: 1570 }}>
                 <thead style={{ background: '#FAFAFC' }}>
                   <tr>
                     <Th>Gestionnaire</Th>
@@ -16472,6 +17996,7 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                     <Th>Écart max avant</Th>
                     <Th>Écart max après</Th>
                     <Th>Impact profil</Th>
+                    <Th>Préférences</Th>
                     <Th>Conformité</Th>
                   </tr>
                 </thead>
@@ -16553,6 +18078,23 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                         </Td>
                         <Td>
                           <Badge
+                            tone={
+                              display.preferenceTotal > 0 &&
+                              display.preferenceMatched ===
+                                display.preferenceTotal
+                                ? 'teal'
+                                : display.preferenceMatched > 0
+                                ? 'gold'
+                                : 'slate'
+                            }
+                          >
+                            {display.preferenceTotal > 0
+                              ? `${display.preferenceMatched}/${display.preferenceTotal}`
+                              : '—'}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          <Badge
                             tone={display.compliantAfter ? 'teal' : 'coral'}
                           >
                             {display.compliantAfter
@@ -16575,6 +18117,68 @@ function CessionInterne({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                 </tbody>
               </table>
             </div>
+
+            {selectedMatch.excluded.length > 0 && (
+              <div
+                className="m-4 mt-0 p-4 rounded-2xl border"
+                style={{
+                  borderColor: '#F0D2CF',
+                  background: '#FFF8F7',
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div
+                      className="text-xs font-bold"
+                      style={{ color: C.ink }}
+                    >
+                      Candidats exclus
+                    </div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      Motifs produits par les règles système et les contraintes
+                      obligatoires du gérant.
+                    </div>
+                  </div>
+                  <Badge tone="coral">
+                    {selectedMatch.excluded.length}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {selectedMatch.excluded.slice(0, 10).map((candidate) => (
+                    <div
+                      key={`excluded-${candidate.buyer.id}`}
+                      className="p-3 rounded-xl"
+                      style={{ background: '#fff' }}
+                    >
+                      <div
+                        className="text-[10px] font-bold"
+                        style={{ color: C.ink }}
+                      >
+                        {candidate.buyer.nom}
+                      </div>
+                      <div
+                        className="text-[9px] mt-1"
+                        style={{ color: C.coral }}
+                      >
+                        {(candidate.exclusionReasons || []).join(' · ') ||
+                          'Non éligible'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {selectedMatch.excluded.length > 10 && (
+                  <div
+                    className="text-[9px] mt-2"
+                    style={{ color: C.sub }}
+                  >
+                    + {selectedMatch.excluded.length - 10} autre(s) candidat(s)
+                    exclu(s)
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
 
           <div className="grid grid-cols-2 gap-4">
