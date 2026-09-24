@@ -15910,6 +15910,11 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
   const [managerEdits, setManagerEdits] = useState({});
   const [managerTitleEdits, setManagerTitleEdits] = useState({});
   const [contrepartieContraintes, setContrepartieContraintes] = useState([]);
+  const [contrepartieBrouillon, setContrepartieBrouillon] = useState(() =>
+    cessionInterneCreateConstraint(
+      CESSION_INTERNE_CONSTRAINT_CATALOG[0].key
+    )
+  );
   const [contrepartieModeleMessage, setContrepartieModeleMessage] =
     useState('');
 
@@ -15923,32 +15928,57 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
     );
   };
 
+  const changerTypeContrepartieBrouillon = (nextType) => {
+    const definition = cessionInterneConstraintDefinition(nextType);
+    if (!definition) return;
+
+    setContrepartieBrouillon((current) => ({
+      ...current,
+      type: nextType,
+      operator: definition.defaultOperator,
+      value: cessionInterneDefaultConstraintValue(definition),
+      active: true,
+    }));
+  };
+
+  const updateContrepartieBrouillon = (patch) => {
+    setContrepartieBrouillon((current) => ({
+      ...current,
+      ...patch,
+    }));
+  };
+
   const ajouterContrepartieContrainte = () => {
-    const premiereDefinition = CESSION_INTERNE_CONSTRAINT_CATALOG[0];
+    const definition = cessionInterneConstraintDefinition(
+      contrepartieBrouillon.type
+    );
+    if (!definition) return;
+
+    const contrainteAjoutee = {
+      ...contrepartieBrouillon,
+      id: `cc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      active: true,
+    };
+
     setContrepartieContraintes((current) => [
       ...current,
-      cessionInterneCreateConstraint(premiereDefinition.key),
+      contrainteAjoutee,
     ]);
+
+    setContrepartieBrouillon(
+      cessionInterneCreateConstraint(definition.key)
+    );
+    setContrepartieModeleMessage(
+      `Contrainte ajoutée : ${cessionInterneConstraintLabel(
+        contrainteAjoutee
+      )}`
+    );
   };
 
   const supprimerContrepartieContrainte = (constraintId) => {
     setContrepartieContraintes((current) =>
       current.filter((constraint) => constraint.id !== constraintId)
     );
-  };
-
-  const changerTypeContrepartieContrainte = (
-    constraintId,
-    nextType
-  ) => {
-    const definition = cessionInterneConstraintDefinition(nextType);
-    if (!definition) return;
-
-    updateContrepartieContrainte(constraintId, {
-      type: nextType,
-      operator: definition.defaultOperator,
-      value: cessionInterneDefaultConstraintValue(definition),
-    });
   };
 
   const sauvegarderModeleContrepartie = () => {
@@ -15987,6 +16017,11 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
   const reinitialiserContraintesContrepartie = () => {
     setContrepartieContraintes([]);
+    setContrepartieBrouillon(
+      cessionInterneCreateConstraint(
+        CESSION_INTERNE_CONSTRAINT_CATALOG[0].key
+      )
+    );
     setContrepartieModeleMessage(
       'Contraintes gérant réinitialisées. Les règles système restent actives.'
     );
@@ -17330,10 +17365,10 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     Contraintes choisies par le gérant
                   </div>
                   <div className="text-[10px] mt-0.5" style={{ color: C.sub }}>
-                    Ajoutez autant de critères que nécessaire, y compris sur
-                    les titres à céder. Les listes de titres, secteurs,
-                    émetteurs, pays, marchés, profils, gestionnaires et clients
-                    sont construites à partir des données disponibles.
+                    Configurez une contrainte à la fois dans la ligne de
+                    sélection, puis ajoutez-la au tableau. Les listes de titres,
+                    secteurs, émetteurs, pays, marchés, profils, gestionnaires
+                    et clients sont construites à partir des données disponibles.
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -17355,9 +17390,6 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   >
                     Réinitialiser
                   </Btn>
-                  <Btn onClick={ajouterContrepartieContrainte}>
-                    + Ajouter une contrainte
-                  </Btn>
                 </div>
               </div>
 
@@ -17370,62 +17402,382 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 </div>
               )}
 
-              {contrepartieContraintes.length === 0 ? (
-                <div
-                  className="mt-3 p-4 rounded-2xl border text-xs"
-                  style={{
-                    borderColor: C.line,
-                    background: '#fff',
-                    color: C.sub,
-                  }}
-                >
-                  Aucune contrainte supplémentaire : la recherche utilisera
-                  uniquement les règles système. Cliquez sur « + Ajouter une
-                  contrainte » pour restreindre ou prioriser l'univers des
-                  contreparties.
-                </div>
-              ) : (
-                <div
-                  className="mt-3 rounded-2xl border overflow-hidden"
-                  style={{
-                    borderColor: C.line,
-                    background: '#fff',
-                  }}
-                >
+              {(() => {
+                const definition =
+                  cessionInterneConstraintDefinition(
+                    contrepartieBrouillon.type
+                  );
+                const options =
+                  definition?.kind === 'enum'
+                    ? cessionInterneConstraintOptions[
+                        definition.key
+                      ]?.() || []
+                    : [];
+                const selectedValues = Array.isArray(
+                  contrepartieBrouillon.value
+                )
+                  ? contrepartieBrouillon.value
+                  : [contrepartieBrouillon.value].filter(Boolean);
+
+                return (
                   <div
-                    className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+                    className="mt-4 p-4 rounded-2xl border"
                     style={{
-                      background: '#FAFAFC',
-                      borderBottom: `1px solid ${C.line}`,
+                      borderColor: C.gold,
+                      background: '#FFFCF4',
                     }}
                   >
-                    <div className="text-[10px]" style={{ color: C.sub }}>
-                      Tableau des contraintes · hauteur limitée
+                    <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                      <div>
+                        <div
+                          className="text-[10px] uppercase font-bold"
+                          style={{ color: '#8A6A16' }}
+                        >
+                          Nouvelle contrainte
+                        </div>
+                        <div
+                          className="text-[10px] mt-0.5"
+                          style={{ color: C.sub }}
+                        >
+                          Une seule ligne de sélection. Configurez-la puis
+                          cliquez sur « + Ajouter une contrainte » pour
+                          l'enregistrer dans le tableau.
+                        </div>
+                      </div>
+
+                      <Badge
+                        tone={
+                          definition?.category === 'Titres'
+                            ? 'gold'
+                            : 'slate'
+                        }
+                      >
+                        {definition?.category || 'Autre'}
+                      </Badge>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge tone="navy">
-                        {contrepartieContraintes.length} ligne(s)
-                      </Badge>
-                      <Badge tone="gold">
-                        {contraintesTitres} sur titre(s)
-                      </Badge>
-                      <span className="text-[9px]" style={{ color: C.sub }}>
-                        Faites défiler verticalement pour voir les contraintes
-                        supplémentaires.
-                      </span>
+
+                    <div className="grid grid-cols-12 gap-3 items-end">
+                      <div className="col-span-4">
+                        <label
+                          className="text-[9px] uppercase font-semibold block mb-1"
+                          style={{ color: C.sub }}
+                        >
+                          Type de contrainte
+                        </label>
+                        <select
+                          value={contrepartieBrouillon.type}
+                          onChange={(event) =>
+                            changerTypeContrepartieBrouillon(
+                              event.target.value
+                            )
+                          }
+                          className="w-full px-3 py-2 rounded-xl border text-xs"
+                          style={{
+                            borderColor: C.line,
+                            background: '#fff',
+                          }}
+                        >
+                          {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
+                            (item) => (
+                              <option
+                                key={item.key}
+                                value={item.key}
+                              >
+                                {item.category} · {item.label}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="col-span-2">
+                        <label
+                          className="text-[9px] uppercase font-semibold block mb-1"
+                          style={{ color: C.sub }}
+                        >
+                          Niveau
+                        </label>
+                        <select
+                          value={contrepartieBrouillon.mode}
+                          onChange={(event) =>
+                            updateContrepartieBrouillon({
+                              mode: event.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 rounded-xl border text-xs"
+                          style={{
+                            borderColor: C.line,
+                            background: '#fff',
+                          }}
+                        >
+                          {CESSION_INTERNE_CONSTRAINT_MODES.map(
+                            (mode) => (
+                              <option key={mode} value={mode}>
+                                {mode}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="col-span-2">
+                        <label
+                          className="text-[9px] uppercase font-semibold block mb-1"
+                          style={{ color: C.sub }}
+                        >
+                          Opérateur
+                        </label>
+                        <select
+                          value={contrepartieBrouillon.operator}
+                          onChange={(event) =>
+                            updateContrepartieBrouillon({
+                              operator: event.target.value,
+                            })
+                          }
+                          className="w-full px-3 py-2 rounded-xl border text-xs"
+                          style={{
+                            borderColor: C.line,
+                            background: '#fff',
+                          }}
+                        >
+                          {(definition?.operators || ['=']).map(
+                            (operator) => (
+                              <option
+                                key={operator}
+                                value={operator}
+                              >
+                                {operator}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="col-span-3">
+                        <label
+                          className="text-[9px] uppercase font-semibold block mb-1"
+                          style={{ color: C.sub }}
+                        >
+                          Valeur / sélection
+                        </label>
+
+                        {definition?.kind === 'enum' &&
+                          definition.multiple && (
+                            <select
+                              multiple
+                              value={selectedValues}
+                              onChange={(event) =>
+                                updateContrepartieBrouillon({
+                                  value: Array.from(
+                                    event.target.selectedOptions
+                                  ).map((option) => option.value),
+                                })
+                              }
+                              className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                                minHeight: 40,
+                                maxHeight: 72,
+                              }}
+                            >
+                              {options.map((option) => (
+                                <option
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                        {definition?.kind === 'enum' &&
+                          !definition.multiple && (
+                            <select
+                              value={contrepartieBrouillon.value || ''}
+                              onChange={(event) =>
+                                updateContrepartieBrouillon({
+                                  value: event.target.value,
+                                })
+                              }
+                              className="w-full px-3 py-2 rounded-xl border text-xs"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                              }}
+                            >
+                              {options.map((option) => (
+                                <option
+                                  key={option.value}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                        {definition?.kind === 'boolean' && (
+                          <select
+                            value={
+                              contrepartieBrouillon.value === true ||
+                              String(
+                                contrepartieBrouillon.value
+                              ) === 'true'
+                                ? 'true'
+                                : 'false'
+                            }
+                            onChange={(event) =>
+                              updateContrepartieBrouillon({
+                                value:
+                                  event.target.value === 'true',
+                              })
+                            }
+                            className="w-full px-3 py-2 rounded-xl border text-xs"
+                            style={{
+                              borderColor: C.line,
+                              background: '#fff',
+                            }}
+                          >
+                            <option value="true">Oui</option>
+                            <option value="false">Non</option>
+                          </select>
+                        )}
+
+                        {definition?.kind === 'number' && (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={
+                                contrepartieBrouillon.value ?? ''
+                              }
+                              onChange={(event) =>
+                                updateContrepartieBrouillon({
+                                  value: event.target.value,
+                                })
+                              }
+                              className="w-full px-3 py-2 rounded-xl border text-xs"
+                              style={{
+                                borderColor: C.line,
+                                background: '#fff',
+                                ...F_MONO,
+                              }}
+                            />
+                            {definition.unit && (
+                              <span
+                                className="text-[9px] whitespace-nowrap"
+                                style={{ color: C.sub }}
+                              >
+                                {definition.unit}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="col-span-1">
+                        <button
+                          type="button"
+                          onClick={ajouterContrepartieContrainte}
+                          className="w-full px-3 py-2 rounded-xl text-xs font-semibold transition-transform active:scale-[0.97]"
+                          style={{
+                            background: C.navy,
+                            color: '#fff',
+                            border: 'none',
+                            minHeight: 38,
+                            ...F_BODY,
+                          }}
+                          title="Ajouter cette contrainte au tableau"
+                        >
+                          + Ajouter
+                        </button>
+                      </div>
+                    </div>
+
+                    <div
+                      className="text-[9px] mt-2"
+                      style={{ color: C.sub }}
+                    >
+                      Aperçu :{' '}
+                      <b style={{ color: C.ink }}>
+                        {cessionInterneConstraintLabel(
+                          contrepartieBrouillon
+                        )}
+                      </b>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div
+                className="mt-4 rounded-2xl border overflow-hidden"
+                style={{
+                  borderColor: C.line,
+                  background: '#fff',
+                }}
+              >
+                <div
+                  className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+                  style={{
+                    background: '#FAFAFC',
+                    borderBottom: `1px solid ${C.line}`,
+                  }}
+                >
+                  <div>
+                    <div
+                      className="text-[10px] uppercase font-bold"
+                      style={{ color: C.sub }}
+                    >
+                      Contraintes ajoutées
+                    </div>
+                    <div
+                      className="text-[9px] mt-0.5"
+                      style={{ color: C.sub }}
+                    >
+                      Le tableau est en lecture seule. Utilisez la ligne de
+                      sélection ci-dessus pour ajouter une nouvelle contrainte.
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge tone="navy">
+                      {contrepartieContraintes.length} ligne(s)
+                    </Badge>
+                    <Badge tone="gold">
+                      {contraintesTitres} sur titre(s)
+                    </Badge>
+                    <span
+                      className="text-[9px]"
+                      style={{ color: C.sub }}
+                    >
+                      Scroll vertical au-delà de la hauteur maximale.
+                    </span>
+                  </div>
+                </div>
+
+                {contrepartieContraintes.length === 0 ? (
+                  <div
+                    className="p-5 text-xs"
+                    style={{ color: C.sub }}
+                  >
+                    Aucune contrainte ajoutée pour le moment.
+                  </div>
+                ) : (
                   <div
                     className="overflow-auto"
                     style={{
-                      maxHeight: 430,
+                      maxHeight: 360,
                       scrollbarGutter: 'stable',
                     }}
                   >
                     <table
                       className="w-full"
-                      style={{ minWidth: 1580, borderCollapse: 'separate', borderSpacing: 0 }}
+                      style={{
+                        minWidth: 1160,
+                        borderCollapse: 'separate',
+                        borderSpacing: 0,
+                      }}
                     >
                       <thead
                         style={{
@@ -17444,25 +17796,25 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           </th>
                           <th
                             className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, width: 75 }}
+                            style={{ color: C.sub, width: 80 }}
                           >
                             Actif
                           </th>
                           <th
                             className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, width: 105 }}
+                            style={{ color: C.sub, width: 115 }}
                           >
                             Famille
                           </th>
                           <th
                             className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, minWidth: 320 }}
+                            style={{ color: C.sub, minWidth: 260 }}
                           >
                             Contrainte
                           </th>
                           <th
                             className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, width: 145 }}
+                            style={{ color: C.sub, width: 140 }}
                           >
                             Niveau
                           </th>
@@ -17476,17 +17828,11 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                             className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
                             style={{ color: C.sub, minWidth: 330 }}
                           >
-                            Valeur / sélection
-                          </th>
-                          <th
-                            className="px-3 py-2 text-left text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, minWidth: 310 }}
-                          >
-                            Résumé
+                            Valeur / résumé
                           </th>
                           <th
                             className="px-3 py-2 text-center text-[9px] uppercase font-semibold"
-                            style={{ color: C.sub, width: 75 }}
+                            style={{ color: C.sub, width: 80 }}
                           >
                             Action
                           </th>
@@ -17494,352 +17840,115 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                       </thead>
 
                       <tbody>
-                        {contrepartieContraintes.map((constraint, index) => {
-                          const definition =
-                            cessionInterneConstraintDefinition(
-                              constraint.type
-                            );
-                          const options =
-                            definition?.kind === 'enum'
-                              ? cessionInterneConstraintOptions[
-                                  definition.key
-                                ]?.() || []
-                              : [];
-                          const selectedValues = Array.isArray(
-                            constraint.value
-                          )
-                            ? constraint.value
-                            : [constraint.value].filter(Boolean);
+                        {contrepartieContraintes.map(
+                          (constraint, index) => {
+                            const definition =
+                              cessionInterneConstraintDefinition(
+                                constraint.type
+                              );
 
-                          return (
-                            <tr
-                              key={constraint.id}
-                              style={{
-                                borderTop: `1px solid ${C.line}`,
-                                background:
-                                  constraint.active === false
-                                    ? '#F7F8FA'
-                                    : definition?.category === 'Titres'
-                                    ? '#FFFCF4'
-                                    : index % 2
-                                    ? '#FCFCFD'
-                                    : '#fff',
-                              }}
-                            >
-                              <td
-                                className="px-3 py-3 align-top text-xs font-bold"
+                            return (
+                              <tr
+                                key={constraint.id}
                                 style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                  color: C.sub,
-                                  ...F_MONO,
+                                  background:
+                                    constraint.active === false
+                                      ? '#F7F8FA'
+                                      : definition?.category ===
+                                        'Titres'
+                                      ? '#FFFCF4'
+                                      : index % 2
+                                      ? '#FCFCFD'
+                                      : '#fff',
                                 }}
                               >
-                                {index + 1}
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateContrepartieContrainte(
-                                      constraint.id,
-                                      {
-                                        active:
-                                          constraint.active === false,
-                                      }
-                                    )
-                                  }
-                                  className="w-full px-2 py-2 rounded-xl text-[10px] font-bold"
+                                <td
+                                  className="px-3 py-3 align-middle text-xs font-bold"
                                   style={{
-                                    background:
-                                      constraint.active === false
-                                        ? '#EEF0F4'
-                                        : '#EAF8F3',
-                                    color:
-                                      constraint.active === false
-                                        ? C.sub
-                                        : C.teal,
+                                    borderTop: `1px solid ${C.line}`,
+                                    color: C.sub,
+                                    ...F_MONO,
                                   }}
                                 >
-                                  {constraint.active === false
-                                    ? 'Non'
-                                    : 'Oui'}
-                                </button>
-                              </td>
+                                  {index + 1}
+                                </td>
 
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <Badge
-                                  tone={
-                                    definition?.category === 'Titres'
-                                      ? 'gold'
-                                      : 'slate'
-                                  }
-                                >
-                                  {definition?.category || 'Autre'}
-                                </Badge>
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <select
-                                  value={constraint.type}
-                                  onChange={(event) =>
-                                    changerTypeContrepartieContrainte(
-                                      constraint.id,
-                                      event.target.value
-                                    )
-                                  }
-                                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                                <td
+                                  className="px-3 py-3 align-middle"
                                   style={{
-                                    borderColor: C.line,
-                                    background: '#fff',
+                                    borderTop: `1px solid ${C.line}`,
                                   }}
                                 >
-                                  {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
-                                    (item) => (
-                                      <option
-                                        key={item.key}
-                                        value={item.key}
-                                      >
-                                        {item.category} · {item.label}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <select
-                                  value={constraint.mode}
-                                  onChange={(event) =>
-                                    updateContrepartieContrainte(
-                                      constraint.id,
-                                      { mode: event.target.value }
-                                    )
-                                  }
-                                  className="w-full px-3 py-2 rounded-xl border text-xs"
-                                  style={{
-                                    borderColor: C.line,
-                                    background: '#fff',
-                                  }}
-                                >
-                                  {CESSION_INTERNE_CONSTRAINT_MODES.map(
-                                    (mode) => (
-                                      <option key={mode} value={mode}>
-                                        {mode}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <select
-                                  value={constraint.operator}
-                                  onChange={(event) =>
-                                    updateContrepartieContrainte(
-                                      constraint.id,
-                                      {
-                                        operator: event.target.value,
-                                      }
-                                    )
-                                  }
-                                  className="w-full px-3 py-2 rounded-xl border text-xs"
-                                  style={{
-                                    borderColor: C.line,
-                                    background: '#fff',
-                                  }}
-                                >
-                                  {(definition?.operators || ['=']).map(
-                                    (operator) => (
-                                      <option
-                                        key={operator}
-                                        value={operator}
-                                      >
-                                        {operator}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                {definition?.kind === 'enum' &&
-                                  definition.multiple && (
-                                    <select
-                                      multiple
-                                      value={selectedValues}
-                                      onChange={(event) =>
-                                        updateContrepartieContrainte(
-                                          constraint.id,
-                                          {
-                                            value: Array.from(
-                                              event.target
-                                                .selectedOptions
-                                            ).map(
-                                              (option) =>
-                                                option.value
-                                            ),
-                                          }
-                                        )
-                                      }
-                                      className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
-                                      style={{
-                                        borderColor: C.line,
-                                        background: '#fff',
-                                        minHeight: 64,
-                                      }}
-                                    >
-                                      {options.map((option) => (
-                                        <option
-                                          key={option.value}
-                                          value={option.value}
-                                        >
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-
-                                {definition?.kind === 'enum' &&
-                                  !definition.multiple && (
-                                    <select
-                                      value={constraint.value || ''}
-                                      onChange={(event) =>
-                                        updateContrepartieContrainte(
-                                          constraint.id,
-                                          {
-                                            value:
-                                              event.target.value,
-                                          }
-                                        )
-                                      }
-                                      className="w-full px-3 py-2 rounded-xl border text-xs"
-                                      style={{
-                                        borderColor: C.line,
-                                        background: '#fff',
-                                      }}
-                                    >
-                                      {options.map((option) => (
-                                        <option
-                                          key={option.value}
-                                          value={option.value}
-                                        >
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  )}
-
-                                {definition?.kind === 'boolean' && (
-                                  <select
-                                    value={
-                                      constraint.value === true ||
-                                      String(constraint.value) ===
-                                        'true'
-                                        ? 'true'
-                                        : 'false'
-                                    }
-                                    onChange={(event) =>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
                                       updateContrepartieContrainte(
                                         constraint.id,
                                         {
-                                          value:
-                                            event.target.value ===
-                                            'true',
+                                          active:
+                                            constraint.active ===
+                                            false,
                                         }
                                       )
                                     }
-                                    className="w-full px-3 py-2 rounded-xl border text-xs"
+                                    className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold"
                                     style={{
-                                      borderColor: C.line,
-                                      background: '#fff',
+                                      background:
+                                        constraint.active === false
+                                          ? '#EEF0F4'
+                                          : '#EAF8F3',
+                                      color:
+                                        constraint.active === false
+                                          ? C.sub
+                                          : C.teal,
                                     }}
+                                    title={
+                                      constraint.active === false
+                                        ? 'Réactiver cette contrainte'
+                                        : 'Désactiver cette contrainte'
+                                    }
                                   >
-                                    <option value="true">Oui</option>
-                                    <option value="false">Non</option>
-                                  </select>
-                                )}
+                                    {constraint.active === false
+                                      ? 'Non'
+                                      : 'Oui'}
+                                  </button>
+                                </td>
 
-                                {definition?.kind === 'number' && (
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      value={
-                                        constraint.value ?? ''
-                                      }
-                                      onChange={(event) =>
-                                        updateContrepartieContrainte(
-                                          constraint.id,
-                                          {
-                                            value:
-                                              event.target.value,
-                                          }
-                                        )
-                                      }
-                                      className="w-full px-3 py-2 rounded-xl border text-xs"
-                                      style={{
-                                        borderColor: C.line,
-                                        background: '#fff',
-                                        ...F_MONO,
-                                      }}
-                                    />
-                                    {definition.unit && (
-                                      <span
-                                        className="text-[9px] whitespace-nowrap"
-                                        style={{ color: C.sub }}
-                                      >
-                                        {definition.unit}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </td>
-
-                              <td
-                                className="px-3 py-3 align-top"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <div
-                                  className="text-[10px] leading-relaxed"
-                                  style={{ color: C.ink }}
+                                <td
+                                  className="px-3 py-3 align-middle"
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                  }}
                                 >
-                                  {cessionInterneConstraintLabel(
-                                    constraint
-                                  )}
-                                </div>
-                                <div className="mt-1">
+                                  <Badge
+                                    tone={
+                                      definition?.category ===
+                                      'Titres'
+                                        ? 'gold'
+                                        : 'slate'
+                                    }
+                                  >
+                                    {definition?.category || 'Autre'}
+                                  </Badge>
+                                </td>
+
+                                <td
+                                  className="px-3 py-3 align-middle text-[10px] font-semibold"
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                    color: C.ink,
+                                  }}
+                                >
+                                  {definition?.label ||
+                                    constraint.type}
+                                </td>
+
+                                <td
+                                  className="px-3 py-3 align-middle"
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                  }}
+                                >
                                   <Badge
                                     tone={
                                       constraint.mode ===
@@ -17853,41 +17962,63 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                   >
                                     {constraint.mode}
                                   </Badge>
-                                </div>
-                              </td>
+                                </td>
 
-                              <td
-                                className="px-3 py-3 align-top text-center"
-                                style={{
-                                  borderTop: `1px solid ${C.line}`,
-                                }}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    supprimerContrepartieContrainte(
-                                      constraint.id
-                                    )
-                                  }
-                                  className="w-9 h-9 rounded-xl border inline-flex items-center justify-center"
+                                <td
+                                  className="px-3 py-3 align-middle text-[10px]"
                                   style={{
-                                    borderColor: '#F0D2CF',
-                                    color: C.coral,
-                                    background: '#fff',
+                                    borderTop: `1px solid ${C.line}`,
+                                    color: C.ink,
                                   }}
-                                  title="Supprimer la contrainte"
                                 >
-                                  <X size={15} />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                                  {constraint.operator}
+                                </td>
+
+                                <td
+                                  className="px-3 py-3 align-middle text-[10px]"
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                    color: C.ink,
+                                  }}
+                                >
+                                  {cessionInterneConstraintLabel(
+                                    constraint
+                                  )}
+                                </td>
+
+                                <td
+                                  className="px-3 py-3 align-middle text-center"
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      supprimerContrepartieContrainte(
+                                        constraint.id
+                                      )
+                                    }
+                                    className="w-9 h-9 rounded-xl border inline-flex items-center justify-center"
+                                    style={{
+                                      borderColor: '#F0D2CF',
+                                      color: C.coral,
+                                      background: '#fff',
+                                    }}
+                                    title="Supprimer la contrainte"
+                                  >
+                                    <X size={15} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          }
+                        )}
                       </tbody>
                     </table>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div
