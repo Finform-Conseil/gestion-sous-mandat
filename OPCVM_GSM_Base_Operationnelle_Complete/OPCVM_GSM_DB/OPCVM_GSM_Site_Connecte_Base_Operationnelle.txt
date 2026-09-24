@@ -86,72 +86,14 @@ const GSM_OPERATIONAL_API =
 const gsmOperationalUrl = (path = '') =>
   `${GSM_OPERATIONAL_API}${path.startsWith('/') ? path : `/${path}`}`;
 
-const gsmOperationalRequest = async (
-  path,
-  { method = 'GET', body = null, adminKey = null } = {}
-) => {
-  const headers = {
-    Accept: 'application/json',
-  };
-
-  if (body !== null) {
-    headers['Content-Type'] = 'application/json';
-  }
-  if (adminKey) {
-    headers['X-Admin-Key'] = adminKey;
-  }
-
-  const response = await fetch(gsmOperationalUrl(path), {
-    method,
-    headers,
-    body: body === null ? undefined : JSON.stringify(body),
+const loadGsmOperationalSnapshot = async () => {
+  const response = await fetch(gsmOperationalUrl('/api/snapshot'), {
     cache: 'no-store',
   });
-
-  const raw = await response.text();
-  let payload = null;
-  try {
-    payload = raw ? JSON.parse(raw) : null;
-  } catch {
-    payload = raw;
-  }
-
   if (!response.ok) {
-    const detail =
-      payload?.detail ||
-      (typeof payload === 'string' ? payload : null) ||
-      `Erreur HTTP ${response.status}`;
-    throw new Error(detail);
+    throw new Error(`Base opérationnelle indisponible (${response.status})`);
   }
-
-  return payload;
-};
-
-const loadGsmOperationalSnapshot = () =>
-  gsmOperationalRequest('/api/snapshot');
-
-const GSM_OPERATIONAL_WRITE_KEY_STORAGE =
-  'opcvm-gsm-operational-admin-key-session';
-
-const getGsmOperationalWriteKey = () => {
-  if (typeof window === 'undefined') return '';
-  return window.sessionStorage.getItem(
-    GSM_OPERATIONAL_WRITE_KEY_STORAGE
-  ) || '';
-};
-
-const setGsmOperationalWriteKey = (value) => {
-  if (typeof window === 'undefined') return;
-  if (value) {
-    window.sessionStorage.setItem(
-      GSM_OPERATIONAL_WRITE_KEY_STORAGE,
-      value
-    );
-  } else {
-    window.sessionStorage.removeItem(
-      GSM_OPERATIONAL_WRITE_KEY_STORAGE
-    );
-  }
+  return response.json();
 };
 const fmt = (n) =>
   new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n);
@@ -27208,12 +27150,6 @@ export default function App() {
   const [workspace, setWorkspace] = useState('gestionnaire');
   const [operationalDbStatus, setOperationalDbStatus] = useState('Connexion');
   const [operationalDbUpdatedAt, setOperationalDbUpdatedAt] = useState(null);
-  const [operationalDbPortfolioCount, setOperationalDbPortfolioCount] =
-    useState(0);
-  const [operationalDbWriteEnabled, setOperationalDbWriteEnabled] =
-    useState(false);
-  const [operationalDbWriteMessage, setOperationalDbWriteMessage] =
-    useState('');
   const [, setOperationalDbRevision] = useState(0);
   const [screen, setScreen] = useState('accueil');
   const [clientScreen, setClientScreen] = useState('client-dashboard');
@@ -27252,155 +27188,29 @@ export default function App() {
     }
   });
 
-  const chargerBaseOperationnelle = async ({ silent = false } = {}) => {
-    if (!silent) {
-      setOperationalDbStatus('Connexion');
-    }
-
+  const chargerBaseOperationnelle = async () => {
+    setOperationalDbStatus('Connexion');
     try {
       const snapshot = await loadGsmOperationalSnapshot();
-
       if (Array.isArray(snapshot?.clients) && snapshot.clients.length > 0) {
         CLIENTS = snapshot.clients;
-        setOperationalDbPortfolioCount(snapshot.clients.length);
       }
-
       if (Array.isArray(snapshot?.withdrawalRequests)) {
         setCessionRetraitEtats(snapshot.withdrawalRequests);
       }
-
-      setOperationalDbUpdatedAt(
-        snapshot?.generatedAt || new Date().toISOString()
-      );
+      setOperationalDbUpdatedAt(snapshot?.generatedAt || new Date().toISOString());
       setOperationalDbStatus('Connectée');
       setOperationalDbRevision((revision) => revision + 1);
       return snapshot;
     } catch (error) {
       console.warn('[GSM DB] Fallback sur les données locales :', error);
       setOperationalDbStatus('Mode local');
-      if (!silent) {
-        setOperationalDbWriteMessage(
-          "API opérationnelle indisponible : l'interface utilise temporairement les données locales."
-        );
-      }
       return null;
     }
   };
 
-  const verifierCleEcritureOperationnelle = async (candidateKey) => {
-    if (!candidateKey) return false;
-    await gsmOperationalRequest('/api/admin/check', {
-      adminKey: candidateKey,
-    });
-    return true;
-  };
-
-  const activerEcritureOperationnelle = async () => {
-    if (typeof window === 'undefined') return;
-
-    const cleActuelle = getGsmOperationalWriteKey();
-    const candidate = window.prompt(
-      "Clé d'écriture de la base opérationnelle GSM",
-      cleActuelle
-    );
-
-    if (!candidate) return;
-
-    try {
-      await verifierCleEcritureOperationnelle(candidate);
-      setGsmOperationalWriteKey(candidate);
-      setOperationalDbWriteEnabled(true);
-      setOperationalDbWriteMessage(
-        'Écriture FastAPI activée pour cette session.'
-      );
-    } catch (error) {
-      setGsmOperationalWriteKey('');
-      setOperationalDbWriteEnabled(false);
-      setOperationalDbWriteMessage(
-        `Écriture refusée : ${error.message}`
-      );
-    }
-  };
-
-  const desactiverEcritureOperationnelle = () => {
-    setGsmOperationalWriteKey('');
-    setOperationalDbWriteEnabled(false);
-    setOperationalDbWriteMessage(
-      'Écriture désactivée. La base reste connectée en lecture.'
-    );
-  };
-
   useEffect(() => {
-    let cancelled = false;
-
-    const initialiser = async () => {
-      const key = getGsmOperationalWriteKey();
-      if (key) {
-        try {
-          await verifierCleEcritureOperationnelle(key);
-          if (!cancelled) {
-            setOperationalDbWriteEnabled(true);
-          }
-        } catch {
-          setGsmOperationalWriteKey('');
-          if (!cancelled) {
-            setOperationalDbWriteEnabled(false);
-          }
-        }
-      }
-
-      if (!cancelled) {
-        await chargerBaseOperationnelle();
-      }
-    };
-
-    initialiser();
-
-    const intervalId =
-      typeof window !== 'undefined'
-        ? window.setInterval(
-            () => chargerBaseOperationnelle({ silent: true }),
-            10000
-          )
-        : null;
-
-    const refreshOnFocus = () =>
-      chargerBaseOperationnelle({ silent: true });
-
-    const refreshOnVisibility = () => {
-      if (
-        typeof document !== 'undefined' &&
-        document.visibilityState === 'visible'
-      ) {
-        chargerBaseOperationnelle({ silent: true });
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('focus', refreshOnFocus);
-    }
-    if (typeof document !== 'undefined') {
-      document.addEventListener(
-        'visibilitychange',
-        refreshOnVisibility
-      );
-    }
-
-    return () => {
-      cancelled = true;
-      if (intervalId !== null && typeof window !== 'undefined') {
-        window.clearInterval(intervalId);
-      }
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('focus', refreshOnFocus);
-      }
-      if (typeof document !== 'undefined') {
-        document.removeEventListener(
-          'visibilitychange',
-          refreshOnVisibility
-        );
-      }
-    };
+    chargerBaseOperationnelle();
   }, []);
 
   const persistWatchlist = (next) => {
@@ -27463,109 +27273,38 @@ export default function App() {
     remonterEnHaut();
   };
 
-  const updateCessionRetraitStatus = async (clientId, patch = {}) => {
-    const client = CLIENTS.find((item) => item.id === clientId);
-    const existing = cessionRetraitEtats.find(
-      (item) => item.clientId === clientId
-    );
-
-    const nextItem = {
-      id: patch.id || existing?.id || null,
-      clientId,
-      client: patch.client || existing?.client || client?.nom || 'Client',
-      montant: Number(patch.montant ?? existing?.montant ?? 0),
-      devise: patch.devise || existing?.devise || client?.devise || 'XOF',
-      statut: patch.statut || existing?.statut || 'Demande reçue',
-      dateDemande:
-        patch.dateDemande ||
-        existing?.dateDemande ||
-        CESSION_RETRAIT_REFERENCE_DATE,
-      dateSouhaitee:
-        patch.dateSouhaitee ||
-        existing?.dateSouhaitee ||
-        CESSION_RETRAIT_REFERENCE_DATE,
-      chargeeClientele:
-        patch.chargeeClientele ||
-        existing?.chargeeClientele ||
-        'Non renseignée',
-      observationChargeeClientele:
-        patch.observationChargeeClientele ||
-        existing?.observationChargeeClientele ||
-        'Aucune observation renseignée.',
-      modePaiement: patch.modePaiement || existing?.modePaiement || 'Chèque',
-    };
-
-    // Mise à jour optimiste de l'interface.
+  const updateCessionRetraitStatus = (clientId, patch = {}) => {
     setCessionRetraitEtats((current) => {
-      const exists = current.some((item) => item.clientId === clientId);
-      return exists
-        ? current.map((item) =>
-            item.clientId === clientId ? nextItem : item
-          )
+      const client = CLIENTS.find((item) => item.id === clientId);
+      const existing = current.find((item) => item.clientId === clientId);
+      const nextItem = {
+        clientId,
+        client: patch.client || existing?.client || client?.nom || 'Client',
+        montant: Number(patch.montant ?? existing?.montant ?? 0),
+        devise: patch.devise || existing?.devise || client?.devise || 'XOF',
+        statut: patch.statut || existing?.statut || 'Demande reçue',
+        dateDemande:
+          patch.dateDemande ||
+          existing?.dateDemande ||
+          CESSION_RETRAIT_REFERENCE_DATE,
+        dateSouhaitee:
+          patch.dateSouhaitee ||
+          existing?.dateSouhaitee ||
+          CESSION_RETRAIT_REFERENCE_DATE,
+        chargeeClientele:
+          patch.chargeeClientele ||
+          existing?.chargeeClientele ||
+          'Non renseignée',
+        observationChargeeClientele:
+          patch.observationChargeeClientele ||
+          existing?.observationChargeeClientele ||
+          'Aucune observation renseignée.',
+        modePaiement: patch.modePaiement || existing?.modePaiement || 'Chèque',
+      };
+      return existing
+        ? current.map((item) => (item.clientId === clientId ? nextItem : item))
         : [nextItem, ...current];
     });
-
-    const adminKey = getGsmOperationalWriteKey();
-    if (!adminKey) {
-      setOperationalDbWriteMessage(
-        "Modification visible localement mais non enregistrée : activez l'écriture FastAPI."
-      );
-      return nextItem;
-    }
-
-    const payload = {
-      portfolio_id: clientId,
-      amount: nextItem.montant,
-      currency: nextItem.devise,
-      status: nextItem.statut,
-      requested_date: nextItem.dateDemande,
-      desired_date: nextItem.dateSouhaitee,
-      relationship_manager: nextItem.chargeeClientele,
-      observation: nextItem.observationChargeeClientele,
-      payment_method: nextItem.modePaiement,
-    };
-
-    try {
-      if (nextItem.id) {
-        await gsmOperationalRequest(
-          `/api/withdrawals/${nextItem.id}`,
-          {
-            method: 'PUT',
-            adminKey,
-            body: payload,
-          }
-        );
-      } else {
-        const result = await gsmOperationalRequest('/api/withdrawals', {
-          method: 'POST',
-          adminKey,
-          body: payload,
-        });
-
-        if (result?.id) {
-          nextItem.id = result.id;
-          setCessionRetraitEtats((current) =>
-            current.map((item) =>
-              item.clientId === clientId
-                ? { ...item, id: result.id }
-                : item
-            )
-          );
-        }
-      }
-
-      setOperationalDbWriteMessage(
-        'Modification enregistrée dans la base opérationnelle.'
-      );
-      await chargerBaseOperationnelle({ silent: true });
-    } catch (error) {
-      setOperationalDbWriteMessage(
-        `Échec de l'enregistrement : ${error.message}`
-      );
-      await chargerBaseOperationnelle({ silent: true });
-    }
-
-    return nextItem;
   };
   const openClient = (
     id,
@@ -27788,24 +27527,14 @@ export default function App() {
                   </span>
                   <button
                     type="button"
-                    onClick={() => chargerBaseOperationnelle()}
+                    onClick={chargerBaseOperationnelle}
                     className="text-[10px] font-semibold"
                     style={{ color: C.gold }}
-                    title="Recharger immédiatement les données métier"
+                    title="Recharger les données métier"
                   >
                     ↻ Synchroniser
                   </button>
                 </div>
-
-                <div
-                  className="text-[9px] mt-1"
-                  style={{ color: '#9AA5C4' }}
-                >
-                  {operationalDbPortfolioCount > 0
-                    ? `${operationalDbPortfolioCount} portefeuille(s) · synchronisation auto 10 s`
-                    : 'Synchronisation automatique toutes les 10 s'}
-                </div>
-
                 {operationalDbUpdatedAt && (
                   <div className="text-[9px] mt-1" style={{ color: '#9AA5C4' }}>
                     MAJ{' '}
@@ -27817,33 +27546,9 @@ export default function App() {
                 )}
                 <button
                   type="button"
-                  onClick={
-                    operationalDbWriteEnabled
-                      ? desactiverEcritureOperationnelle
-                      : activerEcritureOperationnelle
-                  }
-                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
-                  style={{
-                    background: operationalDbWriteEnabled
-                      ? 'rgba(30,156,119,0.20)'
-                      : 'rgba(255,255,255,0.08)',
-                    color: operationalDbWriteEnabled ? '#7FE0C2' : '#C7CEE3',
-                  }}
-                >
-                  {operationalDbWriteEnabled
-                    ? '✓ Écriture DB activée'
-                    : 'Activer écriture DB'}
-                </button>
-
-                <button
-                  type="button"
                   onClick={() =>
                     typeof window !== 'undefined' &&
-                    window.open(
-                      gsmOperationalUrl('/admin'),
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
+                    window.open(gsmOperationalUrl('/admin'), '_blank', 'noopener,noreferrer')
                   }
                   className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
                   style={{
@@ -27854,20 +27559,6 @@ export default function App() {
                   <ExternalLink size={12} />
                   Administrer les données
                 </button>
-
-                {operationalDbWriteMessage && (
-                  <div
-                    className="text-[9px] mt-2 leading-relaxed"
-                    style={{
-                      color: operationalDbWriteMessage.startsWith('Échec') ||
-                        operationalDbWriteMessage.startsWith('Écriture refusée')
-                        ? '#FFB4AC'
-                        : '#9AA5C4',
-                    }}
-                  >
-                    {operationalDbWriteMessage}
-                  </div>
-                )}
               </div>
             )}
 
