@@ -19447,51 +19447,6 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             </Card>
           </div>
 
-          {selectedBaseMatch?.excluded?.length > 0 && (
-            <Card className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Eyebrow>Clients non éligibles</Eyebrow>
-                  <div
-                    className="text-sm font-bold"
-                    style={{ color: C.ink }}
-                  >
-                    Exclusions système / contraintes gérant
-                  </div>
-                </div>
-                <Badge tone="coral">
-                  {selectedBaseMatch.excluded.length}
-                </Badge>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                {selectedBaseMatch.excluded
-                  .slice(0, 10)
-                  .map((candidate) => (
-                    <div
-                      key={`excluded-${candidate.buyer.id}`}
-                      className="p-3 rounded-xl"
-                      style={{ background: '#FFF8F7' }}
-                    >
-                      <div
-                        className="text-[10px] font-bold"
-                        style={{ color: C.ink }}
-                      >
-                        {candidate.buyer.nom}
-                      </div>
-                      <div
-                        className="text-[9px] mt-1"
-                        style={{ color: C.coral }}
-                      >
-                        {(candidate.exclusionReasons || []).join(
-                          ' · '
-                        ) || 'Non éligible'}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          )}
         </>
       )}
 
