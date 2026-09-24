@@ -14059,14 +14059,190 @@ const cessionRetraitStatusTone = (statut) =>
     ? 'navy'
     : 'coral';
 
+/*
+ * ROUTAGE DES CESSIONS
+ *
+ * Règle métier centrale :
+ * - Actions                         -> marché coté uniquement ;
+ * - Obligations cotées             -> marché coté uniquement ;
+ * - Obligations non cotées         -> cession interne uniquement.
+ *
+ * Cette règle est réutilisée dans la génération des plans, les modifications
+ * du gérant, le moteur de contrepartie et la page Cession afin d'éviter qu'un
+ * même titre soit envoyé par erreur vers les deux canaux.
+ */
+const CESSION_NON_LISTED_BONDS = [
+  {
+    nom: 'Obligation non cotée CI 7.25% 2030',
+    type: 'Obligation',
+    assetClass: 'Obl. privées',
+    marche: 'BRVM',
+    devise: 'XOF',
+    cours: 10000,
+    variation: 0,
+    volumeJour: 0,
+    coursMin: 10000,
+    coursMax: 10000,
+    secteur: 'Corporate',
+    emetteur: 'Émetteur privé CI · simulation',
+    coupon: 7.25,
+    rendement: 7.6,
+    duration: 3.1,
+    echeance: 2030,
+    cotation: 'Non coté',
+    listed: false,
+  },
+  {
+    nom: 'Obligation non cotée Sénégal 7.10% 2031',
+    type: 'Obligation',
+    assetClass: 'Obl. privées',
+    marche: 'BRVM',
+    devise: 'XOF',
+    cours: 10000,
+    variation: 0,
+    volumeJour: 0,
+    coursMin: 10000,
+    coursMax: 10000,
+    secteur: 'Corporate',
+    emetteur: 'Émetteur privé Sénégal · simulation',
+    coupon: 7.1,
+    rendement: 7.45,
+    duration: 3.7,
+    echeance: 2031,
+    cotation: 'Non coté',
+    listed: false,
+  },
+  {
+    nom: 'Obligation non cotée Nigeria 16.25% 2031',
+    type: 'Obligation',
+    assetClass: 'Obl. privées',
+    marche: 'NGX',
+    devise: 'NGN',
+    cours: 100,
+    variation: 0,
+    volumeJour: 0,
+    coursMin: 100,
+    coursMax: 100,
+    secteur: 'Corporate',
+    emetteur: 'Émetteur privé Nigeria · simulation',
+    coupon: 16.25,
+    rendement: 16.8,
+    duration: 3.0,
+    echeance: 2031,
+    cotation: 'Non coté',
+    listed: false,
+  },
+  {
+    nom: 'Obligation non cotée Ghana 19.00% 2030',
+    type: 'Obligation',
+    assetClass: 'Obl. privées',
+    marche: 'GSE',
+    devise: 'GHS',
+    cours: 100,
+    variation: 0,
+    volumeJour: 0,
+    coursMin: 100,
+    coursMax: 100,
+    secteur: 'Corporate',
+    emetteur: 'Émetteur privé Ghana · simulation',
+    coupon: 19,
+    rendement: 19.4,
+    duration: 2.5,
+    echeance: 2030,
+    cotation: 'Non coté',
+    listed: false,
+  },
+];
+
+const CESSION_INSTRUMENT_UNIVERSE = [
+  ...CLIENT_TRADABLE_MARKETS.map((instrument) => ({
+    ...instrument,
+    cotation: 'Coté',
+    listed: true,
+  })),
+  ...CESSION_NON_LISTED_BONDS,
+];
+
 const cessionAssetClass = (instrument) => {
   if (!instrument) return 'Autres';
+  if (instrument.assetClass) return instrument.assetClass;
   if (instrument.type === 'Action') return 'Actions';
-  if (/corporate|priv/i.test(String(instrument.nom || ''))) {
+  if (/corporate|priv|non cot/i.test(String(instrument.nom || ''))) {
     return 'Obl. privées';
   }
   return 'Obl. souveraines';
 };
+
+const cessionInstrumentListingStatus = (instrumentLike) => {
+  if (!instrumentLike) return 'Non renseigné';
+
+  const explicit =
+    instrumentLike.cotation ??
+    instrumentLike.listingStatus ??
+    instrumentLike.statutCotation;
+
+  if (explicit) {
+    return /non|unlisted|hors/i.test(String(explicit))
+      ? 'Non coté'
+      : 'Coté';
+  }
+
+  if (instrumentLike.listed === false || instrumentLike.estCote === false) {
+    return 'Non coté';
+  }
+
+  if (instrumentLike.listed === true || instrumentLike.estCote === true) {
+    return 'Coté';
+  }
+
+  const nom =
+    instrumentLike.titre ||
+    instrumentLike.nom ||
+    instrumentLike.instrument?.nom ||
+    '';
+  const marche =
+    instrumentLike.marche ||
+    instrumentLike.instrument?.marche;
+
+  const nonListed = CESSION_NON_LISTED_BONDS.some(
+    (instrument) =>
+      instrument.nom === nom &&
+      (!marche || instrument.marche === marche)
+  );
+  if (nonListed) return 'Non coté';
+
+  const listed = CLIENT_TRADABLE_MARKETS.some(
+    (instrument) =>
+      instrument.nom === nom &&
+      (!marche || instrument.marche === marche)
+  );
+  return listed ? 'Coté' : 'Non renseigné';
+};
+
+const cessionExecutionChannel = (instrumentLike) => {
+  const type =
+    instrumentLike?.type ||
+    instrumentLike?.instrument?.type ||
+    (instrumentLike?.assetClass === 'Actions'
+      ? 'Action'
+      : instrumentLike?.assetClass?.startsWith('Obl.')
+      ? 'Obligation'
+      : undefined);
+
+  const listing = cessionInstrumentListingStatus(instrumentLike);
+
+  if (type === 'Action') return 'cote';
+  if (type === 'Obligation' && listing === 'Coté') return 'cote';
+  if (type === 'Obligation' && listing === 'Non coté') return 'non-cote';
+
+  return 'non-routable';
+};
+
+const cessionIsInternalOrder = (order) =>
+  cessionExecutionChannel(order) === 'non-cote';
+
+const cessionIsListedOrder = (order) =>
+  cessionExecutionChannel(order) === 'cote';
 
 const cessionUpcomingCash = (client, dateRetrait) => {
   const dateDebut = parseIsoLocalDate(CESSION_RETRAIT_REFERENCE_DATE);
@@ -14102,7 +14278,7 @@ const cessionUpcomingCash = (client, dateRetrait) => {
 };
 
 const cessionMarketCandidates = (client, assetClass) =>
-  CLIENT_TRADABLE_MARKETS.filter(
+  CESSION_INSTRUMENT_UNIVERSE.filter(
     (instrument) =>
       instrument.marche === client.marche &&
       cessionAssetClass(instrument) === assetClass
@@ -14283,26 +14459,49 @@ const cessionBuildPlan = (
         Math.max(1, Math.ceil(targetValue / Math.max(price, 0.000001)))
       );
       const gross = quantity * price;
-      const dailyVolume = Math.max(
-        0,
-        Number(holding.instrument.volumeJour || 0)
+      const cotation = cessionInstrumentListingStatus(
+        holding.instrument
       );
+      const executionChannel = cessionExecutionChannel(
+        holding.instrument
+      );
+      const dailyVolume =
+        executionChannel === 'cote'
+          ? Math.max(
+              0,
+              Number(holding.instrument.volumeJour || 0)
+            )
+          : 0;
       const participationPct =
-        dailyVolume > 0 ? (quantity / dailyVolume) * 100 : Infinity;
-      const sessions = Number.isFinite(participationPct)
-        ? Math.max(
-            1,
-            Math.ceil(participationPct / Math.max(1, maxParticipation))
-          )
-        : 99;
+        executionChannel === 'cote'
+          ? dailyVolume > 0
+            ? (quantity / dailyVolume) * 100
+            : Infinity
+          : 0;
+      const sessions =
+        executionChannel === 'cote'
+          ? Number.isFinite(participationPct)
+            ? Math.max(
+                1,
+                Math.ceil(
+                  participationPct /
+                    Math.max(1, maxParticipation)
+                )
+              )
+            : 99
+          : 1;
       const impact =
-        participationPct <= maxParticipation
+        executionChannel === 'non-cote'
+          ? 'Interne'
+          : participationPct <= maxParticipation
           ? 'Faible'
           : participationPct <= maxParticipation * 5
           ? 'Moyen'
           : 'Élevé';
       const execution =
-        participationPct <= maxParticipation
+        executionChannel === 'non-cote'
+          ? 'Cession interne'
+          : participationPct <= maxParticipation
           ? 'Immédiat'
           : participationPct <= maxParticipation * 5
           ? 'Fractionné'
@@ -14321,6 +14520,8 @@ const cessionBuildPlan = (
         fraisEstimes: gross * CESSION_RETRAIT_FEE_RATE,
         montantNet: gross * (1 - CESSION_RETRAIT_FEE_RATE),
         volumeJour: dailyVolume,
+        cotation,
+        executionChannel,
         participationPct,
         sessions,
         impact,
@@ -14396,11 +14597,18 @@ const cessionBuildPlan = (
   const maxDeviation = Math.max(
     ...deviations.map((item) => Math.abs(item.gap))
   );
-  const maxOrderParticipation = orders.length
-    ? Math.max(...orders.map((order) => order.participationPct))
+  const listedOrdersForExecution = orders.filter(cessionIsListedOrder);
+  const maxOrderParticipation = listedOrdersForExecution.length
+    ? Math.max(
+        ...listedOrdersForExecution.map(
+          (order) => order.participationPct
+        )
+      )
     : 0;
-  const maxSessions = orders.length
-    ? Math.max(...orders.map((order) => order.sessions))
+  const maxSessions = listedOrdersForExecution.length
+    ? Math.max(
+        ...listedOrdersForExecution.map((order) => order.sessions)
+      )
     : 1;
   const marketStatus =
     uncoveredMarket > 1 || !Number.isFinite(maxOrderParticipation)
@@ -14528,26 +14736,40 @@ const cessionApplyManagerEdits = (
     usedQuantities[stockKey] = alreadyUsed + quantity;
 
     const gross = quantity * price;
-    const dailyVolume = Math.max(
-      0,
-      Number(instrument.volumeJour || order.volumeJour || 0)
-    );
+    const cotation = cessionInstrumentListingStatus(instrument);
+    const executionChannel = cessionExecutionChannel(instrument);
+    const dailyVolume =
+      executionChannel === 'cote'
+        ? Math.max(
+            0,
+            Number(instrument.volumeJour || order.volumeJour || 0)
+          )
+        : 0;
     const participationPct =
-      dailyVolume > 0 ? (quantity / dailyVolume) * 100 : Infinity;
+      executionChannel === 'cote'
+        ? dailyVolume > 0
+          ? (quantity / dailyVolume) * 100
+          : Infinity
+        : 0;
     const sessions =
       quantity <= 0
         ? 0
+        : executionChannel === 'non-cote'
+        ? 1
         : Number.isFinite(participationPct)
         ? Math.max(
             1,
             Math.ceil(
-              participationPct / Math.max(1, Number(maxParticipation || 1))
+              participationPct /
+                Math.max(1, Number(maxParticipation || 1))
             )
           )
         : 99;
     const impact =
       quantity <= 0
         ? 'Aucun'
+        : executionChannel === 'non-cote'
+        ? 'Interne'
         : participationPct <= maxParticipation
         ? 'Faible'
         : participationPct <= maxParticipation * 5
@@ -14556,6 +14778,8 @@ const cessionApplyManagerEdits = (
     const execution =
       quantity <= 0
         ? 'Exclu par le gérant'
+        : executionChannel === 'non-cote'
+        ? 'Cession interne'
         : participationPct <= maxParticipation
         ? 'Immédiat'
         : participationPct <= maxParticipation * 5
@@ -14571,6 +14795,8 @@ const cessionApplyManagerEdits = (
       devise: instrument.devise || order.devise,
       prix: price,
       volumeJour: dailyVolume,
+      cotation,
+      executionChannel,
       availableTitles,
       quantiteSysteme: Number(order.quantite || 0),
       quantite: quantity,
@@ -14664,11 +14890,18 @@ const cessionApplyManagerEdits = (
     0,
     ...deviations.map((item) => Math.abs(item.gap))
   );
-  const maxOrderParticipation = orders.length
-    ? Math.max(...orders.map((order) => order.participationPct))
+  const listedOrdersForExecution = orders.filter(cessionIsListedOrder);
+  const maxOrderParticipation = listedOrdersForExecution.length
+    ? Math.max(
+        ...listedOrdersForExecution.map(
+          (order) => order.participationPct
+        )
+      )
     : 0;
-  const maxSessions = orders.length
-    ? Math.max(...orders.map((order) => order.sessions))
+  const maxSessions = listedOrdersForExecution.length
+    ? Math.max(
+        ...listedOrdersForExecution.map((order) => order.sessions)
+      )
     : 0;
 
   const uncoveredMarket = Math.max(
@@ -14784,11 +15017,11 @@ const cessionInterneInstrumentMeta = (instrumentLike) => {
         instrumentLike?.instrument?.marche;
 
   const instrument =
-    resolveMarketInstrument(nom, marche) ||
-    CLIENT_TRADABLE_MARKETS.find(
+    CESSION_INSTRUMENT_UNIVERSE.find(
       (item) =>
         item.nom === nom && (!marche || item.marche === marche)
     ) ||
+    resolveMarketInstrument(nom, marche) ||
     {};
 
   const actionSource = Object.entries(BOURSES_ACTIVE_CONFIG)
@@ -14883,15 +15116,38 @@ const cessionInterneInstrumentMeta = (instrumentLike) => {
     rendement:
       bondMeta.rendement == null ? null : Number(bondMeta.rendement),
     duration:
-      bondMeta.duration == null ? null : Number(bondMeta.duration),
+      instrument.duration != null
+        ? Number(instrument.duration)
+        : bondMeta.duration == null
+        ? null
+        : Number(bondMeta.duration),
     echeance:
-      bondMeta.echeance == null ? null : Number(bondMeta.echeance),
+      instrument.echeance != null
+        ? Number(instrument.echeance)
+        : bondMeta.echeance == null
+        ? null
+        : Number(bondMeta.echeance),
+    cotation: cessionInstrumentListingStatus({
+      ...instrument,
+      nom,
+      type,
+    }),
+    executionChannel: cessionExecutionChannel({
+      ...instrument,
+      nom,
+      type,
+      assetClass,
+    }),
   };
 };
 
-const CESSION_INTERNE_TITLE_UNIVERSE = CLIENT_TRADABLE_MARKETS.map(
-  cessionInterneInstrumentMeta
-).filter((item) => item.nom);
+const CESSION_INTERNE_TITLE_UNIVERSE =
+  CESSION_INSTRUMENT_UNIVERSE.filter(
+    (instrument) =>
+      cessionExecutionChannel(instrument) === 'non-cote'
+  )
+    .map(cessionInterneInstrumentMeta)
+    .filter((item) => item.nom);
 
 const cessionInterneBuyerTitleMetrics = (
   buyer,
@@ -17266,7 +17522,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   style={{ color: C.sub }}
                 >
                   Le gérant peut définir les clients qui pourront devenir
-                  contreparties et ajouter des contraintes sur les titres
+                  contreparties des obligations non cotées et ajouter des contraintes sur les titres
                   concernés par la cession. Les règles système restent toujours
                   actives ; les contraintes « Obligatoire » éliminent un
                   candidat ou une ligne incompatible, les « Préférence » servent
@@ -17335,7 +17591,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
               <div className="flex flex-wrap gap-2 mt-3">
                 {[
                   'Acheteur différent du vendeur',
-                  'Même marché que la ligne cédée',
+                  'Cession interne : obligations non cotées uniquement',
+                  'Actions et obligations cotées : marché coté uniquement',
+                  'Même marché de référence que la ligne cédée',
                   'Même devise de référence que le titre',
                   "Capacité d'achat positive",
                   `Profil conforme après achat · tolérance ±${CESSION_RETRAIT_TOLERANCE} pts`,
@@ -18272,6 +18530,27 @@ const cessionInterneMatchOrder = (
   let remaining = Number(order.montantBrut || 0);
   const seller = CLIENTS.find((client) => client.id === order.clientId);
 
+  // Garde-fou métier : aucune Action ni Obligation cotée ne peut passer
+  // par la cession interne. Ce moteur accepte uniquement des obligations
+  // explicitement classées "Non coté".
+  if (!cessionIsInternalOrder(order)) {
+    return {
+      order,
+      seller,
+      sellerGestionnaire: cessionInterneGestionnaire(seller),
+      constraints,
+      systemUniverseCount: 0,
+      eligible: [],
+      excluded: [],
+      allocations: [],
+      amountMatched: 0,
+      remaining,
+      channelBlocked: true,
+      channelBlockReason:
+        'Cession interne réservée aux obligations non cotées.',
+    };
+  }
+
   // Règles système non désactivables.
   const systemUniverse = CLIENTS.filter(
     (buyer) =>
@@ -18479,6 +18758,33 @@ const cessionApplyBuyerSelection = (
 
 const cessionBuildListedMarketPlan = (match) => {
   const order = match.order;
+
+  // Garde-fou métier : le carnet coté reçoit uniquement les Actions et
+  // Obligations cotées. Une obligation non cotée ne peut jamais y être
+  // transférée, même si aucune contrepartie interne n'est trouvée.
+  if (!cessionIsListedOrder(order)) {
+    const instrument =
+      CESSION_INSTRUMENT_UNIVERSE.find(
+        (item) =>
+          item.nom === order.titre &&
+          item.marche === order.marche
+      ) || order;
+
+    return {
+      instrument,
+      bids: [],
+      asks: [],
+      quantityToMarket: 0,
+      amountToMarket: 0,
+      launchOrders: [],
+      visibleBookQuantity: 0,
+      quantityBeyondVisibleBook: 0,
+      channelBlocked: true,
+      channelBlockReason:
+        'Marché coté réservé aux Actions et Obligations cotées.',
+    };
+  }
+
   const internalQuantity = (match.allocations || []).reduce(
     (sum, allocation) => sum + Number(allocation.quantity || 0),
     0
@@ -18560,19 +18866,36 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     : [];
   const orders = plans.flatMap((plan) => plan.orders || []);
 
-  const baseMatches = orders.map((order) =>
+  /*
+   * Partition stricte des canaux :
+   * - non-cote : obligations non cotées seulement ;
+   * - cote     : actions + obligations cotées seulement.
+   * Aucun reliquat non coté n'est basculé vers le marché coté.
+   */
+  const internalOrders = orders.filter(cessionIsInternalOrder);
+  const listedOrders = orders.filter(cessionIsListedOrder);
+  const unroutableOrders = orders.filter(
+    (order) =>
+      !cessionIsInternalOrder(order) &&
+      !cessionIsListedOrder(order)
+  );
+
+  const baseInternalMatches = internalOrders.map((order) =>
     cessionInterneMatchOrder(order, counterpartyConstraints)
   );
 
-  const [orderIndex, setOrderIndex] = useState(0);
-  const [cessionMode, setCessionMode] = useState('non-cote');
+  const [internalOrderIndex, setInternalOrderIndex] = useState(0);
+  const [listedOrderIndex, setListedOrderIndex] = useState(0);
+  const [cessionMode, setCessionMode] = useState(
+    internalOrders.length > 0 ? 'non-cote' : 'cote'
+  );
   const [buyersDisabledByOrder, setBuyersDisabledByOrder] =
     useState({});
   const [cessionValidee, setCessionValidee] = useState(false);
   const [retraitDisponible, setRetraitDisponible] = useState(false);
   const [modePaiement, setModePaiement] = useState('Chèque');
 
-  const effectiveMatches = baseMatches.map((match) =>
+  const effectiveInternalMatches = baseInternalMatches.map((match) =>
     cessionApplyBuyerSelection(
       match,
       buyersDisabledByOrder[
@@ -18581,37 +18904,70 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     )
   );
 
-  const selectedMatch =
-    effectiveMatches[
-      Math.min(orderIndex, Math.max(0, effectiveMatches.length - 1))
-    ];
-
-  const selectedBaseMatch =
-    baseMatches[
-      Math.min(orderIndex, Math.max(0, baseMatches.length - 1))
-    ];
-
-  const listedPlans = effectiveMatches.map(
-    cessionBuildListedMarketPlan
+  const listedPlans = listedOrders.map((order) =>
+    cessionBuildListedMarketPlan({
+      order,
+      allocations: [],
+      remaining: Number(order.montantBrut || 0),
+      constraints: [],
+    })
   );
+
+  const selectedInternalMatch =
+    effectiveInternalMatches[
+      Math.min(
+        internalOrderIndex,
+        Math.max(0, effectiveInternalMatches.length - 1)
+      )
+    ];
+
+  const selectedBaseInternalMatch =
+    baseInternalMatches[
+      Math.min(
+        internalOrderIndex,
+        Math.max(0, baseInternalMatches.length - 1)
+      )
+    ];
+
+  const selectedListedOrder =
+    listedOrders[
+      Math.min(
+        listedOrderIndex,
+        Math.max(0, listedOrders.length - 1)
+      )
+    ];
 
   const selectedListedPlan =
     listedPlans[
-      Math.min(orderIndex, Math.max(0, listedPlans.length - 1))
+      Math.min(
+        listedOrderIndex,
+        Math.max(0, listedPlans.length - 1)
+      )
     ];
 
-  const totalSaleRef = effectiveMatches.reduce(
-    (sum, match) =>
+  const totalSaleRef = orders.reduce(
+    (sum, order) =>
       sum +
       convertCurrency(
-        Number(match.order?.montantBrut || 0),
-        match.order?.devise || devise,
+        Number(order.montantBrut || 0),
+        order.devise || devise,
         devise
       ),
     0
   );
 
-  const totalMatchedRef = effectiveMatches.reduce(
+  const totalInternalNeedRef = internalOrders.reduce(
+    (sum, order) =>
+      sum +
+      convertCurrency(
+        Number(order.montantBrut || 0),
+        order.devise || devise,
+        devise
+      ),
+    0
+  );
+
+  const totalInternalMatchedRef = effectiveInternalMatches.reduce(
     (sum, match) =>
       sum +
       convertCurrency(
@@ -18622,12 +18978,23 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     0
   );
 
-  const totalInternalResidualRef = effectiveMatches.reduce(
+  const totalInternalUnmatchedRef = effectiveInternalMatches.reduce(
     (sum, match) =>
       sum +
       convertCurrency(
         Number(match.remaining || 0),
         match.order?.devise || devise,
+        devise
+      ),
+    0
+  );
+
+  const totalListedNeedRef = listedOrders.reduce(
+    (sum, order) =>
+      sum +
+      convertCurrency(
+        Number(order.montantBrut || 0),
+        order.devise || devise,
         devise
       ),
     0
@@ -18644,62 +19011,68 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     0
   );
 
-  const totalRemainingRef =
-    totalInternalResidualRef + Math.max(0, totalFundingGapRef);
+  const allListedOrders = listedPlans.flatMap(
+    (plan) => plan.launchOrders
+  );
+
+  const totalListedQuantity = listedOrders.reduce(
+    (sum, order) => sum + Number(order.quantite || 0),
+    0
+  );
 
   const uniqueBuyers = new Set(
-    effectiveMatches.flatMap((match) =>
+    effectiveInternalMatches.flatMap((match) =>
       match.allocations.map((item) => item.buyer.id)
     )
   ).size;
 
   const managersTouched = new Set(
-    effectiveMatches.flatMap((match) =>
+    effectiveInternalMatches.flatMap((match) =>
       match.allocations.map((item) => item.gestionnaire)
     )
   ).size;
 
-  const allListedOrders = listedPlans.flatMap(
-    (plan) => plan.launchOrders
-  );
-
-  const totalListedQuantity = listedPlans.reduce(
-    (sum, plan) => sum + Number(plan.quantityToMarket || 0),
-    0
-  );
-
-  const titleRows = effectiveMatches.map((match, index) => {
-    const meta = cessionInterneInstrumentMeta(match.order);
-    const listedPlan = listedPlans[index];
-    const internalQuantity = (match.allocations || []).reduce(
-      (sum, allocation) =>
-        sum + Number(allocation.quantity || 0),
-      0
-    );
+  const titleRows = orders.map((order, index) => {
+    const meta = cessionInterneInstrumentMeta(order);
+    const channel = cessionExecutionChannel(order);
+    const internalMatch =
+      channel === 'non-cote'
+        ? effectiveInternalMatches.find(
+            (match) =>
+              cessionOrderSelectionKey(match.order) ===
+              cessionOrderSelectionKey(order)
+          )
+        : null;
+    const listedPlan =
+      channel === 'cote'
+        ? listedPlans[listedOrders.indexOf(order)]
+        : null;
 
     return {
-      match,
+      order,
       meta,
+      channel,
+      internalMatch,
       listedPlan,
-      internalQuantity,
+      index,
     };
   });
 
-  const selectedOrderKey = selectedMatch
-    ? cessionOrderSelectionKey(selectedMatch.order)
+  const selectedInternalOrderKey = selectedInternalMatch
+    ? cessionOrderSelectionKey(selectedInternalMatch.order)
     : null;
 
   const selectedDisabledBuyerIds =
-    selectedOrderKey
-      ? buyersDisabledByOrder[selectedOrderKey] || []
+    selectedInternalOrderKey
+      ? buyersDisabledByOrder[selectedInternalOrderKey] || []
       : [];
 
   const toggleBuyer = (buyerId) => {
-    if (!selectedOrderKey) return;
+    if (!selectedInternalOrderKey) return;
 
     setBuyersDisabledByOrder((current) => {
       const disabled = new Set(
-        current[selectedOrderKey] || []
+        current[selectedInternalOrderKey] || []
       );
 
       if (disabled.has(buyerId)) {
@@ -18710,25 +19083,25 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
 
       return {
         ...current,
-        [selectedOrderKey]: Array.from(disabled),
+        [selectedInternalOrderKey]: Array.from(disabled),
       };
     });
   };
 
   const selectAllBuyers = () => {
-    if (!selectedOrderKey) return;
+    if (!selectedInternalOrderKey) return;
     setBuyersDisabledByOrder((current) => ({
       ...current,
-      [selectedOrderKey]: [],
+      [selectedInternalOrderKey]: [],
     }));
   };
 
   const deselectAllBuyers = () => {
-    if (!selectedOrderKey || !selectedBaseMatch) return;
+    if (!selectedInternalOrderKey || !selectedBaseInternalMatch) return;
     setBuyersDisabledByOrder((current) => ({
       ...current,
-      [selectedOrderKey]: (
-        selectedBaseMatch.eligible || []
+      [selectedInternalOrderKey]: (
+        selectedBaseInternalMatch.eligible || []
       ).map((candidate) => candidate.buyer.id),
     }));
   };
@@ -18769,6 +19142,13 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
       source: 'cession',
     });
   };
+
+  const hasPendingInternal = totalInternalUnmatchedRef > 1;
+  const hasUnroutable = unroutableOrders.length > 0;
+  const canCloseCession =
+    !hasPendingInternal &&
+    !hasUnroutable &&
+    totalFundingGapRef <= 1;
 
   if (!plans.length) {
     return (
@@ -18813,60 +19193,123 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             className="text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Cession — marché non coté et marché coté
+            Cession — routage par statut de cotation
           </h2>
           <div
             className="text-xs mt-1 max-w-4xl"
             style={{ color: C.sub }}
           >
-            Le gérant visualise les titres à échanger, recherche d'abord
-            des contreparties internes sur le marché non coté, puis
-            prépare le carnet des ordres à lancer sur le marché coté pour
-            le reliquat non absorbé.
+            Les Actions et les Obligations cotées sont exécutées uniquement
+            sur le marché coté. Les cessions internes sont réservées
+            exclusivement aux Obligations non cotées. Un reliquat d'obligation
+            non cotée ne bascule jamais vers le carnet coté.
           </div>
         </div>
 
         <div className="flex gap-2 flex-wrap">
           <Badge tone="navy">
-            {orders.length} titre(s) / ligne(s)
-          </Badge>
-          <Badge tone="teal">
-            {uniqueBuyers} acheteur(s) interne(s)
+            {orders.length} ligne(s)
           </Badge>
           <Badge tone="gold">
-            {allListedOrders.length} ordre(s) coté(s) à lancer
+            {listedOrders.length} coté(s)
           </Badge>
+          <Badge tone="teal">
+            {internalOrders.length} non coté(s)
+          </Badge>
+          {unroutableOrders.length > 0 && (
+            <Badge tone="coral">
+              {unroutableOrders.length} non routable(s)
+            </Badge>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="grid grid-cols-3 gap-3">
+          <div
+            className="p-3 rounded-xl"
+            style={{ background: '#F3F6FC' }}
+          >
+            <div
+              className="text-[10px] uppercase font-bold"
+              style={{ color: C.navy }}
+            >
+              Actions
+            </div>
+            <div
+              className="text-xs mt-1"
+              style={{ color: C.sub }}
+            >
+              Marché coté uniquement · carnet d'ordres
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl"
+            style={{ background: '#FFF8E9' }}
+          >
+            <div
+              className="text-[10px] uppercase font-bold"
+              style={{ color: '#8A6A16' }}
+            >
+              Obligations cotées
+            </div>
+            <div
+              className="text-xs mt-1"
+              style={{ color: C.sub }}
+            >
+              Marché coté uniquement · carnet d'ordres
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl"
+            style={{ background: '#EAF8F3' }}
+          >
+            <div
+              className="text-[10px] uppercase font-bold"
+              style={{ color: C.teal }}
+            >
+              Obligations non cotées
+            </div>
+            <div
+              className="text-xs mt-1"
+              style={{ color: C.sub }}
+            >
+              Cession interne uniquement · contreparties clients
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-5 gap-3">
         {[
           {
-            label: 'Montant à céder',
+            label: 'Montant total à céder',
             value: `${fmt(Math.round(totalSaleRef))} ${devise}`,
             detail: `${orders.length} ligne(s)`,
-            tone: 'navy',
-          },
-          {
-            label: 'Marché non coté',
-            value: `${fmt(Math.round(totalMatchedRef))} ${devise}`,
-            detail: `${uniqueBuyers} acheteur(s) · ${managersTouched} gestionnaire(s)`,
-            tone: 'teal',
           },
           {
             label: 'Marché coté',
-            value: `${fmt(Math.round(totalInternalResidualRef))} ${devise}`,
-            detail: `${totalListedQuantity} titre(s) restant(s) à présenter`,
-            tone: 'gold',
+            value: `${fmt(Math.round(totalListedNeedRef))} ${devise}`,
+            detail: `${listedOrders.length} action(s) / obligation(s) cotée(s)`,
           },
           {
-            label: 'Besoin restant',
-            value: `${fmt(Math.round(totalRemainingRef))} ${devise}`,
-            detail:
-              totalFundingGapRef > 1
-                ? 'inclut les plans initialement incomplets'
-                : 'après rapprochement interne',
-            tone: totalRemainingRef > 0 ? 'gold' : 'teal',
+            label: 'Non coté à céder',
+            value: `${fmt(Math.round(totalInternalNeedRef))} ${devise}`,
+            detail: `${internalOrders.length} obligation(s) non cotée(s)`,
+          },
+          {
+            label: 'Non coté rapproché',
+            value: `${fmt(Math.round(totalInternalMatchedRef))} ${devise}`,
+            detail: `${uniqueBuyers} acheteur(s) · ${managersTouched} gestionnaire(s)`,
+          },
+          {
+            label: 'Non coté restant',
+            value: `${fmt(Math.round(totalInternalUnmatchedRef))} ${devise}`,
+            detail: hasPendingInternal
+              ? 'reste à couvrir en interne'
+              : 'entièrement couvert',
           },
         ].map((stat) => (
           <Card key={stat.label} className="p-4">
@@ -18900,14 +19343,14 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
               className="text-sm font-bold"
               style={{ color: C.ink }}
             >
-              Vue consolidée des lignes de cession
+              Routage de chaque ligne selon son statut de cotation
             </div>
             <div
               className="text-[10px] mt-1"
               style={{ color: C.sub }}
             >
-              La quantité non absorbée sur le marché non coté alimente
-              automatiquement le carnet du marché coté.
+              Le canal est déterminé par la nature du titre et son statut
+              de cotation. Il n'est pas choisi manuellement par le gérant.
             </div>
           </div>
           <Badge tone="navy">{titleRows.length} ligne(s)</Badge>
@@ -18916,96 +19359,160 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         <div className="overflow-x-auto">
           <table
             className="w-full"
-            style={{ minWidth: 1700 }}
+            style={{ minWidth: 1850 }}
           >
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>Client vendeur</Th>
                 <Th>Titre</Th>
                 <Th>Type</Th>
+                <Th>Cotation</Th>
+                <Th>Canal obligatoire</Th>
                 <Th>Classe</Th>
                 <Th>Secteur</Th>
                 <Th>Émetteur</Th>
-                <Th>Marché</Th>
+                <Th>Marché réf.</Th>
                 <Th>Devise</Th>
                 <Th>Qté à céder</Th>
-                <Th>Cours réf.</Th>
-                <Th>Variation</Th>
-                <Th>Volume jour</Th>
+                <Th>Prix réf.</Th>
                 <Th>Montant brut</Th>
-                <Th>Qté interne</Th>
-                <Th>Qté marché coté</Th>
+                <Th>Qté interne retenue</Th>
+                <Th>Qté carnet coté</Th>
               </tr>
             </thead>
             <tbody>
               {titleRows.map(
-                (
-                  {
-                    match,
-                    meta,
-                    listedPlan,
-                    internalQuantity,
-                  },
-                  index
-                ) => (
-                  <tr
-                    key={`${match.order.clientId}-${match.order.titre}-${index}`}
-                    onClick={() => setOrderIndex(index)}
-                    style={{
-                      borderTop: `1px solid ${C.line}`,
-                      background:
-                        index === orderIndex
-                          ? '#F3F6FC'
-                          : index % 2
-                          ? '#FCFCFD'
-                          : '#fff',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Td className="font-semibold">
-                      {match.order.client}
-                    </Td>
-                    <Td className="font-semibold">
-                      {match.order.titre}
-                    </Td>
-                    <Td>{meta.type}</Td>
-                    <Td>
-                      <Badge tone="navy">
-                        {match.order.assetClass}
-                      </Badge>
-                    </Td>
-                    <Td>{meta.secteur}</Td>
-                    <Td>{meta.emetteur}</Td>
-                    <Td>
-                      <Badge tone="slate">
-                        {match.order.marche}
-                      </Badge>
-                    </Td>
-                    <Td mono>{match.order.devise}</Td>
-                    <Td mono>{fmt(match.order.quantite)}</Td>
-                    <Td mono>
-                      {fmtPrice(match.order.prix)}{' '}
-                      {match.order.devise}
-                    </Td>
-                    <Td>
-                      <Pct v={Number(meta.variation || 0)} />
-                    </Td>
-                    <Td mono>{fmt(meta.volumeJour || 0)}</Td>
-                    <Td mono>
-                      {fmt(Math.round(match.order.montantBrut))}{' '}
-                      {match.order.devise}
-                    </Td>
-                    <Td mono>{fmt(internalQuantity)}</Td>
-                    <Td mono>
-                      {fmt(listedPlan.quantityToMarket)}
-                    </Td>
-                  </tr>
-                )
+                ({
+                  order,
+                  meta,
+                  channel,
+                  internalMatch,
+                  listedPlan,
+                  index,
+                }) => {
+                  const internalQuantity = internalMatch
+                    ? internalMatch.allocations.reduce(
+                        (sum, allocation) =>
+                          sum +
+                          Number(allocation.quantity || 0),
+                        0
+                      )
+                    : 0;
+
+                  return (
+                    <tr
+                      key={`${order.clientId}-${order.titre}-${index}`}
+                      style={{
+                        borderTop: `1px solid ${C.line}`,
+                        background:
+                          channel === 'non-cote'
+                            ? '#F4FBF8'
+                            : channel === 'cote'
+                            ? '#FCFCFD'
+                            : '#FFF8F7',
+                      }}
+                    >
+                      <Td className="font-semibold">
+                        {order.client}
+                      </Td>
+                      <Td className="font-semibold">
+                        {order.titre}
+                      </Td>
+                      <Td>{meta.type}</Td>
+                      <Td>
+                        <Badge
+                          tone={
+                            meta.cotation === 'Non coté'
+                              ? 'teal'
+                              : 'gold'
+                          }
+                        >
+                          {meta.cotation}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <Badge
+                          tone={
+                            channel === 'non-cote'
+                              ? 'teal'
+                              : channel === 'cote'
+                              ? 'navy'
+                              : 'coral'
+                          }
+                        >
+                          {channel === 'non-cote'
+                            ? 'Cession interne'
+                            : channel === 'cote'
+                            ? 'Marché coté'
+                            : 'Non routable'}
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <Badge tone="slate">
+                          {order.assetClass}
+                        </Badge>
+                      </Td>
+                      <Td>{meta.secteur}</Td>
+                      <Td>{meta.emetteur}</Td>
+                      <Td>{order.marche}</Td>
+                      <Td mono>{order.devise}</Td>
+                      <Td mono>{fmt(order.quantite)}</Td>
+                      <Td mono>
+                        {fmtPrice(order.prix)} {order.devise}
+                      </Td>
+                      <Td mono>
+                        {fmt(Math.round(order.montantBrut))}{' '}
+                        {order.devise}
+                      </Td>
+                      <Td mono>
+                        {channel === 'non-cote'
+                          ? fmt(internalQuantity)
+                          : '—'}
+                      </Td>
+                      <Td mono>
+                        {channel === 'cote'
+                          ? fmt(
+                              listedPlan?.quantityToMarket || 0
+                            )
+                          : '—'}
+                      </Td>
+                    </tr>
+                  );
+                }
               )}
             </tbody>
           </table>
         </div>
       </Card>
+
+      {unroutableOrders.length > 0 && (
+        <Card className="p-4" style={{ borderColor: C.coral }}>
+          <Eyebrow>Contrôle de routage</Eyebrow>
+          <div
+            className="text-sm font-bold"
+            style={{ color: C.ink }}
+          >
+            Titres sans statut de cotation exploitable
+          </div>
+          <div
+            className="text-xs mt-1"
+            style={{ color: C.sub }}
+          >
+            Ces lignes sont bloquées jusqu'à ce que le référentiel titre
+            fournisse explicitement leur type et leur statut de cotation.
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {unroutableOrders.map((order) => (
+              <Badge
+                key={`${order.clientId}-${order.titre}`}
+                tone="coral"
+              >
+                {order.titre}
+              </Badge>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="p-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -19015,7 +19522,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
               className="text-sm font-bold"
               style={{ color: C.ink }}
             >
-              Choisissez le marché à examiner
+              Consultez uniquement les lignes compatibles avec chaque canal
             </div>
           </div>
 
@@ -19026,23 +19533,30 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             {[
               {
                 id: 'non-cote',
-                label: 'Marché non coté · Cessions internes',
+                label: `Non coté · Obligations internes (${internalOrders.length})`,
+                disabled: internalOrders.length === 0,
               },
               {
                 id: 'cote',
-                label: 'Marché coté · Carnet à lancer',
+                label: `Coté · Actions + Obligations (${listedOrders.length})`,
+                disabled: listedOrders.length === 0,
               },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
+                disabled={tab.disabled}
                 onClick={() => setCessionMode(tab.id)}
                 className="px-4 py-2 rounded-lg text-xs font-semibold"
                 style={{
                   background:
                     cessionMode === tab.id ? '#fff' : 'transparent',
-                  color:
-                    cessionMode === tab.id ? C.navy : C.sub,
+                  color: tab.disabled
+                    ? '#A8AFBD'
+                    : cessionMode === tab.id
+                    ? C.navy
+                    : C.sub,
+                  cursor: tab.disabled ? 'not-allowed' : 'pointer',
                   boxShadow:
                     cessionMode === tab.id
                       ? '0 1px 4px rgba(15,27,51,0.10)'
@@ -19056,710 +19570,1092 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         </div>
       </Card>
 
-      <Card className="p-5">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <Eyebrow>Ligne de cession sélectionnée</Eyebrow>
-            <div
-              className="text-sm font-bold"
-              style={{ color: C.ink }}
-            >
-              {selectedMatch?.order?.titre || 'Aucune ligne'}
-            </div>
-          </div>
-
-          {effectiveMatches.length > 0 && (
-            <select
-              value={orderIndex}
-              onChange={(event) =>
-                setOrderIndex(Number(event.target.value))
-              }
-              className="px-3 py-2 rounded-xl border text-xs min-w-[420px]"
-              style={{ borderColor: C.line }}
-            >
-              {effectiveMatches.map((match, index) => (
-                <option
-                  key={`${match.order.clientId}-${match.order.titre}-${index}`}
-                  value={index}
-                >
-                  {match.order.client} · {match.order.titre} ·{' '}
-                  {fmt(Math.round(match.order.montantBrut))}{' '}
-                  {match.order.devise}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {selectedMatch && selectedListedPlan && (
-          <div className="grid grid-cols-6 gap-3 mt-4">
-            {[
-              ['Client vendeur', selectedMatch.order.client],
-              ['Titre', selectedMatch.order.titre],
-              ['Classe', selectedMatch.order.assetClass],
-              ['Marché', selectedMatch.order.marche],
-              [
-                'Quantité totale',
-                fmt(selectedMatch.order.quantite),
-              ],
-              [
-                'Reliquat coté',
-                `${fmt(selectedListedPlan.quantityToMarket)} titres`,
-              ],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="p-3 rounded-xl"
-                style={{ background: '#FAFAFC' }}
-              >
-                <div
-                  className="text-[9px] uppercase font-semibold"
-                  style={{ color: C.sub }}
-                >
-                  {label}
-                </div>
-                <div
-                  className="text-xs font-bold mt-1"
-                  style={{ color: C.ink }}
-                >
-                  {value}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      {cessionMode === 'non-cote' && selectedMatch && (
+      {cessionMode === 'non-cote' && (
         <>
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <Eyebrow>Marché non coté · contreparties internes</Eyebrow>
-                <div
-                  className="text-sm font-bold"
-                  style={{ color: C.ink }}
-                >
-                  Sélection des acheteurs potentiels
-                </div>
-                <div
-                  className="text-[10px] mt-1"
-                  style={{ color: C.sub }}
-                >
-                  Décochez un acheteur si le gérant ne souhaite pas
-                  l'utiliser comme contrepartie. Le montant non absorbé
-                  bascule automatiquement vers le marché coté.
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Btn tone="ghost" onClick={selectAllBuyers}>
-                  Tout sélectionner
-                </Btn>
-                <Btn tone="ghost" onClick={deselectAllBuyers}>
-                  Tout décocher
-                </Btn>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto mt-4">
-              <table
-                className="w-full"
-                style={{ minWidth: 1250 }}
-              >
-                <thead style={{ background: '#FAFAFC' }}>
-                  <tr>
-                    <Th>Retenir</Th>
-                    <Th>Gestionnaire</Th>
-                    <Th>Client acheteur</Th>
-                    <Th>Profil</Th>
-                    <Th>Encours</Th>
-                    <Th>Liquidité avant</Th>
-                    <Th>Capacité max</Th>
-                    <Th>Impact profil</Th>
-                    <Th>Préférences</Th>
-                    <Th>Affectation</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(selectedBaseMatch?.eligible || []).map(
-                    (candidate, index) => {
-                      const disabled =
-                        selectedDisabledBuyerIds.includes(
-                          candidate.buyer.id
-                        );
-                      const proposed =
-                        selectedMatch.allocations.find(
-                          (item) =>
-                            item.buyer.id === candidate.buyer.id
-                        );
-
-                      return (
-                        <tr
-                          key={candidate.buyer.id}
-                          style={{
-                            borderTop: `1px solid ${C.line}`,
-                            background: disabled
-                              ? '#FFF8F7'
-                              : proposed
-                              ? '#F1FAF6'
-                              : index % 2
-                              ? '#FCFCFD'
-                              : '#fff',
-                          }}
-                        >
-                          <Td>
-                            <input
-                              type="checkbox"
-                              checked={!disabled}
-                              onChange={() =>
-                                toggleBuyer(candidate.buyer.id)
-                              }
-                              title={
-                                disabled
-                                  ? 'Réintégrer cet acheteur'
-                                  : 'Exclure cet acheteur de la cession interne'
-                              }
-                            />
-                          </Td>
-                          <Td className="font-semibold">
-                            {candidate.gestionnaire}
-                          </Td>
-                          <Td>{candidate.buyer.nom}</Td>
-                          <Td>
-                            <Badge tone="navy">
-                              {candidate.buyer.profilRisque}
-                            </Badge>
-                          </Td>
-                          <Td mono>
-                            {fmt(
-                              Math.round(candidate.buyer.encours)
-                            )}{' '}
-                            {candidate.buyer.devise}
-                          </Td>
-                          <Td mono>
-                            {candidate.cashBeforePct.toFixed(1)}%
-                          </Td>
-                          <Td mono>
-                            {fmt(
-                              Math.round(candidate.capacity)
-                            )}{' '}
-                            {candidate.buyer.devise}
-                          </Td>
-                          <Td>
-                            <Badge
-                              tone={
-                                candidate.profileImprovement > 0.05
-                                  ? 'teal'
-                                  : candidate.profileImprovement < -0.05
-                                  ? 'coral'
-                                  : 'slate'
-                              }
-                            >
-                              {candidate.profileImprovement > 0.05
-                                ? `Améliore +${candidate.profileImprovement.toFixed(
-                                    1
-                                  )} pt`
-                                : candidate.profileImprovement < -0.05
-                                ? `Dégrade ${candidate.profileImprovement.toFixed(
-                                    1
-                                  )} pt`
-                                : 'Neutre'}
-                            </Badge>
-                          </Td>
-                          <Td>
-                            <Badge
-                              tone={
-                                candidate.preferenceTotal > 0 &&
-                                candidate.preferenceMatched ===
-                                  candidate.preferenceTotal
-                                  ? 'teal'
-                                  : candidate.preferenceMatched > 0
-                                  ? 'gold'
-                                  : 'slate'
-                              }
-                            >
-                              {candidate.preferenceTotal > 0
-                                ? `${candidate.preferenceMatched}/${candidate.preferenceTotal}`
-                                : '—'}
-                            </Badge>
-                          </Td>
-                          <Td>
-                            {disabled ? (
-                              <Badge tone="coral">
-                                Décoché par le gérant
-                              </Badge>
-                            ) : proposed ? (
-                              <>
-                                <Badge tone="teal">Retenu</Badge>
-                                <div
-                                  className="text-[9px] mt-1"
-                                  style={{ color: C.teal }}
-                                >
-                                  {fmt(
-                                    Math.round(proposed.amount)
-                                  )}{' '}
-                                  {proposed.buyer.devise}
-                                </div>
-                              </>
-                            ) : (
-                              <Badge tone="slate">Éligible</Badge>
-                            )}
-                          </Td>
-                        </tr>
-                      );
-                    }
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="p-5">
-              <Eyebrow>Affectation non cotée retenue</Eyebrow>
-              <div className="space-y-3 mt-3">
-                {selectedMatch.allocations.length === 0 && (
-                  <div
-                    className="text-xs"
-                    style={{ color: C.sub }}
-                  >
-                    Aucun acheteur interne actuellement retenu pour
-                    cette ligne.
-                  </div>
-                )}
-
-                {selectedMatch.allocations.map((allocation) => (
-                  <div
-                    key={allocation.buyer.id}
-                    className="p-3 rounded-xl border"
-                    style={{ borderColor: C.line }}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div
-                          className="text-xs font-bold"
-                          style={{ color: C.ink }}
-                        >
-                          {allocation.buyer.nom}
-                        </div>
-                        <div
-                          className="text-[9px] mt-0.5"
-                          style={{ color: C.sub }}
-                        >
-                          {allocation.gestionnaire} ·{' '}
-                          {allocation.buyer.profilRisque}
-                        </div>
-                      </div>
-                      <Badge tone="teal">Retenu</Badge>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
-                      <div>
-                        <div style={{ color: C.sub }}>Quantité</div>
-                        <b style={{ ...F_MONO, color: C.ink }}>
-                          {fmt(allocation.quantity)}
-                        </b>
-                      </div>
-                      <div>
-                        <div style={{ color: C.sub }}>Montant</div>
-                        <b style={{ ...F_MONO, color: C.ink }}>
-                          {fmt(Math.round(allocation.amount))}{' '}
-                          {allocation.buyer.devise}
-                        </b>
-                      </div>
-                      <div>
-                        <div style={{ color: C.sub }}>
-                          Écart après
-                        </div>
-                        <b style={{ ...F_MONO, color: C.ink }}>
-                          {allocation.afterDeviation.toFixed(1)} pts
-                        </b>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card
-              className="p-5"
-              style={{
-                borderColor:
-                  selectedMatch.remaining > 0
-                    ? C.gold
-                    : C.teal,
-              }}
-            >
-              <Eyebrow>Couverture non cotée</Eyebrow>
+          {internalOrders.length === 0 ? (
+            <Card className="p-6">
+              <Eyebrow>Marché non coté</Eyebrow>
               <div
-                className="text-3xl font-bold mt-2"
-                style={{ ...F_MONO, color: C.ink }}
+                className="text-sm font-bold"
+                style={{ color: C.ink }}
               >
-                {selectedMatch.order.montantBrut > 0
-                  ? (
-                      (selectedMatch.amountMatched /
-                        selectedMatch.order.montantBrut) *
-                      100
-                    ).toFixed(1)
-                  : '0.0'}
-                %
+                Aucune obligation non cotée dans ce plan
               </div>
-
               <div
-                className="text-xs mt-2"
+                className="text-xs mt-1"
                 style={{ color: C.sub }}
               >
-                {fmt(Math.round(selectedMatch.amountMatched))}{' '}
-                {selectedMatch.order.devise} absorbés par les
-                acheteurs internes actuellement cochés.
-              </div>
-
-              <div
-                className="mt-4 p-3 rounded-xl"
-                style={{
-                  background:
-                    selectedMatch.remaining > 0
-                      ? '#FBF7EE'
-                      : '#EAF8F3',
-                }}
-              >
-                <div
-                  className="text-[10px] uppercase font-semibold"
-                  style={{ color: C.sub }}
-                >
-                  À transférer vers le marché coté
-                </div>
-                <div
-                  className="text-lg font-bold mt-1"
-                  style={{
-                    ...F_MONO,
-                    color:
-                      selectedMatch.remaining > 0
-                        ? '#8A6A16'
-                        : C.teal,
-                  }}
-                >
-                  {fmt(Math.round(selectedMatch.remaining))}{' '}
-                  {selectedMatch.order.devise}
-                </div>
+                Les Actions et Obligations cotées ne sont jamais proposées
+                comme cessions internes.
               </div>
             </Card>
-          </div>
+          ) : (
+            <>
+              <Card className="p-5">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <Eyebrow>Obligation non cotée sélectionnée</Eyebrow>
+                    <div
+                      className="text-sm font-bold"
+                      style={{ color: C.ink }}
+                    >
+                      {selectedInternalMatch?.order?.titre}
+                    </div>
+                  </div>
 
+                  <select
+                    value={internalOrderIndex}
+                    onChange={(event) =>
+                      setInternalOrderIndex(
+                        Number(event.target.value)
+                      )
+                    }
+                    className="px-3 py-2 rounded-xl border text-xs min-w-[420px]"
+                    style={{ borderColor: C.line }}
+                  >
+                    {effectiveInternalMatches.map(
+                      (match, index) => (
+                        <option
+                          key={`${match.order.clientId}-${match.order.titre}-${index}`}
+                          value={index}
+                        >
+                          {match.order.client} · {match.order.titre} ·{' '}
+                          {fmt(
+                            Math.round(match.order.montantBrut)
+                          )}{' '}
+                          {match.order.devise}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                {selectedInternalMatch && (
+                  <div className="grid grid-cols-6 gap-3 mt-4">
+                    {[
+                      [
+                        'Client vendeur',
+                        selectedInternalMatch.order.client,
+                      ],
+                      [
+                        'Titre',
+                        selectedInternalMatch.order.titre,
+                      ],
+                      [
+                        'Cotation',
+                        cessionInstrumentListingStatus(
+                          selectedInternalMatch.order
+                        ),
+                      ],
+                      [
+                        'Classe',
+                        selectedInternalMatch.order.assetClass,
+                      ],
+                      [
+                        'Quantité',
+                        fmt(selectedInternalMatch.order.quantite),
+                      ],
+                      [
+                        'À couvrir en interne',
+                        `${fmt(
+                          Math.round(
+                            selectedInternalMatch.remaining
+                          )
+                        )} ${
+                          selectedInternalMatch.order.devise
+                        }`,
+                      ],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="p-3 rounded-xl"
+                        style={{ background: '#FAFAFC' }}
+                      >
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          {label}
+                        </div>
+                        <div
+                          className="text-xs font-bold mt-1"
+                          style={{ color: C.ink }}
+                        >
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+
+              {selectedInternalMatch && (
+                <>
+                  <Card className="p-5">
+                    <div className="flex items-center justify-between gap-4 flex-wrap">
+                      <div>
+                        <Eyebrow>
+                          Cessions internes · obligations non cotées
+                        </Eyebrow>
+                        <div
+                          className="text-sm font-bold"
+                          style={{ color: C.ink }}
+                        >
+                          Sélection des acheteurs potentiels
+                        </div>
+                        <div
+                          className="text-[10px] mt-1"
+                          style={{ color: C.sub }}
+                        >
+                          Le gestionnaire peut décocher des acheteurs.
+                          Le reliquat reste sur le canal non coté et
+                          n'est jamais envoyé au carnet de bourse.
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <Btn tone="ghost" onClick={selectAllBuyers}>
+                          Tout sélectionner
+                        </Btn>
+                        <Btn tone="ghost" onClick={deselectAllBuyers}>
+                          Tout décocher
+                        </Btn>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto mt-4">
+                      <table
+                        className="w-full"
+                        style={{ minWidth: 1250 }}
+                      >
+                        <thead style={{ background: '#FAFAFC' }}>
+                          <tr>
+                            <Th>Retenir</Th>
+                            <Th>Gestionnaire</Th>
+                            <Th>Client acheteur</Th>
+                            <Th>Profil</Th>
+                            <Th>Encours</Th>
+                            <Th>Liquidité avant</Th>
+                            <Th>Capacité max</Th>
+                            <Th>Impact profil</Th>
+                            <Th>Préférences</Th>
+                            <Th>Affectation</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(selectedBaseInternalMatch?.eligible || []).map(
+                            (candidate, index) => {
+                              const disabled =
+                                selectedDisabledBuyerIds.includes(
+                                  candidate.buyer.id
+                                );
+                              const proposed =
+                                selectedInternalMatch.allocations.find(
+                                  (item) =>
+                                    item.buyer.id ===
+                                    candidate.buyer.id
+                                );
+
+                              return (
+                                <tr
+                                  key={candidate.buyer.id}
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                    background: disabled
+                                      ? '#FFF8F7'
+                                      : proposed
+                                      ? '#F1FAF6'
+                                      : index % 2
+                                      ? '#FCFCFD'
+                                      : '#fff',
+                                  }}
+                                >
+                                  <Td>
+                                    <input
+                                      type="checkbox"
+                                      checked={!disabled}
+                                      onChange={() =>
+                                        toggleBuyer(
+                                          candidate.buyer.id
+                                        )
+                                      }
+                                    />
+                                  </Td>
+                                  <Td className="font-semibold">
+                                    {candidate.gestionnaire}
+                                  </Td>
+                                  <Td>{candidate.buyer.nom}</Td>
+                                  <Td>
+                                    <Badge tone="navy">
+                                      {
+                                        candidate.buyer
+                                          .profilRisque
+                                      }
+                                    </Badge>
+                                  </Td>
+                                  <Td mono>
+                                    {fmt(
+                                      Math.round(
+                                        candidate.buyer.encours
+                                      )
+                                    )}{' '}
+                                    {candidate.buyer.devise}
+                                  </Td>
+                                  <Td mono>
+                                    {candidate.cashBeforePct.toFixed(
+                                      1
+                                    )}
+                                    %
+                                  </Td>
+                                  <Td mono>
+                                    {fmt(
+                                      Math.round(
+                                        candidate.capacity
+                                      )
+                                    )}{' '}
+                                    {candidate.buyer.devise}
+                                  </Td>
+                                  <Td>
+                                    <Badge
+                                      tone={
+                                        candidate.profileImprovement >
+                                        0.05
+                                          ? 'teal'
+                                          : candidate.profileImprovement <
+                                            -0.05
+                                          ? 'coral'
+                                          : 'slate'
+                                      }
+                                    >
+                                      {candidate.profileImprovement >
+                                      0.05
+                                        ? `Améliore +${candidate.profileImprovement.toFixed(
+                                            1
+                                          )} pt`
+                                        : candidate.profileImprovement <
+                                          -0.05
+                                        ? `Dégrade ${candidate.profileImprovement.toFixed(
+                                            1
+                                          )} pt`
+                                        : 'Neutre'}
+                                    </Badge>
+                                  </Td>
+                                  <Td>
+                                    <Badge
+                                      tone={
+                                        candidate.preferenceTotal >
+                                          0 &&
+                                        candidate.preferenceMatched ===
+                                          candidate.preferenceTotal
+                                          ? 'teal'
+                                          : candidate.preferenceMatched >
+                                            0
+                                          ? 'gold'
+                                          : 'slate'
+                                      }
+                                    >
+                                      {candidate.preferenceTotal > 0
+                                        ? `${candidate.preferenceMatched}/${candidate.preferenceTotal}`
+                                        : '—'}
+                                    </Badge>
+                                  </Td>
+                                  <Td>
+                                    {disabled ? (
+                                      <Badge tone="coral">
+                                        Décoché
+                                      </Badge>
+                                    ) : proposed ? (
+                                      <>
+                                        <Badge tone="teal">
+                                          Retenu
+                                        </Badge>
+                                        <div
+                                          className="text-[9px] mt-1"
+                                          style={{
+                                            color: C.teal,
+                                          }}
+                                        >
+                                          {fmt(
+                                            Math.round(
+                                              proposed.amount
+                                            )
+                                          )}{' '}
+                                          {
+                                            proposed.buyer
+                                              .devise
+                                          }
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <Badge tone="slate">
+                                        Éligible
+                                      </Badge>
+                                    )}
+                                  </Td>
+                                </tr>
+                              );
+                            }
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card className="p-5">
+                      <Eyebrow>Affectation interne retenue</Eyebrow>
+                      <div className="space-y-3 mt-3">
+                        {selectedInternalMatch.allocations.length ===
+                          0 && (
+                          <div
+                            className="text-xs"
+                            style={{ color: C.sub }}
+                          >
+                            Aucun acheteur interne actuellement
+                            retenu.
+                          </div>
+                        )}
+
+                        {selectedInternalMatch.allocations.map(
+                          (allocation) => (
+                            <div
+                              key={allocation.buyer.id}
+                              className="p-3 rounded-xl border"
+                              style={{ borderColor: C.line }}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <div
+                                    className="text-xs font-bold"
+                                    style={{ color: C.ink }}
+                                  >
+                                    {allocation.buyer.nom}
+                                  </div>
+                                  <div
+                                    className="text-[9px] mt-0.5"
+                                    style={{ color: C.sub }}
+                                  >
+                                    {allocation.gestionnaire} ·{' '}
+                                    {
+                                      allocation.buyer
+                                        .profilRisque
+                                    }
+                                  </div>
+                                </div>
+                                <Badge tone="teal">
+                                  Retenu
+                                </Badge>
+                              </div>
+
+                              <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
+                                <div>
+                                  <div style={{ color: C.sub }}>
+                                    Quantité
+                                  </div>
+                                  <b
+                                    style={{
+                                      ...F_MONO,
+                                      color: C.ink,
+                                    }}
+                                  >
+                                    {fmt(
+                                      allocation.quantity
+                                    )}
+                                  </b>
+                                </div>
+                                <div>
+                                  <div style={{ color: C.sub }}>
+                                    Montant
+                                  </div>
+                                  <b
+                                    style={{
+                                      ...F_MONO,
+                                      color: C.ink,
+                                    }}
+                                  >
+                                    {fmt(
+                                      Math.round(
+                                        allocation.amount
+                                      )
+                                    )}{' '}
+                                    {
+                                      allocation.buyer
+                                        .devise
+                                    }
+                                  </b>
+                                </div>
+                                <div>
+                                  <div style={{ color: C.sub }}>
+                                    Écart après
+                                  </div>
+                                  <b
+                                    style={{
+                                      ...F_MONO,
+                                      color: C.ink,
+                                    }}
+                                  >
+                                    {allocation.afterDeviation.toFixed(
+                                      1
+                                    )}{' '}
+                                    pts
+                                  </b>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </Card>
+
+                    <Card
+                      className="p-5"
+                      style={{
+                        borderColor:
+                          selectedInternalMatch.remaining > 0
+                            ? C.gold
+                            : C.teal,
+                      }}
+                    >
+                      <Eyebrow>
+                        Couverture obligation non cotée
+                      </Eyebrow>
+                      <div
+                        className="text-3xl font-bold mt-2"
+                        style={{
+                          ...F_MONO,
+                          color: C.ink,
+                        }}
+                      >
+                        {selectedInternalMatch.order.montantBrut >
+                        0
+                          ? (
+                              (selectedInternalMatch.amountMatched /
+                                selectedInternalMatch.order
+                                  .montantBrut) *
+                              100
+                            ).toFixed(1)
+                          : '0.0'}
+                        %
+                      </div>
+
+                      <div
+                        className="text-xs mt-2"
+                        style={{ color: C.sub }}
+                      >
+                        {fmt(
+                          Math.round(
+                            selectedInternalMatch.amountMatched
+                          )
+                        )}{' '}
+                        {selectedInternalMatch.order.devise}{' '}
+                        absorbés par les contreparties internes.
+                      </div>
+
+                      <div
+                        className="mt-4 p-3 rounded-xl"
+                        style={{
+                          background:
+                            selectedInternalMatch.remaining > 0
+                              ? '#FBF7EE'
+                              : '#EAF8F3',
+                        }}
+                      >
+                        <div
+                          className="text-[10px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          Reliquat non coté
+                        </div>
+                        <div
+                          className="text-lg font-bold mt-1"
+                          style={{
+                            ...F_MONO,
+                            color:
+                              selectedInternalMatch.remaining >
+                              0
+                                ? '#8A6A16'
+                                : C.teal,
+                          }}
+                        >
+                          {fmt(
+                            Math.round(
+                              selectedInternalMatch.remaining
+                            )
+                          )}{' '}
+                          {selectedInternalMatch.order.devise}
+                        </div>
+                        {selectedInternalMatch.remaining > 0 && (
+                          <div
+                            className="text-[9px] mt-1"
+                            style={{ color: '#8A6A16' }}
+                          >
+                            Ce montant reste à rapprocher sur le
+                            marché non coté. Il ne sera pas envoyé
+                            en bourse.
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+
+                  {selectedBaseInternalMatch?.excluded?.length >
+                    0 && (
+                    <Card className="p-5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Eyebrow>
+                            Clients non éligibles
+                          </Eyebrow>
+                          <div
+                            className="text-sm font-bold"
+                            style={{ color: C.ink }}
+                          >
+                            Exclusions système / contraintes
+                            gérant
+                          </div>
+                        </div>
+                        <Badge tone="coral">
+                          {
+                            selectedBaseInternalMatch.excluded
+                              .length
+                          }
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 mt-3">
+                        {selectedBaseInternalMatch.excluded
+                          .slice(0, 10)
+                          .map((candidate) => (
+                            <div
+                              key={`excluded-${candidate.buyer.id}`}
+                              className="p-3 rounded-xl"
+                              style={{
+                                background: '#FFF8F7',
+                              }}
+                            >
+                              <div
+                                className="text-[10px] font-bold"
+                                style={{ color: C.ink }}
+                              >
+                                {candidate.buyer.nom}
+                              </div>
+                              <div
+                                className="text-[9px] mt-1"
+                                style={{ color: C.coral }}
+                              >
+                                {(
+                                  candidate.exclusionReasons ||
+                                  []
+                                ).join(' · ') ||
+                                  'Non éligible'}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </Card>
+                  )}
+                </>
+              )}
+            </>
+          )}
         </>
       )}
 
-      {cessionMode === 'cote' &&
-        selectedMatch &&
-        selectedListedPlan && (
-          <>
-            <Card className="p-5">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <Eyebrow>Marché coté · profondeur disponible</Eyebrow>
-                  <div
-                    className="text-sm font-bold"
-                    style={{ color: C.ink }}
-                  >
-                    {selectedListedPlan.instrument.nom}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <Badge tone="navy">
-                      {selectedListedPlan.instrument.marche}
-                    </Badge>
-                    <span
-                      className="text-xs font-semibold"
-                      style={F_MONO}
+      {cessionMode === 'cote' && (
+        <>
+          {listedOrders.length === 0 ? (
+            <Card className="p-6">
+              <Eyebrow>Marché coté</Eyebrow>
+              <div
+                className="text-sm font-bold"
+                style={{ color: C.ink }}
+              >
+                Aucune Action ou Obligation cotée dans ce plan
+              </div>
+              <div
+                className="text-xs mt-1"
+                style={{ color: C.sub }}
+              >
+                Les Obligations non cotées restent exclusivement
+                dans le canal de cession interne.
+              </div>
+            </Card>
+          ) : (
+            <>
+              <Card className="p-5">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <Eyebrow>
+                      Action / obligation cotée sélectionnée
+                    </Eyebrow>
+                    <div
+                      className="text-sm font-bold"
+                      style={{ color: C.ink }}
                     >
-                      {fmtPrice(
-                        selectedListedPlan.instrument.cours
-                      )}{' '}
-                      {selectedListedPlan.instrument.devise}
-                    </span>
-                    <Pct
-                      v={Number(
-                        selectedListedPlan.instrument.variation || 0
-                      )}
-                    />
-                    <Badge tone="gold">
-                      {selectedListedPlan.quantityToMarket} titre(s)
-                      à présenter
-                    </Badge>
+                      {selectedListedOrder?.titre}
+                    </div>
                   </div>
+
+                  <select
+                    value={listedOrderIndex}
+                    onChange={(event) =>
+                      setListedOrderIndex(
+                        Number(event.target.value)
+                      )
+                    }
+                    className="px-3 py-2 rounded-xl border text-xs min-w-[420px]"
+                    style={{ borderColor: C.line }}
+                  >
+                    {listedOrders.map((order, index) => (
+                      <option
+                        key={`${order.clientId}-${order.titre}-${index}`}
+                        value={index}
+                      >
+                        {order.client} · {order.titre} ·{' '}
+                        {fmt(Math.round(order.montantBrut))}{' '}
+                        {order.devise}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <Btn
-                  tone="ghost"
-                  onClick={() =>
-                    go('profondeur', {
-                      instrument:
-                        selectedListedPlan.instrument.nom,
-                      marche:
-                        selectedListedPlan.instrument.marche,
-                      source:
-                        selectedListedPlan.instrument.type ===
-                        'Obligation'
-                          ? 'marches'
-                          : 'vue-boursiere',
-                    })
-                  }
-                >
-                  Voir profondeur complète
-                </Btn>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 mt-4">
-                <div>
-                  <div
-                    className="text-xs font-semibold mb-2"
-                    style={{ color: C.teal }}
-                  >
-                    Achats disponibles (bid)
+                {selectedListedOrder && (
+                  <div className="grid grid-cols-6 gap-3 mt-4">
+                    {[
+                      [
+                        'Client vendeur',
+                        selectedListedOrder.client,
+                      ],
+                      ['Titre', selectedListedOrder.titre],
+                      [
+                        'Type',
+                        selectedListedOrder.assetClass ===
+                        'Actions'
+                          ? 'Action'
+                          : 'Obligation',
+                      ],
+                      [
+                        'Cotation',
+                        cessionInstrumentListingStatus(
+                          selectedListedOrder
+                        ),
+                      ],
+                      [
+                        'Quantité',
+                        fmt(selectedListedOrder.quantite),
+                      ],
+                      [
+                        'Canal',
+                        'Marché coté uniquement',
+                      ],
+                    ].map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="p-3 rounded-xl"
+                        style={{ background: '#FAFAFC' }}
+                      >
+                        <div
+                          className="text-[9px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          {label}
+                        </div>
+                        <div
+                          className="text-xs font-bold mt-1"
+                          style={{ color: C.ink }}
+                        >
+                          {value}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <table className="w-full">
-                    <thead>
-                      <tr>
-                        <Th>Niveau</Th>
-                        <Th>Prix</Th>
-                        <Th>Quantité</Th>
-                        <Th>Montant</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedListedPlan.bids.map(
-                        (bid, index) => (
-                          <tr
-                            key={`bid-${index}`}
-                            style={{
-                              borderTop: `1px solid ${C.line}`,
-                            }}
+                )}
+              </Card>
+
+              {selectedListedOrder &&
+                selectedListedPlan && (
+                  <>
+                    <Card className="p-5">
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div>
+                          <Eyebrow>
+                            Marché coté · profondeur disponible
+                          </Eyebrow>
+                          <div
+                            className="text-sm font-bold"
+                            style={{ color: C.ink }}
                           >
-                            <Td mono>{index + 1}</Td>
-                            <Td mono>
-                              <span style={{ color: C.teal }}>
-                                {fmtPrice(bid.prix)}
-                              </span>
-                            </Td>
-                            <Td mono>{fmt(bid.qte)}</Td>
-                            <Td mono>
-                              {fmt(
-                                Math.round(bid.prix * bid.qte)
+                            {selectedListedPlan.instrument.nom}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <Badge tone="navy">
+                              {
+                                selectedListedPlan.instrument
+                                  .marche
+                              }
+                            </Badge>
+                            <Badge tone="gold">
+                              {
+                                selectedListedOrder.assetClass ===
+                                'Actions'
+                                  ? 'Action cotée'
+                                  : 'Obligation cotée'
+                              }
+                            </Badge>
+                            <span
+                              className="text-xs font-semibold"
+                              style={F_MONO}
+                            >
+                              {fmtPrice(
+                                selectedListedPlan.instrument
+                                  .cours
                               )}{' '}
-                              {selectedMatch.order.devise}
-                            </Td>
-                          </tr>
-                        )
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                              {
+                                selectedListedPlan.instrument
+                                  .devise
+                              }
+                            </span>
+                            <Pct
+                              v={Number(
+                                selectedListedPlan.instrument
+                                  .variation || 0
+                              )}
+                            />
+                          </div>
+                        </div>
 
-                <div>
-                  <div
-                    className="text-xs font-semibold mb-2"
-                    style={{ color: C.coral }}
-                  >
-                    Ventes présentes (ask)
-                  </div>
-                  <table className="w-full">
-                    <thead>
-                      <tr>
-                        <Th>Niveau</Th>
-                        <Th>Prix</Th>
-                        <Th>Quantité</Th>
-                        <Th>Montant</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedListedPlan.asks.map(
-                        (ask, index) => (
-                          <tr
-                            key={`ask-${index}`}
-                            style={{
-                              borderTop: `1px solid ${C.line}`,
-                            }}
+                        <Btn
+                          tone="ghost"
+                          onClick={() =>
+                            go('profondeur', {
+                              instrument:
+                                selectedListedPlan.instrument
+                                  .nom,
+                              marche:
+                                selectedListedPlan.instrument
+                                  .marche,
+                              source:
+                                selectedListedPlan.instrument
+                                  .type === 'Obligation'
+                                  ? 'marches'
+                                  : 'vue-boursiere',
+                            })
+                          }
+                        >
+                          Voir profondeur complète
+                        </Btn>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <div
+                            className="text-xs font-semibold mb-2"
+                            style={{ color: C.teal }}
                           >
-                            <Td mono>{index + 1}</Td>
-                            <Td mono>
-                              <span style={{ color: C.coral }}>
-                                {fmtPrice(ask.prix)}
-                              </span>
-                            </Td>
-                            <Td mono>{fmt(ask.qte)}</Td>
-                            <Td mono>
-                              {fmt(
-                                Math.round(ask.prix * ask.qte)
-                              )}{' '}
-                              {selectedMatch.order.devise}
-                            </Td>
-                          </tr>
-                        )
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </Card>
+                            Achats disponibles (bid)
+                          </div>
+                          <table className="w-full">
+                            <thead>
+                              <tr>
+                                <Th>Niveau</Th>
+                                <Th>Prix</Th>
+                                <Th>Quantité</Th>
+                                <Th>Montant</Th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedListedPlan.bids.map(
+                                (bid, index) => (
+                                  <tr
+                                    key={`bid-${index}`}
+                                    style={{
+                                      borderTop: `1px solid ${C.line}`,
+                                    }}
+                                  >
+                                    <Td mono>{index + 1}</Td>
+                                    <Td mono>
+                                      <span
+                                        style={{
+                                          color: C.teal,
+                                        }}
+                                      >
+                                        {fmtPrice(
+                                          bid.prix
+                                        )}
+                                      </span>
+                                    </Td>
+                                    <Td mono>
+                                      {fmt(bid.qte)}
+                                    </Td>
+                                    <Td mono>
+                                      {fmt(
+                                        Math.round(
+                                          bid.prix *
+                                            bid.qte
+                                        )
+                                      )}{' '}
+                                      {
+                                        selectedListedOrder.devise
+                                      }
+                                    </Td>
+                                  </tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
 
-            <Card className="p-0 overflow-hidden">
-              <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <Eyebrow>Carnet des ordres à lancer</Eyebrow>
-                  <div
-                    className="text-sm font-bold"
-                    style={{ color: C.ink }}
-                  >
-                    Ordres de vente proposés sur les meilleurs niveaux
-                    acheteurs
-                  </div>
-                  <div
-                    className="text-[10px] mt-1"
-                    style={{ color: C.sub }}
-                  >
-                    Le reliquat issu du marché non coté est ventilé sur
-                    les niveaux d'achat visibles du carnet.
-                  </div>
-                </div>
-                <Badge tone="gold">
-                  {selectedListedPlan.launchOrders.length} ordre(s)
-                </Badge>
-              </div>
-
-              {selectedListedPlan.launchOrders.length === 0 ? (
-                <div
-                  className="p-6 text-sm"
-                  style={{ color: C.sub }}
-                >
-                  Aucun ordre coté à lancer : la ligne est entièrement
-                  couverte par les contreparties internes sélectionnées.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table
-                    className="w-full"
-                    style={{ minWidth: 1100 }}
-                  >
-                    <thead style={{ background: '#FAFAFC' }}>
-                      <tr>
-                        <Th>Réf.</Th>
-                        <Th>Sens</Th>
-                        <Th>Titre</Th>
-                        <Th>Marché</Th>
-                        <Th>Niveau</Th>
-                        <Th>Quantité</Th>
-                        <Th>Prix limite</Th>
-                        <Th>Montant indicatif</Th>
-                        <Th>Portefeuille vendeur</Th>
-                        <Th>Statut</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedListedPlan.launchOrders.map(
-                        (row) => (
-                          <tr
-                            key={row.id}
-                            style={{
-                              borderTop: `1px solid ${C.line}`,
-                            }}
+                        <div>
+                          <div
+                            className="text-xs font-semibold mb-2"
+                            style={{ color: C.coral }}
                           >
-                            <Td mono>{row.id}</Td>
-                            <Td>
-                              <Badge tone="coral">
-                                {row.sens}
-                              </Badge>
-                            </Td>
-                            <Td className="font-semibold">
-                              {row.titre}
-                            </Td>
-                            <Td>
-                              <Badge tone="navy">
-                                {row.marche}
-                              </Badge>
-                            </Td>
-                            <Td mono>{row.niveauCarnet}</Td>
-                            <Td mono>{fmt(row.qte)}</Td>
-                            <Td mono>
-                              {fmtPrice(row.prix)} {row.devise}
-                            </Td>
-                            <Td mono>
-                              {fmt(
-                                Math.round(row.qte * row.prix)
-                              )}{' '}
-                              {row.devise}
-                            </Td>
-                            <Td>{row.pf}</Td>
-                            <Td>
-                              <Badge tone="gold">
-                                {row.statut}
-                              </Badge>
-                            </Td>
-                          </tr>
-                        )
+                            Ventes présentes (ask)
+                          </div>
+                          <table className="w-full">
+                            <thead>
+                              <tr>
+                                <Th>Niveau</Th>
+                                <Th>Prix</Th>
+                                <Th>Quantité</Th>
+                                <Th>Montant</Th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedListedPlan.asks.map(
+                                (ask, index) => (
+                                  <tr
+                                    key={`ask-${index}`}
+                                    style={{
+                                      borderTop: `1px solid ${C.line}`,
+                                    }}
+                                  >
+                                    <Td mono>{index + 1}</Td>
+                                    <Td mono>
+                                      <span
+                                        style={{
+                                          color: C.coral,
+                                        }}
+                                      >
+                                        {fmtPrice(
+                                          ask.prix
+                                        )}
+                                      </span>
+                                    </Td>
+                                    <Td mono>
+                                      {fmt(ask.qte)}
+                                    </Td>
+                                    <Td mono>
+                                      {fmt(
+                                        Math.round(
+                                          ask.prix *
+                                            ask.qte
+                                        )
+                                      )}{' '}
+                                      {
+                                        selectedListedOrder.devise
+                                      }
+                                    </Td>
+                                  </tr>
+                                )
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card className="p-0 overflow-hidden">
+                      <div className="p-4 flex items-center justify-between gap-4 flex-wrap">
+                        <div>
+                          <Eyebrow>
+                            Carnet des ordres à lancer
+                          </Eyebrow>
+                          <div
+                            className="text-sm font-bold"
+                            style={{ color: C.ink }}
+                          >
+                            Ordres de vente proposés sur les
+                            meilleurs niveaux acheteurs
+                          </div>
+                          <div
+                            className="text-[10px] mt-1"
+                            style={{ color: C.sub }}
+                          >
+                            Ce carnet contient uniquement des Actions
+                            et Obligations cotées.
+                          </div>
+                        </div>
+                        <Badge tone="gold">
+                          {
+                            selectedListedPlan.launchOrders
+                              .length
+                          }{' '}
+                          ordre(s)
+                        </Badge>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table
+                          className="w-full"
+                          style={{ minWidth: 1100 }}
+                        >
+                          <thead
+                            style={{ background: '#FAFAFC' }}
+                          >
+                            <tr>
+                              <Th>Réf.</Th>
+                              <Th>Sens</Th>
+                              <Th>Titre</Th>
+                              <Th>Type</Th>
+                              <Th>Marché</Th>
+                              <Th>Niveau</Th>
+                              <Th>Quantité</Th>
+                              <Th>Prix limite</Th>
+                              <Th>
+                                Montant indicatif
+                              </Th>
+                              <Th>
+                                Portefeuille vendeur
+                              </Th>
+                              <Th>Statut</Th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {selectedListedPlan.launchOrders.map(
+                              (row) => (
+                                <tr
+                                  key={row.id}
+                                  style={{
+                                    borderTop: `1px solid ${C.line}`,
+                                  }}
+                                >
+                                  <Td mono>{row.id}</Td>
+                                  <Td>
+                                    <Badge tone="coral">
+                                      {row.sens}
+                                    </Badge>
+                                  </Td>
+                                  <Td className="font-semibold">
+                                    {row.titre}
+                                  </Td>
+                                  <Td>
+                                    {
+                                      selectedListedOrder.assetClass ===
+                                      'Actions'
+                                        ? 'Action'
+                                        : 'Obligation cotée'
+                                    }
+                                  </Td>
+                                  <Td>
+                                    <Badge tone="navy">
+                                      {row.marche}
+                                    </Badge>
+                                  </Td>
+                                  <Td mono>
+                                    {row.niveauCarnet}
+                                  </Td>
+                                  <Td mono>
+                                    {fmt(row.qte)}
+                                  </Td>
+                                  <Td mono>
+                                    {fmtPrice(row.prix)}{' '}
+                                    {row.devise}
+                                  </Td>
+                                  <Td mono>
+                                    {fmt(
+                                      Math.round(
+                                        row.qte *
+                                          row.prix
+                                      )
+                                    )}{' '}
+                                    {row.devise}
+                                  </Td>
+                                  <Td>{row.pf}</Td>
+                                  <Td>
+                                    <Badge tone="gold">
+                                      {row.statut}
+                                    </Badge>
+                                  </Td>
+                                </tr>
+                              )
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {selectedListedPlan.quantityBeyondVisibleBook >
+                        0 && (
+                        <div
+                          className="m-4 p-3 rounded-xl text-xs"
+                          style={{
+                            background: '#FFF8E9',
+                            color: '#8A6A16',
+                          }}
+                        >
+                          <b>Profondeur insuffisante :</b>{' '}
+                          {fmt(
+                            selectedListedPlan.quantityBeyondVisibleBook
+                          )}{' '}
+                          titre(s) dépassent les niveaux visibles
+                          du carnet.
+                        </div>
                       )}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                    </Card>
 
-              {selectedListedPlan.quantityBeyondVisibleBook > 0 && (
-                <div
-                  className="m-4 p-3 rounded-xl text-xs"
-                  style={{
-                    background: '#FFF8E9',
-                    color: '#8A6A16',
-                  }}
-                >
-                  <b>Profondeur insuffisante :</b>{' '}
-                  {fmt(
-                    selectedListedPlan.quantityBeyondVisibleBook
-                  )}{' '}
-                  titre(s) dépassent les quatre niveaux visibles du
-                  carnet et nécessiteront un fractionnement, un nouvel
-                  ordre limite ou une actualisation du carnet.
-                </div>
-              )}
-            </Card>
+                    <Card
+                      className="p-5"
+                      style={{ borderColor: C.gold }}
+                    >
+                      <div className="flex items-center justify-between gap-4 flex-wrap">
+                        <div>
+                          <Eyebrow>
+                            Transmission marché coté
+                          </Eyebrow>
+                          <div
+                            className="text-sm font-bold"
+                            style={{ color: C.ink }}
+                          >
+                            Envoyer uniquement les ordres cotés vers
+                            le carnet
+                          </div>
+                          <div
+                            className="text-[10px] mt-1 max-w-3xl"
+                            style={{ color: C.sub }}
+                          >
+                            Les obligations non cotées sont exclues
+                            de cette transmission par le moteur de
+                            routage.
+                          </div>
+                        </div>
 
-            <Card className="p-5" style={{ borderColor: C.gold }}>
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <div>
-                  <Eyebrow>Transmission marché coté</Eyebrow>
-                  <div
-                    className="text-sm font-bold"
-                    style={{ color: C.ink }}
-                  >
-                    Envoyer le carnet de cession vers les ordres
-                  </div>
-                  <div
-                    className="text-[10px] mt-1 max-w-3xl"
-                    style={{ color: C.sub }}
-                  >
-                    Tous les reliquats cotés sont regroupés dans le
-                    Carnet d'ordres existant pour validation et suivi.
-                  </div>
-                </div>
-
-                <Btn
-                  onClick={envoyerCarnetCote}
-                  disabled={!allListedOrders.length}
-                >
-                  Envoyer {allListedOrders.length} ordre(s) au carnet →
-                </Btn>
-              </div>
-            </Card>
-          </>
-        )}
+                        <Btn
+                          onClick={envoyerCarnetCote}
+                          disabled={!allListedOrders.length}
+                        >
+                          Envoyer {allListedOrders.length}{' '}
+                          ordre(s) au carnet →
+                        </Btn>
+                      </div>
+                    </Card>
+                  </>
+                )}
+            </>
+          )}
+        </>
+      )}
 
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <Eyebrow>Contraintes transmises par le gérant</Eyebrow>
+            <Eyebrow>
+              Contraintes transmises par le gérant
+            </Eyebrow>
             <div
               className="text-sm font-bold"
               style={{ color: C.ink }}
             >
-              Règles utilisées pour les contreparties non cotées
+              Appliquées exclusivement aux obligations non cotées
             </div>
           </div>
           <Badge tone="navy">
@@ -19775,7 +20671,10 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
 
         <div className="flex flex-wrap gap-2 mt-3">
           {counterpartyConstraints.length === 0 ? (
-            <span className="text-xs" style={{ color: C.sub }}>
+            <span
+              className="text-xs"
+              style={{ color: C.sub }}
+            >
               Aucune contrainte gérant supplémentaire.
             </span>
           ) : (
@@ -19820,10 +20719,9 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
               className="text-xs mt-1 max-w-3xl"
               style={{ color: C.sub }}
             >
-              La validation fait passer les dossiers à « Cession en
-              cours ». Le retrait ne peut être rendu disponible que
-              lorsque le besoin de financement restant est intégralement
-              couvert ou exécuté.
+              Une obligation non cotée restant sans contrepartie bloque
+              la clôture de la cession. Elle ne peut pas être déplacée
+              automatiquement vers le marché coté.
             </div>
           </div>
 
@@ -19850,12 +20748,12 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                 <Btn
                   onClick={rendreRetraitDisponible}
                   disabled={
-                    retraitDisponible || totalRemainingRef > 1
+                    retraitDisponible || !canCloseCession
                   }
                 >
                   {retraitDisponible
                     ? 'Retrait disponible ✓'
-                    : totalRemainingRef > 1
+                    : !canCloseCession
                     ? 'Cessions à finaliser'
                     : 'Confirmer fonds disponibles'}
                 </Btn>
@@ -19869,12 +20767,13 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         className="text-[10px] p-3 rounded-xl"
         style={{ background: '#FBF7EE', color: C.sub }}
       >
-        <b style={{ color: C.ink }}>Simulation :</b> les acheteurs
-        internes et les niveaux de carnet sont générés à partir des
-        données disponibles dans la maquette. En production, les
-        contreparties non cotées, le carnet coté, les positions, la
-        meilleure exécution, les règles de conformité et les statuts
-        d'exécution devront provenir du backend et des flux marché réels.
+        <b style={{ color: C.ink }}>Règle de routage :</b>{' '}
+        Action = marché coté ; Obligation cotée = marché coté ;
+        Obligation non cotée = cession interne. Pour la maquette, le
+        statut de cotation provient de l'univers titre simulé. En
+        production, ce statut devra venir du référentiel instrument
+        officiel du backend et rester non modifiable au niveau de
+        l'interface.
       </div>
     </div>
   );
