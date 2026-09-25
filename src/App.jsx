@@ -9775,6 +9775,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
   }, [client.id, reportOpen?.period]);
   const situationDepuisOuverture = buildSituationDepuisOuverture(client);
   const plusValuePositive = situationDepuisOuverture.plusMoinsValue >= 0;
+  const obligationsNonCotees =
+    cessionNonListedPositionsForClient(client);
 
   const data = Object.entries(client.alloc).map(([name, value]) => ({
     name,
@@ -10652,6 +10654,96 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           obtenu à partir du CMP multiplié par la quantité correspondante.
           Lorsque le backend fournira les CMP issus des lots réels, ils seront
           utilisés automatiquement à la place du fallback de démonstration.
+        </div>
+      </Card>
+
+      <Card className="p-5" style={{ borderColor: C.teal }}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Obligations non cotées détenues</Eyebrow>
+            <div
+              className="text-[10px] mt-1 max-w-3xl"
+              style={{ color: C.sub, ...F_BODY }}
+            >
+              Ces lignes appartiennent à la poche « Obl. privées » du
+              portefeuille. Elles ne sont pas envoyées au carnet de bourse :
+              en cas de retrait, leur cession passe exclusivement par la
+              recherche de contreparties internes.
+            </div>
+          </div>
+          <Badge tone={obligationsNonCotees.length > 0 ? 'teal' : 'slate'}>
+            {obligationsNonCotees.length} ligne(s) non cotée(s)
+          </Badge>
+        </div>
+
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full" style={{ minWidth: 1150 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Titre</Th>
+                <Th>Émetteur</Th>
+                <Th>Coupon</Th>
+                <Th>Échéance</Th>
+                <Th>Exposition</Th>
+                <Th>Quantité</Th>
+                <Th>Prix de valorisation</Th>
+                <Th>Valeur</Th>
+                <Th>Cotation</Th>
+                <Th>Canal de cession</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {obligationsNonCotees.map((position) => (
+                <tr
+                  key={position.titre}
+                  style={{ borderTop: `1px solid ${C.line}` }}
+                >
+                  <Td className="font-semibold">{position.titre}</Td>
+                  <Td>{position.emetteur}</Td>
+                  <Td mono>{Number(position.coupon || 0).toFixed(2)}%</Td>
+                  <Td mono>{position.echeance}</Td>
+                  <Td mono>
+                    {Number(position.expositionPct || 0).toFixed(2)}%
+                  </Td>
+                  <Td mono>{fmt(position.quantite)}</Td>
+                  <Td mono>
+                    {fmtPrice(position.prixValorisation)} {position.devise}
+                  </Td>
+                  <Td mono className="whitespace-nowrap">
+                    {fmt(Math.round(position.valeur))} {position.devise}
+                  </Td>
+                  <Td>
+                    <Badge tone="teal">Non coté</Badge>
+                  </Td>
+                  <Td>
+                    <Badge tone="navy">Cession interne</Badge>
+                  </Td>
+                </tr>
+              ))}
+
+              {obligationsNonCotees.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    className="text-center text-xs py-4"
+                    style={{ color: C.sub }}
+                  >
+                    Aucune obligation non cotée dans ce portefeuille.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          className="text-[10px] mt-3 p-3 rounded-xl"
+          style={{ background: '#EAF8F3', color: C.sub, ...F_BODY }}
+        >
+          <b style={{ color: C.ink }}>Maquette :</b> les positions non cotées
+          sont générées de façon déterministe à l'intérieur de la poche
+          « Obl. privées ». Elles ne gonflent donc pas artificiellement
+          l'encours du portefeuille.
         </div>
       </Card>
 
@@ -13985,6 +14077,12 @@ const CESSION_RETRAIT_SEED = {
     date: '2026-09-15',
     urgence: 'Normale',
   },
+  c7: {
+    selected: true,
+    montant: 65_000_000,
+    date: '2026-09-16',
+    urgence: 'Normale',
+  },
 };
 
 /* ------------------- SUIVI OPÉRATIONNEL CESSION / RETRAIT ------------------- */
@@ -14026,6 +14124,19 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     chargeeClientele: 'Nadia Kouamé',
     observationChargeeClientele:
       'Cession en cours. Le client sera contacté dès disponibilité complète des fonds.',
+    modePaiement: 'Virement bancaire',
+  },
+  {
+    clientId: 'c7',
+    client: 'Mariam Traoré',
+    montant: 65_000_000,
+    devise: 'XOF',
+    statut: 'Processus lancé',
+    dateDemande: '2026-09-10',
+    dateSouhaitee: '2026-09-16',
+    chargeeClientele: 'Awa Diop',
+    observationChargeeClientele:
+      'Demande de retrait de démonstration incluant une obligation non cotée à rapprocher par cession interne.',
     modePaiement: 'Virement bancaire',
   },
   {
@@ -14153,6 +14264,248 @@ const CESSION_NON_LISTED_BONDS = [
     listed: false,
   },
 ];
+
+/*
+ * POSITIONS D'OBLIGATIONS NON COTÉES DANS LES PORTEFEUILLES
+ *
+ * Ces positions sont de vraies lignes de portefeuille dans la maquette :
+ * - elles consomment la poche "Obl. privées" existante ;
+ * - elles ne s'ajoutent donc pas à l'encours total ;
+ * - elles sont générées de manière déterministe par client ;
+ * - elles alimentent directement le moteur de Cession non cotée.
+ *
+ * Si le backend fournit déjà `obligationsNonCotees`, ces lignes sont conservées.
+ */
+const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
+  const instrument =
+    CESSION_NON_LISTED_BONDS.find(
+      (item) =>
+        item.nom === (position?.titre || position?.nom) &&
+        (!position?.marche || item.marche === position.marche)
+    ) ||
+    CESSION_NON_LISTED_BONDS.find(
+      (item) => item.marche === (position?.marche || client?.marche)
+    );
+
+  if (!instrument) return null;
+
+  const prix = Math.max(
+    0.000001,
+    Number(
+      position?.prixValorisation ??
+        position?.prix ??
+        position?.cours ??
+        instrument.cours ??
+        0
+    )
+  );
+
+  const expositionPct = Math.max(
+    0,
+    Number(
+      position?.expositionPct ??
+        position?.exposition ??
+        position?.poids ??
+        0
+    )
+  );
+
+  const valeurDepuisExposition =
+    (Number(client?.encours || 0) * expositionPct) / 100;
+
+  const quantiteExplicite = Number(position?.quantite);
+  const quantite =
+    Number.isFinite(quantiteExplicite) && quantiteExplicite > 0
+      ? Math.floor(quantiteExplicite)
+      : Math.max(
+          0,
+          Math.floor(
+            Number(position?.valeur || valeurDepuisExposition || 0) /
+              prix
+          )
+        );
+
+  const valeur =
+    quantite > 0
+      ? quantite * prix
+      : Math.max(0, Number(position?.valeur || valeurDepuisExposition || 0));
+
+  const expositionReelle =
+    Number(client?.encours || 0) > 0
+      ? (valeur / Number(client.encours)) * 100
+      : expositionPct;
+
+  const seed = liquidityHistorySeed(
+    `${client?.id || 'client'}-${instrument.nom}-${index}`
+  );
+  const cmp =
+    Number(position?.cmp) > 0
+      ? Number(position.cmp)
+      : Number(
+          (
+            prix *
+            (1 + (((seed % 9) - 4) / 100))
+          ).toFixed(client?.marche === 'BRVM' ? 0 : 2)
+        );
+
+  return {
+    titre: instrument.nom,
+    nom: instrument.nom,
+    type: 'Obligation',
+    assetClass: 'Obl. privées',
+    marche: instrument.marche,
+    devise: instrument.devise,
+    cotation: 'Non coté',
+    listed: false,
+    emetteur: instrument.emetteur,
+    secteur: instrument.secteur,
+    coupon: Number(instrument.coupon || 0),
+    rendement: Number(instrument.rendement || 0),
+    duration: Number(instrument.duration || 0),
+    echeance: instrument.echeance,
+    prixValorisation: prix,
+    cmp,
+    quantite,
+    valeur,
+    expositionPct: Number(expositionReelle.toFixed(2)),
+    source: position?.source || 'Simulation portefeuille GSM',
+  };
+};
+
+const cessionGenerateNonListedPositions = (client, index = 0) => {
+  const privatePct = Math.max(
+    0,
+    Number(client?.alloc?.['Obl. privées'] || 0)
+  );
+
+  if (privatePct <= 0) return [];
+
+  const candidates = CESSION_NON_LISTED_BONDS.filter(
+    (instrument) => instrument.marche === client?.marche
+  );
+
+  if (!candidates.length) return [];
+
+  const listedPrivateCandidates = CLIENT_TRADABLE_MARKETS.filter(
+    (instrument) =>
+      instrument.marche === client?.marche &&
+      cessionAssetClass(instrument) === 'Obl. privées'
+  );
+
+  const seed = liquidityHistorySeed(
+    `${client?.id}-${client?.nom}-${client?.marche}-non-cote-${index}`
+  );
+
+  /*
+   * Quand aucun titre privé coté n'existe dans l'univers de démonstration
+   * du marché, toute la poche "Obl. privées" est représentée par du non coté.
+   * S'il existe aussi du privé coté (ex. GSE), le non coté représente
+   * 55 % à 70 % de la poche privée.
+   */
+  const totalNonListedPct =
+    listedPrivateCandidates.length === 0
+      ? privatePct
+      : Math.min(
+          privatePct,
+          privatePct * (0.55 + (seed % 4) * 0.05)
+        );
+
+  const selectedCount =
+    candidates.length === 1
+      ? 1
+      : 1 + (seed % Math.min(2, candidates.length));
+
+  const selected = [];
+  for (
+    let offset = 0;
+    selected.length < selectedCount &&
+    offset < candidates.length * 3;
+    offset += 1
+  ) {
+    const candidate =
+      candidates[(seed + offset) % candidates.length];
+    if (!selected.some((item) => item.nom === candidate.nom)) {
+      selected.push(candidate);
+    }
+  }
+
+  const rawParts =
+    selected.length === 1
+      ? [1]
+      : selected.length === 2
+      ? [0.58, 0.42]
+      : selected.map(() => 1 / selected.length);
+
+  return selected
+    .map((instrument, positionIndex) => {
+      const expositionPct =
+        totalNonListedPct * Number(rawParts[positionIndex] || 0);
+      const valeurCible =
+        (Number(client?.encours || 0) * expositionPct) / 100;
+      const prix = Math.max(
+        0.000001,
+        Number(instrument.cours || 0)
+      );
+      const quantite = Math.max(
+        1,
+        Math.floor(valeurCible / prix)
+      );
+      const valeur = quantite * prix;
+      const expositionReelle =
+        Number(client?.encours || 0) > 0
+          ? (valeur / Number(client.encours)) * 100
+          : expositionPct;
+
+      return cessionNormalizeNonListedPosition(
+        client,
+        {
+          ...instrument,
+          titre: instrument.nom,
+          expositionPct: expositionReelle,
+          quantite,
+          valeur,
+          prixValorisation: prix,
+          source: 'Simulation portefeuille GSM',
+        },
+        positionIndex
+      );
+    })
+    .filter(Boolean);
+};
+
+const cessionNonListedPositionsForClient = (client, index = 0) => {
+  const existing = Array.isArray(client?.obligationsNonCotees)
+    ? client.obligationsNonCotees
+        .map((position, positionIndex) =>
+          cessionNormalizeNonListedPosition(
+            client,
+            position,
+            positionIndex
+          )
+        )
+        .filter(Boolean)
+    : [];
+
+  return existing.length > 0
+    ? existing
+    : cessionGenerateNonListedPositions(client, index);
+};
+
+const cessionAttachNonListedPositions = (client, index = 0) => ({
+  ...client,
+  obligationsNonCotees: cessionNonListedPositionsForClient(
+    client,
+    index
+  ),
+});
+
+/*
+ * CLIENTS est déclaré avec `let` plus haut : on enrichit donc ici les clients
+ * de démonstration une fois le référentiel des obligations non cotées connu.
+ */
+CLIENTS = CLIENTS.map((client, index) =>
+  cessionAttachNonListedPositions(client, index)
+);
 
 const CESSION_INSTRUMENT_UNIVERSE = [
   ...CLIENT_TRADABLE_MARKETS.map((instrument) => ({
@@ -14293,10 +14646,55 @@ const cessionSimulatedHoldings = (client, assetClass) => {
   const candidates = cessionMarketCandidates(client, assetClass);
   if (candidates.length === 0) return [];
 
-  const rawWeights = candidates.map((instrument) =>
-    Math.max(0, Number(exposureOf(client.id, instrument.nom) || 0))
+  const nonListedPositions =
+    cessionNonListedPositionsForClient(client);
+  const totalNonListedExposurePct = nonListedPositions.reduce(
+    (sum, position) =>
+      sum + Number(position.expositionPct || 0),
+    0
   );
-  const rawTotal = rawWeights.reduce((sum, value) => sum + value, 0);
+  const listedCandidates = candidates.filter(
+    (instrument) =>
+      cessionExecutionChannel(instrument) === 'cote'
+  );
+  const remainingPrivateExposurePct =
+    assetClass === 'Obl. privées'
+      ? Math.max(
+          0,
+          Number(client.alloc?.['Obl. privées'] || 0) -
+            totalNonListedExposurePct
+        )
+      : 0;
+
+  const rawWeights = candidates.map((instrument) => {
+    const nonListedPosition = nonListedPositions.find(
+      (position) => position.titre === instrument.nom
+    );
+
+    if (nonListedPosition) {
+      return Math.max(
+        0,
+        Number(nonListedPosition.expositionPct || 0)
+      );
+    }
+
+    if (
+      assetClass === 'Obl. privées' &&
+      cessionExecutionChannel(instrument) === 'cote' &&
+      listedCandidates.length > 0
+    ) {
+      return remainingPrivateExposurePct / listedCandidates.length;
+    }
+
+    return Math.max(
+      0,
+      Number(exposureOf(client.id, instrument.nom) || 0)
+    );
+  });
+  const rawTotal = rawWeights.reduce(
+    (sum, value) => sum + value,
+    0
+  );
   const weights =
     rawTotal > 0
       ? rawWeights.map((value) => value / rawTotal)
@@ -31276,7 +31674,9 @@ export default function App() {
       const snapshot = await loadGsmOperationalSnapshot();
 
       if (Array.isArray(snapshot?.clients) && snapshot.clients.length > 0) {
-        CLIENTS = snapshot.clients;
+        CLIENTS = snapshot.clients.map((client, index) =>
+          cessionAttachNonListedPositions(client, index)
+        );
         setOperationalDbPortfolioCount(snapshot.clients.length);
       }
 
