@@ -3282,7 +3282,7 @@ function VueBourses({
         </Btn>
       </div>
 
-      <Card className="p-5" style={{ borderColor: C.navy }}>
+      <Card className="p-4" style={{ borderColor: C.navy }}>
         <div className="flex items-start justify-between gap-5 flex-wrap">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -3291,7 +3291,7 @@ function VueBourses({
               <Badge tone="slate">Session {snapshot.session}</Badge>
             </div>
             <div
-              className="text-lg font-bold mt-2"
+              className="text-base font-bold mt-1"
               style={{ ...F_DISPLAY, color: C.ink }}
             >
               {snapshot.nom}
@@ -4777,7 +4777,7 @@ function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
         </div>
       </Card>
 
-      <Card className="p-5" style={{ borderColor: C.gold }}>
+      <Card className="p-4" style={{ borderColor: C.gold }}>
         <Eyebrow>Lecture croisée</Eyebrow>
         <div className="grid grid-cols-2 gap-5">
           <div>
@@ -6836,7 +6836,7 @@ const IMPACT_COMITE = [
 
 const NAV = [
   { id: 'accueil', label: 'Accueil', icon: Home },
-  { id: 'portefeuilles', label: 'Portefeuilles', icon: Briefcase },
+  { id: 'portefeuilles', label: 'Vue Portefeuilles', icon: Briefcase },
   { id: 'money-management', label: 'Money Management', icon: Droplets },
   { id: 'cession-retrait', label: 'Cession_Retrait', icon: ArrowDownRight },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
@@ -7022,10 +7022,10 @@ function Donut({ data, size = 150, onSliceClick }) {
           onClick={(_, index) => onSliceClick?.(data[index])}
           style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
         >
-          {data.map((_, i) => (
+          {data.map((item, i) => (
             <Cell
               key={i}
-              fill={PALETTE[i % PALETTE.length]}
+              fill={item?.color || PALETTE[i % PALETTE.length]}
               stroke="none"
               style={{ cursor: onSliceClick ? 'pointer' : 'default' }}
             />
@@ -7058,7 +7058,9 @@ function Legende({ data }) {
           >
             <span
               className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ background: PALETTE[i % PALETTE.length] }}
+              style={{
+                background: d?.color || PALETTE[i % PALETTE.length],
+              }}
             />
             <span className="truncate">{d.name}</span>
           </span>
@@ -9256,12 +9258,1236 @@ function Accueil({
   );
 }
 
+
+/*
+ * ÉVOLUTION DES INVESTISSEMENTS PAR DEVISE — VUE PORTEFEUILLES
+ *
+ * La maquette dispose déjà :
+ * - d'une devise de référence par portefeuille (`client.devise`) ;
+ * - d'une ventilation multi-devises (`client.expositionsDevises`) ;
+ * - d'un historique déterministe d'encours (`buildCurrencyAumHistory`).
+ *
+ * Pour rendre la comparaison monnaie nationale / monnaie d'investissement
+ * réellement lisible dans le prototype, on applique également une trajectoire
+ * FX déterministe autour du taux courant défini dans `FX`.
+ *
+ * IMPORTANT PRODUCTION :
+ * remplacer `portfolioHistoricalFxFactor` par des taux de change historiques
+ * réels provenant de la source FX retenue par la plateforme.
+ */
+const portfolioCurrencyEvolutionSeed = (value) =>
+  String(value || '')
+    .split('')
+    .reduce(
+      (total, char, index) =>
+        total + char.charCodeAt(0) * (index + 5),
+      0
+    );
+
+const portfolioHistoricalFxFactor = (
+  fromCurrency,
+  toCurrency,
+  date,
+  referenceDate
+) => {
+  if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) {
+    return 1;
+  }
+
+  const situation = parseIsoLocalDate(date);
+  const reference = parseIsoLocalDate(referenceDate);
+  const monthsBack = Math.max(
+    0,
+    (reference - situation) / (86_400_000 * 30.4375)
+  );
+  const seed = portfolioCurrencyEvolutionSeed(
+    `${fromCurrency}-${toCurrency}`
+  );
+  const phase = (seed % 19) / 4;
+  const situationIndex =
+    situation.getFullYear() * 12 + situation.getMonth();
+  const referenceIndex =
+    reference.getFullYear() * 12 + reference.getMonth();
+
+  const cycle = (index) =>
+    Math.sin(index * 0.47 + phase) * 0.026 +
+    Math.cos(index * 0.21 + phase * 0.7) * 0.014;
+
+  const monthlyTrend = ((seed % 9) - 4) * 0.00115;
+  const factor = Math.exp(
+    -monthlyTrend * monthsBack +
+      cycle(situationIndex) -
+      cycle(referenceIndex)
+  );
+
+  return Math.max(0.82, Math.min(1.18, factor));
+};
+
+const buildPortfolioCurrencyEvolution = (
+  client,
+  investmentCurrency,
+  periods = HISTORY_PERIODS
+) => {
+  if (!client || !investmentCurrency || periods.length === 0) {
+    return [];
+  }
+
+  const nationalCurrency = client.devise;
+  const currentRate =
+    Number(FX[investmentCurrency] || 1) /
+    Number(FX[nationalCurrency] || 1);
+  const referenceDate = periods[periods.length - 1]?.date;
+  const currencyHistory = buildCurrencyAumHistory([client], periods);
+
+  return currencyHistory.data.map((row) => {
+    const investmentValue = Number(row[investmentCurrency] || 0);
+    const fxFactor = portfolioHistoricalFxFactor(
+      investmentCurrency,
+      nationalCurrency,
+      row.date,
+      referenceDate
+    );
+    const historicalRate = currentRate * fxFactor;
+    const nationalValue = investmentValue * historicalRate;
+
+    return {
+      date: row.date,
+      mois: row.mois,
+      investmentValue,
+      nationalValue,
+      fxRate: historicalRate,
+    };
+  });
+};
+
+
+/*
+ * ÉTAT MULTIDEVISE DU PORTEFEUILLE À UNE DATE DONNÉE
+ *
+ * La maquette ne dispose pas encore d'un historique complet de lots/titres
+ * transactionnels. On privilégie donc, dans cet ordre :
+ * - positions / CMP explicitement fournis sur le client ;
+ * - obligations non cotées déjà générées dans le portefeuille ;
+ * - instruments de marché déjà présents dans MARKETS_DATA ;
+ * - support monétaire de démonstration uniquement lorsqu'une exposition
+ *   devise existe mais qu'aucun instrument de cette devise n'est disponible.
+ *
+ * En production, cette fonction devra être remplacée par le snapshot réel
+ * des positions/lots à la date demandée.
+ */
+const portfolioStateExplicitCmp = (
+  client,
+  title,
+  currentPrice,
+  fallbackKey
+) => {
+  const explicitPosition = Array.isArray(client?.positions)
+    ? client.positions.find(
+        (position) =>
+          position?.instrument === title ||
+          position?.titre === title ||
+          position?.nom === title
+      )
+    : null;
+
+  const explicitCmp =
+    explicitPosition?.cmp ??
+    explicitPosition?.coutMoyenPondere ??
+    client?.cmp?.[title] ??
+    client?.coutMoyenPondere?.[title];
+
+  const numericExplicitCmp = Number(explicitCmp);
+  if (
+    Number.isFinite(numericExplicitCmp) &&
+    numericExplicitCmp > 0
+  ) {
+    return numericExplicitCmp;
+  }
+
+  const seed = portfolioCurrencyEvolutionSeed(
+    `${client?.id || 'client'}-${fallbackKey || title}-cmp-state`
+  );
+  const gap = ((seed % 17) - 8) / 100;
+
+  return Math.max(
+    0.000001,
+    Number(currentPrice || 0) * (1 + gap)
+  );
+};
+
+const portfolioStatePriceAtDate = (
+  client,
+  instrumentKey,
+  currentPrice,
+  date
+) => {
+  const referenceDate =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date ||
+    date;
+
+  const factor = liquidityHistoryFactor(
+    `${client?.id || 'client'}-${instrumentKey}-historical-price`,
+    date,
+    referenceDate
+  );
+
+  return Math.max(
+    0.000001,
+    Number(currentPrice || 0) * factor
+  );
+};
+
+const portfolioStateFxRateAtDate = (
+  fromCurrency,
+  toCurrency,
+  date
+) => {
+  if (!fromCurrency || !toCurrency) return 1;
+  if (fromCurrency === toCurrency) return 1;
+
+  const referenceDate =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date ||
+    date;
+
+  const currentRate =
+    Number(FX[fromCurrency] || 1) /
+    Number(FX[toCurrency] || 1);
+
+  return (
+    currentRate *
+    portfolioHistoricalFxFactor(
+      fromCurrency,
+      toCurrency,
+      date,
+      referenceDate
+    )
+  );
+};
+
+const portfolioStateNonListedForCurrency = (
+  client,
+  currency
+) => {
+  const explicitPositions = Array.isArray(
+    client?.obligationsNonCotees
+  )
+    ? client.obligationsNonCotees
+    : [];
+
+  const explicit = explicitPositions.find(
+    (position) =>
+      (position?.devise || '') === currency
+  );
+
+  if (explicit) return explicit;
+
+  const candidate =
+    typeof CESSION_NON_LISTED_BONDS !== 'undefined'
+      ? CESSION_NON_LISTED_BONDS.find(
+          (instrument) => instrument.devise === currency
+        )
+      : null;
+
+  return candidate || null;
+};
+
+const portfolioStateInstrumentCandidates = (
+  currency,
+  assetClass
+) => {
+  const listed = MARKETS_DATA.filter(
+    (instrument) => instrument.devise === currency
+  );
+
+  if (assetClass === 'Actions') {
+    return listed
+      .filter((instrument) => instrument.type === 'Action')
+      .map((instrument) => ({
+        ...instrument,
+        cotation: 'Coté',
+        listed: true,
+        assetLabel: 'Action',
+      }));
+  }
+
+  if (assetClass === 'Obl. souveraines') {
+    return listed
+      .filter(
+        (instrument) =>
+          instrument.type === 'Obligation' &&
+          /trésor|tresor|sovereign|government/i.test(
+            instrument.nom
+          )
+      )
+      .map((instrument) => ({
+        ...instrument,
+        cotation: 'Coté',
+        listed: true,
+        assetLabel: 'Obligation souveraine',
+      }));
+  }
+
+  if (assetClass === 'Obl. privées') {
+    const listedPrivate = listed
+      .filter(
+        (instrument) =>
+          instrument.type === 'Obligation' &&
+          !/trésor|tresor|sovereign|government/i.test(
+            instrument.nom
+          )
+      )
+      .map((instrument) => ({
+        ...instrument,
+        cotation: 'Coté',
+        listed: true,
+        assetLabel: 'Obligation privée',
+      }));
+
+    const nonListed =
+      typeof CESSION_NON_LISTED_BONDS !== 'undefined'
+        ? CESSION_NON_LISTED_BONDS.filter(
+            (instrument) =>
+              instrument.devise === currency
+          ).map((instrument) => ({
+            ...instrument,
+            cotation: 'Non coté',
+            listed: false,
+            assetLabel: 'Obligation privée',
+          }))
+        : [];
+
+    return [...listedPrivate, ...nonListed];
+  }
+
+  return [];
+};
+
+const buildPortfolioStateAtDate = (
+  client,
+  selectedDate
+) => {
+  if (!client || !selectedDate) {
+    return {
+      rows: [],
+      totalLocal: 0,
+      currencies: [],
+      localCurrency: client?.devise || '—',
+      selectedDate,
+    };
+  }
+
+  if (
+    client.dateEntree &&
+    selectedDate < client.dateEntree
+  ) {
+    return {
+      rows: [],
+      totalLocal: 0,
+      currencies: [],
+      localCurrency: client.devise,
+      selectedDate,
+      beforeOpening: true,
+    };
+  }
+
+  const localCurrency = client.devise;
+  const referenceDate =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date ||
+    selectedDate;
+
+  const historicalPortfolioFactor =
+    liquidityHistoryFactor(
+      `${client.id}-${client.nom}-portfolio-state`,
+      selectedDate,
+      referenceDate
+    );
+
+  const totalLocal = Math.max(
+    0,
+    Number(client.encours || 0) *
+      historicalPortfolioFactor
+  );
+
+  const exposures =
+    client.expositionsDevises || {
+      [localCurrency]: 100,
+    };
+
+  const allocation = {
+    Actions: Math.max(
+      0,
+      Number(client.alloc?.Actions || 0)
+    ),
+    'Obl. souveraines': Math.max(
+      0,
+      Number(
+        client.alloc?.['Obl. souveraines'] || 0
+      )
+    ),
+    'Obl. privées': Math.max(
+      0,
+      Number(client.alloc?.['Obl. privées'] || 0)
+    ),
+    Liquidité: Math.max(
+      0,
+      Number(client.alloc?.Liquidité || 0)
+    ),
+  };
+
+  const rows = [];
+
+  const pushPosition = ({
+    currency,
+    currencyWeight,
+    assetClass,
+    assetWeight,
+    instrument,
+    targetLocalAmount,
+    sequence,
+  }) => {
+    const fxAtDate = portfolioStateFxRateAtDate(
+      currency,
+      localCurrency,
+      selectedDate
+    );
+
+    const targetInvestmentAmount =
+      fxAtDate > 0
+        ? targetLocalAmount / fxAtDate
+        : targetLocalAmount;
+
+    const isCash = assetClass === 'Liquidité';
+    const title = isCash
+      ? `Liquidité / support monétaire ${currency}`
+      : instrument?.titre ||
+        instrument?.nom ||
+        `Exposition ${assetClass} ${currency}`;
+
+    const listed =
+      isCash
+        ? false
+        : instrument?.listed ??
+          instrument?.cotation !== 'Non coté';
+
+    const quotation =
+      isCash
+        ? 'Non coté'
+        : listed
+        ? 'Coté'
+        : 'Non coté';
+
+    const assetLabel = isCash
+      ? 'Liquidité'
+      : instrument?.assetLabel ||
+        instrument?.type ||
+        assetClass;
+
+    const currentPrice = isCash
+      ? 1
+      : Number(
+          instrument?.prixValorisation ??
+            instrument?.cours ??
+            instrument?.prix ??
+            1
+        );
+
+    const historicalPrice = isCash
+      ? 1
+      : portfolioStatePriceAtDate(
+          client,
+          title,
+          currentPrice,
+          selectedDate
+        );
+
+    const explicitNonListed =
+      quotation === 'Non coté' &&
+      !isCash
+        ? portfolioStateNonListedForCurrency(
+            client,
+            currency
+          )
+        : null;
+
+    const cmpCandidate =
+      Number(explicitNonListed?.cmp) > 0
+        ? Number(explicitNonListed.cmp)
+        : portfolioStateExplicitCmp(
+            client,
+            title,
+            historicalPrice,
+            `${currency}-${assetClass}-${sequence}`
+          );
+
+    const cmp = isCash ? 1 : cmpCandidate;
+
+    const explicitQuantity =
+      Number(explicitNonListed?.quantite) > 0 &&
+      explicitNonListed?.titre === title
+        ? Number(explicitNonListed.quantite)
+        : null;
+
+    const quantity =
+      explicitQuantity ||
+      Math.max(
+        isCash ? 0.01 : 1,
+        isCash
+          ? targetInvestmentAmount
+          : Math.floor(
+              targetInvestmentAmount /
+                Math.max(historicalPrice, 0.000001)
+            )
+      );
+
+    const valueInvestment =
+      quantity * historicalPrice;
+
+    const acquisitionDate =
+      client.dateEntree &&
+      client.dateEntree <= selectedDate
+        ? client.dateEntree
+        : selectedDate;
+
+    const fxAtAcquisition =
+      portfolioStateFxRateAtDate(
+        currency,
+        localCurrency,
+        acquisitionDate
+      );
+
+    const historicalCostInvestment =
+      quantity * cmp;
+    const valueLocal =
+      valueInvestment * fxAtDate;
+    const historicalCostLocal =
+      historicalCostInvestment * fxAtAcquisition;
+
+    const plusMinusInvestment =
+      valueInvestment - historicalCostInvestment;
+    const plusMinusLocal =
+      valueLocal - historicalCostLocal;
+
+    const returnInvestment =
+      historicalCostInvestment > 0
+        ? (plusMinusInvestment /
+            historicalCostInvestment) *
+          100
+        : 0;
+
+    const returnLocal =
+      historicalCostLocal > 0
+        ? (plusMinusLocal /
+            historicalCostLocal) *
+          100
+        : 0;
+
+    rows.push({
+      id: `${client.id}-${currency}-${assetClass}-${sequence}-${title}`,
+      typeActif: `${assetLabel} · ${quotation}`,
+      assetLabel,
+      quotation,
+      title,
+      quantity,
+      cmp,
+      currency,
+      localCurrency,
+      historicalPrice,
+      plusMinusInvestment,
+      plusMinusLocal,
+      returnInvestment,
+      returnLocal,
+      weightingLocal:
+        totalLocal > 0
+          ? (valueLocal / totalLocal) * 100
+          : 0,
+      amountLocal: valueLocal,
+      amountInvestment: valueInvestment,
+      currencyWeight,
+      assetWeight,
+      source:
+        instrument?.source ||
+        (isCash
+          ? 'Poche de liquidité'
+          : 'Position de démonstration'),
+    });
+  };
+
+  Object.entries(exposures).forEach(
+    ([currency, currencyWeightRaw], currencyIndex) => {
+      const currencyWeight = Math.max(
+        0,
+        Number(currencyWeightRaw || 0)
+      );
+
+      if (currencyWeight <= 0) return;
+
+      const currencyLocalAmount =
+        totalLocal * (currencyWeight / 100);
+
+      const availableInstrumentCount =
+        MARKETS_DATA.filter(
+          (instrument) =>
+            instrument.devise === currency
+        ).length;
+
+      const supportedBySecurities =
+        availableInstrumentCount > 0;
+
+      /*
+       * Lorsque la maquette possède des instruments dans la devise, on
+       * ventile la poche selon les classes d'actifs du client.
+       * Pour USD/EUR, où aucun instrument n'existe encore dans le jeu de
+       * données, une ligne monétaire agrégée matérialise l'exposition devise.
+       */
+      if (!supportedBySecurities) {
+        pushPosition({
+          currency,
+          currencyWeight,
+          assetClass: 'Liquidité',
+          assetWeight: 100,
+          instrument: {
+            nom: `Exposition monétaire ${currency}`,
+            cotation: 'Non coté',
+            listed: false,
+            assetLabel: 'Support monétaire',
+            source:
+              'Exposition devise sans instrument détaillé dans la maquette',
+          },
+          targetLocalAmount: currencyLocalAmount,
+          sequence: currencyIndex,
+        });
+        return;
+      }
+
+      Object.entries(allocation).forEach(
+        ([assetClass, assetWeightRaw], assetIndex) => {
+          const assetWeight = Math.max(
+            0,
+            Number(assetWeightRaw || 0)
+          );
+
+          if (assetWeight <= 0) return;
+
+          const targetLocalAmount =
+            currencyLocalAmount *
+            (assetWeight / 100);
+
+          if (assetClass === 'Liquidité') {
+            pushPosition({
+              currency,
+              currencyWeight,
+              assetClass,
+              assetWeight,
+              instrument: null,
+              targetLocalAmount,
+              sequence: assetIndex,
+            });
+            return;
+          }
+
+          const candidates =
+            portfolioStateInstrumentCandidates(
+              currency,
+              assetClass
+            );
+
+          if (candidates.length === 0) {
+            /*
+             * On évite d'inventer un titre précis lorsqu'aucun instrument
+             * de la classe n'existe dans la maquette. Le montant reste
+             * visible sous une ligne agrégée de portefeuille.
+             */
+            pushPosition({
+              currency,
+              currencyWeight,
+              assetClass,
+              assetWeight,
+              instrument: {
+                nom: `${assetClass} · exposition agrégée ${currency}`,
+                cotation: 'Non coté',
+                listed: false,
+                assetLabel:
+                  assetClass === 'Actions'
+                    ? 'Actions'
+                    : 'Obligations',
+                source:
+                  'Exposition agrégée faute de titre détaillé dans la maquette',
+              },
+              targetLocalAmount,
+              sequence: assetIndex,
+            });
+            return;
+          }
+
+          /*
+           * Deux titres maximum par classe/devise afin de garder l'état
+           * lisible tout en matérialisant plusieurs lignes de portefeuille.
+           */
+          const selectedCandidates =
+            candidates.slice(
+              0,
+              Math.min(2, candidates.length)
+            );
+
+          const candidateWeights =
+            selectedCandidates.length === 1
+              ? [1]
+              : [0.58, 0.42];
+
+          selectedCandidates.forEach(
+            (instrument, instrumentIndex) => {
+              pushPosition({
+                currency,
+                currencyWeight,
+                assetClass,
+                assetWeight,
+                instrument,
+                targetLocalAmount:
+                  targetLocalAmount *
+                  candidateWeights[instrumentIndex],
+                sequence:
+                  assetIndex * 10 + instrumentIndex,
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+
+  const currencies = Array.from(
+    new Set(rows.map((row) => row.currency))
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  return {
+    rows: rows
+      .filter(
+        (row) =>
+          Number(row.amountLocal || 0) > 0 &&
+          Number(row.quantity || 0) > 0
+      )
+      .sort((a, b) => {
+        if (a.currency !== b.currency) {
+          return a.currency.localeCompare(
+            b.currency,
+            'fr'
+          );
+        }
+        return (
+          Number(b.amountLocal || 0) -
+          Number(a.amountLocal || 0)
+        );
+      }),
+    totalLocal,
+    currencies,
+    localCurrency,
+    selectedDate,
+    beforeOpening: false,
+  };
+};
+
+
+
+/*
+ * LIQUIDITÉ PAR DEVISE D'INVESTISSEMENT — VUE PORTEFEUILLES
+ *
+ * Priorité des données :
+ * 1. ventilations de liquidité explicites fournies par le backend, si présentes ;
+ * 2. réservations explicites par devise, si présentes ;
+ * 3. à défaut, ordres d'achat ouverts du portefeuille pour la situation courante.
+ *
+ * Le total de liquidité à la date sélectionnée reprend la poche "Liquidité"
+ * du portefeuille et le même facteur historique que le snapshot du portefeuille.
+ */
+const buildPortfolioLiquidityByCurrencyAtDate = (
+  client,
+  selectedDate
+) => {
+  if (!client || !selectedDate) {
+    return {
+      rows: [],
+      totalLocal: 0,
+      reservedLocal: 0,
+      availableLocal: 0,
+      localCurrency: client?.devise || '—',
+      selectedDate,
+    };
+  }
+
+  if (
+    client.dateEntree &&
+    selectedDate < client.dateEntree
+  ) {
+    return {
+      rows: [],
+      totalLocal: 0,
+      reservedLocal: 0,
+      availableLocal: 0,
+      localCurrency: client.devise,
+      selectedDate,
+      beforeOpening: true,
+    };
+  }
+
+  const localCurrency = client.devise;
+  const referenceDate =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date ||
+    selectedDate;
+
+  const portfolioFactor = liquidityHistoryFactor(
+    `${client.id}-${client.nom}-portfolio-liquidity`,
+    selectedDate,
+    referenceDate
+  );
+
+  const currentLiquidityLocal =
+    (Number(client.encours || 0) *
+      Math.max(
+        0,
+        Number(client.alloc?.Liquidité || 0)
+      )) /
+    100;
+
+  const historicalLiquidityLocal =
+    currentLiquidityLocal * portfolioFactor;
+
+  const exposures =
+    client.expositionsDevises || {
+      [localCurrency]: 100,
+    };
+
+  const explicitLiquidityByCurrency =
+    client.liquiditeParDevise ||
+    client.cashByCurrency ||
+    client.liquiditeDevises ||
+    null;
+
+  const explicitReservedByCurrency =
+    client.liquiditeReserveeParDevise ||
+    client.reservedCashByCurrency ||
+    client.cashReservedByCurrency ||
+    null;
+
+  const explicitAvailableByCurrency =
+    client.liquiditeDisponibleParDevise ||
+    client.availableCashByCurrency ||
+    client.cashAvailableByCurrency ||
+    null;
+
+  const openOrderStatuses = new Set([
+    'En cours',
+    'En attente',
+  ]);
+
+  const selectedIsCurrentReference =
+    selectedDate >= referenceDate;
+
+  const rows = Object.entries(exposures)
+    .filter(([, weight]) => Number(weight || 0) > 0)
+    .map(([currency, weightRaw]) => {
+      const weight = Math.max(
+        0,
+        Number(weightRaw || 0)
+      );
+
+      const fxAtDate =
+        portfolioStateFxRateAtDate(
+          currency,
+          localCurrency,
+          selectedDate
+        );
+
+      const defaultTotalLocal =
+        historicalLiquidityLocal * (weight / 100);
+
+      const defaultTotalCurrency =
+        fxAtDate > 0
+          ? defaultTotalLocal / fxAtDate
+          : defaultTotalLocal;
+
+      const explicitEntry =
+        explicitLiquidityByCurrency?.[currency];
+
+      const explicitTotal =
+        typeof explicitEntry === 'number'
+          ? Number(explicitEntry)
+          : Number(
+              explicitEntry?.total ??
+                explicitEntry?.liquiditeTotale ??
+                explicitEntry?.totalLiquidity
+            );
+
+      const totalCurrency =
+        Number.isFinite(explicitTotal) &&
+        explicitTotal >= 0
+          ? explicitTotal
+          : defaultTotalCurrency;
+
+      const explicitReserved =
+        Number(
+          typeof explicitEntry === 'object'
+            ? explicitEntry?.reservee ??
+                explicitEntry?.liquiditeReservee ??
+                explicitEntry?.reserved
+            : explicitReservedByCurrency?.[currency]
+        );
+
+      const reservedFromOpenOrders =
+        selectedIsCurrentReference
+          ? ORDERS.filter(
+              (order) =>
+                order.pf === client.nom &&
+                order.sens === 'Achat' &&
+                order.devise === currency &&
+                openOrderStatuses.has(order.statut)
+            ).reduce(
+              (sum, order) =>
+                sum +
+                Number(order.qte || 0) *
+                  Number(order.prix || 0),
+              0
+            )
+          : 0;
+
+      const reservedCurrency = Math.min(
+        totalCurrency,
+        Math.max(
+          0,
+          Number.isFinite(explicitReserved)
+            ? explicitReserved
+            : reservedFromOpenOrders
+        )
+      );
+
+      const explicitAvailable =
+        Number(
+          typeof explicitEntry === 'object'
+            ? explicitEntry?.disponible ??
+                explicitEntry?.liquiditeDisponible ??
+                explicitEntry?.available
+            : explicitAvailableByCurrency?.[currency]
+        );
+
+      const availableCurrency =
+        Number.isFinite(explicitAvailable)
+          ? Math.max(
+              0,
+              Math.min(
+                totalCurrency,
+                explicitAvailable
+              )
+            )
+          : Math.max(
+              0,
+              totalCurrency - reservedCurrency
+            );
+
+      const totalLocal =
+        totalCurrency * fxAtDate;
+      const reservedLocal =
+        reservedCurrency * fxAtDate;
+      const availableLocal =
+        availableCurrency * fxAtDate;
+
+      return {
+        currency,
+        weight,
+        fxAtDate,
+        total: totalCurrency,
+        reserved: reservedCurrency,
+        available: availableCurrency,
+        totalLocal,
+        reservedLocal,
+        availableLocal,
+        reservationSource:
+          Number.isFinite(explicitReserved)
+            ? 'Donnée portefeuille'
+            : reservedFromOpenOrders > 0
+            ? 'Ordres d’achat ouverts'
+            : selectedIsCurrentReference
+            ? 'Aucune réservation ouverte'
+            : 'Historique des réservations non renseigné',
+      };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.totalLocal || 0) -
+        Number(a.totalLocal || 0)
+    );
+
+  return {
+    rows,
+    totalLocal: rows.reduce(
+      (sum, row) =>
+        sum + Number(row.totalLocal || 0),
+      0
+    ),
+    reservedLocal: rows.reduce(
+      (sum, row) =>
+        sum + Number(row.reservedLocal || 0),
+      0
+    ),
+    availableLocal: rows.reduce(
+      (sum, row) =>
+        sum + Number(row.availableLocal || 0),
+      0
+    ),
+    localCurrency,
+    selectedDate,
+    beforeOpening: false,
+  };
+};
+
+function PortfolioStateCompactTh({
+  children,
+  align = 'left',
+}) {
+  return (
+    <th
+      className="uppercase font-semibold align-bottom"
+      style={{
+        color: C.sub,
+        ...F_BODY,
+        fontSize: 8,
+        lineHeight: 1.15,
+        letterSpacing: '0.025em',
+        padding: '7px 5px',
+        textAlign: align,
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+      }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function PortfolioStateCompactTd({
+  children,
+  mono = false,
+  align = 'left',
+  className = '',
+}) {
+  return (
+    <td
+      className={`align-middle ${className}`}
+      style={{
+        color: C.ink,
+        ...(mono ? F_MONO : F_BODY),
+        fontSize: 8.5,
+        lineHeight: 1.2,
+        padding: '6px 5px',
+        textAlign: align,
+        whiteSpace: 'normal',
+        overflowWrap: 'anywhere',
+      }}
+    >
+      {children}
+    </td>
+  );
+}
+
 function Portefeuilles({ go, openClient, initialFilter }) {
   const [q, setQ] = useState('');
+  const [vuePortefeuillesMode, setVuePortefeuillesMode] =
+    useState('liste');
+  const [evolutionClientId, setEvolutionClientId] = useState(
+    CLIENTS[0]?.id || ''
+  );
+  const [evolutionDateDebut, setEvolutionDateDebut] = useState(
+    HISTORY_PERIODS[0]?.date || ''
+  );
+  const [evolutionInvestmentCurrency, setEvolutionInvestmentCurrency] =
+    useState('');
+  const [evolutionDisplayMode, setEvolutionDisplayMode] =
+    useState('comparaison');
+  const [
+    portfolioStateCurrencyFilter,
+    setPortfolioStateCurrencyFilter,
+  ] = useState('Toutes');
+
+  const evolutionClient =
+    CLIENTS.find((client) => client.id === evolutionClientId) ||
+    CLIENTS[0] ||
+    null;
+
+  const evolutionInvestmentCurrencies = evolutionClient
+    ? Object.entries(
+        evolutionClient.expositionsDevises || {
+          [evolutionClient.devise]: 100,
+        }
+      )
+        .filter(([, weight]) => Number(weight || 0) > 0)
+        .map(([currency]) => currency)
+        .sort((a, b) => a.localeCompare(b, 'fr'))
+    : [];
+
+  const evolutionCurrencyActive =
+    evolutionInvestmentCurrencies.includes(
+      evolutionInvestmentCurrency
+    )
+      ? evolutionInvestmentCurrency
+      : evolutionInvestmentCurrencies[0] || '';
+
+  const evolutionExposurePct = evolutionClient
+    ? Number(
+        (
+          evolutionClient.expositionsDevises || {
+            [evolutionClient.devise]: 100,
+          }
+        )[evolutionCurrencyActive] || 0
+      )
+    : 0;
+
+  const evolutionDateMinimum =
+    HISTORY_PERIODS[0]?.date || '';
+  const evolutionDateMaximum =
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date || '';
+
+  const evolutionRaw = buildPortfolioCurrencyEvolution(
+    evolutionClient,
+    evolutionCurrencyActive
+  );
+
+  const evolutionFiltered = evolutionRaw.filter(
+    (point) =>
+      !evolutionDateDebut || point.date >= evolutionDateDebut
+  );
+
+  const evolutionFirst =
+    evolutionFiltered[0] || evolutionRaw[0] || null;
+  const evolutionLast =
+    evolutionFiltered[evolutionFiltered.length - 1] ||
+    evolutionRaw[evolutionRaw.length - 1] ||
+    null;
+
+  const evolutionSeries =
+    evolutionFirst
+      ? evolutionFiltered.map((point) => ({
+          ...point,
+          nationalIndex:
+            Number(evolutionFirst.nationalValue || 0) > 0
+              ? Number(
+                  (
+                    (Number(point.nationalValue || 0) /
+                      Number(evolutionFirst.nationalValue || 1)) *
+                    100
+                  ).toFixed(2)
+                )
+              : 100,
+          investmentIndex:
+            Number(evolutionFirst.investmentValue || 0) > 0
+              ? Number(
+                  (
+                    (Number(point.investmentValue || 0) /
+                      Number(
+                        evolutionFirst.investmentValue || 1
+                      )) *
+                    100
+                  ).toFixed(2)
+                )
+              : 100,
+        }))
+      : [];
+
+  const pctChange = (start, end) =>
+    Number(start || 0) > 0
+      ? ((Number(end || 0) / Number(start || 1)) - 1) * 100
+      : 0;
+
+  const evolutionNationalChange = pctChange(
+    evolutionFirst?.nationalValue,
+    evolutionLast?.nationalValue
+  );
+  const evolutionInvestmentChange = pctChange(
+    evolutionFirst?.investmentValue,
+    evolutionLast?.investmentValue
+  );
+  const evolutionFxImpact =
+    evolutionNationalChange - evolutionInvestmentChange;
+
+  const evolutionNationalCurrency =
+    evolutionClient?.devise || '—';
+
+  const evolutionPeriodLabel =
+    evolutionFiltered.length > 0
+      ? `${new Date(
+          `${evolutionFiltered[0].date}T00:00:00`
+        ).toLocaleDateString('fr-FR')} → ${new Date(
+          `${evolutionFiltered[
+            evolutionFiltered.length - 1
+          ].date}T00:00:00`
+        ).toLocaleDateString('fr-FR')}`
+      : 'Aucune donnée sur la période';
+
+  const evolutionCurrencyWeightRows =
+    evolutionClient
+      ? Object.entries(
+          evolutionClient.expositionsDevises || {
+            [evolutionClient.devise]: 100,
+          }
+        )
+          .filter(([, weight]) => Number(weight || 0) > 0)
+          .sort((a, b) => Number(b[1]) - Number(a[1]))
+      : [];
+
+  const portfolioStateAtSelectedDate =
+    buildPortfolioStateAtDate(
+      evolutionClient,
+      evolutionDateDebut
+    );
+
+  const portfolioLiquidityAtSelectedDate =
+    buildPortfolioLiquidityByCurrencyAtDate(
+      evolutionClient,
+      evolutionDateDebut
+    );
+
+  const portfolioStateRows =
+    portfolioStateCurrencyFilter === 'Toutes'
+      ? portfolioStateAtSelectedDate.rows
+      : portfolioStateAtSelectedDate.rows.filter(
+          (row) =>
+            row.currency ===
+            portfolioStateCurrencyFilter
+        );
+
+  const portfolioStateTotalDisplayedLocal =
+    portfolioStateRows.reduce(
+      (sum, row) =>
+        sum + Number(row.amountLocal || 0),
+      0
+    );
+
+  const portfolioStatePmvDisplayedLocal =
+    portfolioStateRows.reduce(
+      (sum, row) =>
+        sum + Number(row.plusMinusLocal || 0),
+      0
+    );
+
+  const portfolioStateListedCount =
+    portfolioStateRows.filter(
+      (row) => row.quotation === 'Coté'
+    ).length;
+
+  const portfolioStateNonListedCount =
+    portfolioStateRows.filter(
+      (row) => row.quotation === 'Non coté'
+    ).length;
+
+  const portfolioStateDateLabel =
+    evolutionDateDebut
+      ? new Date(
+          `${evolutionDateDebut}T00:00:00`
+        ).toLocaleDateString('fr-FR')
+      : '—';
+
   return (
     <div className="space-y-4">
-      <Breadcrumb items={['Accueil', 'Portefeuilles gérés']} />
-      <div className="flex items-center justify-between">
+      <Breadcrumb items={['Accueil', 'Vue Portefeuilles']} />
+
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2
             className="text-xl font-bold"
@@ -9275,94 +10501,1796 @@ function Portefeuilles({ go, openClient, initialFilter }) {
             </div>
           )}
         </div>
+
         <div
-          className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-          style={{ borderColor: C.line }}
+          className="flex items-center gap-1 p-1 rounded-xl"
+          style={{ background: '#EEF0F4' }}
         >
-          <Search size={14} color={C.sub} />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Rechercher un client…"
-            className="text-sm outline-none"
-            style={F_BODY}
-          />
+          {[
+            {
+              id: 'liste',
+              label: 'Liste des portefeuilles',
+            },
+            {
+              id: 'evolution',
+              label: 'Évolution des investissements',
+            },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setVuePortefeuillesMode(tab.id)}
+              className="px-3 py-2 rounded-lg text-xs font-semibold"
+              style={{
+                background:
+                  vuePortefeuillesMode === tab.id
+                    ? '#FFFFFF'
+                    : 'transparent',
+                color:
+                  vuePortefeuillesMode === tab.id
+                    ? C.navy
+                    : C.sub,
+                boxShadow:
+                  vuePortefeuillesMode === tab.id
+                    ? '0 1px 4px rgba(15,27,51,0.10)'
+                    : 'none',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
-            <tr>
-              <Th>Client</Th>
-              <Th>Marché</Th>
-              <Th>Encours</Th>
-              <Th>Perf. période</Th>
-              <Th>Écart alloc.</Th>
-              <Th>Risque</Th>
-              <Th>Alertes</Th>
-              <Th></Th>
-            </tr>
-          </thead>
-          <tbody>
-            {CLIENTS.filter((c) =>
-              c.nom.toLowerCase().includes(q.toLowerCase())
-            ).map((c, idx) => {
-              const ecart = Math.max(
-                ...Object.keys(c.alloc).map((k) =>
-                  Math.abs(c.alloc[k] - c.cible[k])
-                )
-              );
-              return (
-                <tr
-                  key={c.id}
-                  onClick={() => openClient(c.id)}
-                  className="cursor-pointer"
+
+      {vuePortefeuillesMode === 'liste' && (
+        <>
+          <div className="flex items-center justify-end">
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <Search size={14} color={C.sub} />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Rechercher un client…"
+                className="text-sm outline-none"
+                style={F_BODY}
+              />
+            </div>
+          </div>
+
+          <Card className="p-0 overflow-hidden">
+            <div
+              className="overflow-auto"
+              style={{
+                maxHeight: 'calc(100vh - 290px)',
+                minHeight: 360,
+                scrollbarGutter: 'stable',
+              }}
+            >
+              <table className="w-full">
+                <thead
+                  className="sticky top-0"
                   style={{
-                    borderTop: `1px solid ${C.line}`,
-                    background: idx % 2 ? '#FCFCFD' : '#fff',
+                    background: '#FAFAFC',
+                    zIndex: 2,
+                    boxShadow: `0 1px 0 ${C.line}`,
                   }}
                 >
-                  <Td>
-                    <span className="font-semibold">{c.nom}</span>
-                    <div className="text-xs" style={{ color: C.sub }}>
-                      {c.type}
+                  <tr>
+                    <Th>Client</Th>
+                    <Th>Marché</Th>
+                    <Th>Encours</Th>
+                    <Th>Perf. période</Th>
+                    <Th>Écart alloc.</Th>
+                    <Th>Risque</Th>
+                    <Th>Alertes</Th>
+                    <Th></Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CLIENTS.filter((c) =>
+                    c.nom
+                      .toLowerCase()
+                      .includes(q.toLowerCase())
+                  ).map((c, idx) => {
+                    const ecart = Math.max(
+                      ...Object.keys(c.alloc).map((k) =>
+                        Math.abs(
+                          c.alloc[k] - c.cible[k]
+                        )
+                      )
+                    );
+
+                    return (
+                      <tr
+                        key={c.id}
+                        onClick={() => openClient(c.id)}
+                        className="cursor-pointer"
+                        style={{
+                          borderTop: `1px solid ${C.line}`,
+                          background:
+                            idx % 2 ? '#FCFCFD' : '#fff',
+                        }}
+                      >
+                        <Td>
+                          <span className="font-semibold">
+                            {c.nom}
+                          </span>
+                          <div
+                            className="text-xs"
+                            style={{ color: C.sub }}
+                          >
+                            {c.type}
+                          </div>
+                        </Td>
+                        <Td>
+                          <Badge tone="navy">
+                            {c.marche} · {c.devise}
+                          </Badge>
+                        </Td>
+                        <Td mono>
+                          {fmt(c.encours)} {c.devise}
+                        </Td>
+                        <Td>
+                          <Pct v={c.perf} />
+                        </Td>
+                        <Td>
+                          {ecart >= 8 ? (
+                            <Badge tone="coral">
+                              {ecart} pts
+                            </Badge>
+                          ) : (
+                            <Badge tone="teal">
+                              {ecart} pts
+                            </Badge>
+                          )}
+                        </Td>
+                        <Td>{c.risque}</Td>
+                        <Td>
+                          {c.alertes > 0 ? (
+                            <Badge tone="coral">
+                              {c.alertes}
+                            </Badge>
+                          ) : (
+                            <Badge tone="teal">0</Badge>
+                          )}
+                        </Td>
+                        <Td>
+                          <ChevronRight
+                            size={15}
+                            color={C.sub}
+                          />
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {vuePortefeuillesMode === 'evolution' && (
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Suivi multi-devises</Eyebrow>
+              <div
+                className="text-base font-bold"
+                style={{ color: C.ink }}
+              >
+                Évolution des investissements du portefeuille
+              </div>
+              <div
+                className="text-[10px] mt-1 max-w-4xl"
+                style={{ color: C.sub }}
+              >
+                Visualisez une même exposition dans la monnaie
+                nationale du client et dans sa monnaie
+                d&apos;investissement. La comparaison est normalisée en
+                base 100 pour rendre les deux trajectoires directement
+                comparables malgré des unités monétaires différentes.
+              </div>
+            </div>
+
+            <Badge tone="navy">
+              {evolutionClient?.marche || '—'} ·{' '}
+              {evolutionNationalCurrency}
+            </Badge>
+          </div>
+
+          <div
+            className="grid grid-cols-4 gap-3 mt-4 p-3 rounded-xl"
+            style={{ background: '#FAFAFC' }}
+          >
+            <label className="text-[10px] font-semibold">
+              <span
+                className="block mb-1"
+                style={{ color: C.sub }}
+              >
+                Portefeuille client
+              </span>
+              <select
+                value={evolutionClient?.id || ''}
+                onChange={(event) => {
+                  setEvolutionClientId(event.target.value);
+                  setEvolutionInvestmentCurrency('');
+                  setPortfolioStateCurrencyFilter('Toutes');
+                }}
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{
+                  borderColor: C.line,
+                  background: '#fff',
+                  color: C.ink,
+                }}
+              >
+                {CLIENTS.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.nom} · {client.devise}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-[10px] font-semibold">
+              <span
+                className="block mb-1"
+                style={{ color: C.sub }}
+              >
+                Depuis le
+              </span>
+              <input
+                type="date"
+                min={evolutionDateMinimum}
+                max={evolutionDateMaximum}
+                value={evolutionDateDebut}
+                onChange={(event) =>
+                  setEvolutionDateDebut(event.target.value)
+                }
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{
+                  borderColor: C.line,
+                  background: '#fff',
+                  color: C.ink,
+                }}
+              />
+            </label>
+
+            <label className="text-[10px] font-semibold">
+              <span
+                className="block mb-1"
+                style={{ color: C.sub }}
+              >
+                Monnaie d&apos;investissement
+              </span>
+              <select
+                value={evolutionCurrencyActive}
+                onChange={(event) =>
+                  setEvolutionInvestmentCurrency(
+                    event.target.value
+                  )
+                }
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{
+                  borderColor: C.line,
+                  background: '#fff',
+                  color: C.ink,
+                }}
+              >
+                {evolutionInvestmentCurrencies.map(
+                  (currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
+
+            <div className="text-[10px] font-semibold">
+              <span
+                className="block mb-1"
+                style={{ color: C.sub }}
+              >
+                Monnaie nationale du client
+              </span>
+              <div
+                className="w-full px-3 py-2 rounded-xl border text-xs font-bold"
+                style={{
+                  borderColor: C.line,
+                  background: '#F1F3F7',
+                  color: C.navy,
+                  ...F_MONO,
+                }}
+              >
+                {evolutionNationalCurrency}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 mt-3 flex-wrap">
+            <div
+              className="flex items-center gap-1 p-1 rounded-xl"
+              style={{ background: '#EEF0F4' }}
+            >
+              {[
+                {
+                  id: 'national',
+                  label: `Monnaie nationale (${evolutionNationalCurrency})`,
+                },
+                {
+                  id: 'investment',
+                  label: `Monnaie d’investissement (${evolutionCurrencyActive})`,
+                },
+                {
+                  id: 'comparaison',
+                  label: 'Comparer · base 100',
+                },
+              ].map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() =>
+                    setEvolutionDisplayMode(mode.id)
+                  }
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-semibold"
+                  style={{
+                    background:
+                      evolutionDisplayMode === mode.id
+                        ? '#FFFFFF'
+                        : 'transparent',
+                    color:
+                      evolutionDisplayMode === mode.id
+                        ? C.navy
+                        : C.sub,
+                    boxShadow:
+                      evolutionDisplayMode === mode.id
+                        ? '0 1px 4px rgba(15,27,51,0.10)'
+                        : 'none',
+                  }}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[9px]" style={{ color: C.sub }}>
+              Période : <b style={{ color: C.ink }}>{evolutionPeriodLabel}</b>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mt-3">
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Exposition sélectionnée
+              </div>
+              <div
+                className="text-lg font-bold mt-1"
+                style={{ ...F_MONO, color: C.ink }}
+              >
+                {evolutionExposurePct.toFixed(1)} %
+              </div>
+              <div
+                className="text-[9px] mt-1"
+                style={{ color: C.sub }}
+              >
+                du portefeuille en {evolutionCurrencyActive}
+              </div>
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Valeur actuelle · monnaie nationale
+              </div>
+              <div
+                className="text-sm font-bold mt-1"
+                style={{ ...F_MONO, color: C.navy }}
+              >
+                {fmt(
+                  Math.round(
+                    Number(evolutionLast?.nationalValue || 0)
+                  )
+                )}{' '}
+                {evolutionNationalCurrency}
+              </div>
+              <div className="mt-1">
+                <Pct v={evolutionNationalChange} />
+              </div>
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Valeur actuelle · monnaie d&apos;investissement
+              </div>
+              <div
+                className="text-sm font-bold mt-1"
+                style={{ ...F_MONO, color: C.teal }}
+              >
+                {fmt(
+                  Math.round(
+                    Number(
+                      evolutionLast?.investmentValue || 0
+                    )
+                  )
+                )}{' '}
+                {evolutionCurrencyActive}
+              </div>
+              <div className="mt-1">
+                <Pct v={evolutionInvestmentChange} />
+              </div>
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{
+                borderColor: C.line,
+                background:
+                  Math.abs(evolutionFxImpact) < 0.05
+                    ? '#F7F8FA'
+                    : evolutionFxImpact > 0
+                    ? '#F1FAF6'
+                    : '#FFF8F7',
+              }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                Écart de trajectoire
+              </div>
+              <div
+                className="text-lg font-bold mt-1"
+                style={{
+                  ...F_MONO,
+                  color:
+                    Math.abs(evolutionFxImpact) < 0.05
+                      ? C.sub
+                      : evolutionFxImpact > 0
+                      ? C.teal
+                      : C.coral,
+                }}
+              >
+                {evolutionFxImpact >= 0 ? '+' : ''}
+                {evolutionFxImpact.toFixed(2)} pts
+              </div>
+              <div
+                className="text-[9px] mt-1"
+                style={{ color: C.sub }}
+              >
+                effet de conversion sur la période
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-4 gap-4 mt-4">
+            <div
+              className="col-span-3 p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: C.ink }}
+                  >
+                    {evolutionDisplayMode === 'comparaison'
+                      ? 'Comparaison des trajectoires'
+                      : evolutionDisplayMode === 'national'
+                      ? `Évolution en ${evolutionNationalCurrency}`
+                      : `Évolution en ${evolutionCurrencyActive}`}
+                  </div>
+                  <div
+                    className="text-[9px] mt-0.5"
+                    style={{ color: C.sub }}
+                  >
+                    {evolutionDisplayMode === 'comparaison'
+                      ? 'Base 100 à la date de départ sélectionnée'
+                      : 'Valeur monétaire de l’exposition sélectionnée'}
+                  </div>
+                </div>
+
+                {evolutionDisplayMode === 'comparaison' && (
+                  <div className="flex items-center gap-3 text-[9px]">
+                    <span
+                      className="flex items-center gap-1.5"
+                      style={{ color: C.sub }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: C.navy }}
+                      />
+                      Monnaie nationale
+                    </span>
+                    <span
+                      className="flex items-center gap-1.5"
+                      style={{ color: C.sub }}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full"
+                        style={{ background: C.teal }}
+                      />
+                      Monnaie d&apos;investissement
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <ResponsiveContainer width="100%" height={280}>
+                <LineChart
+                  data={evolutionSeries}
+                  margin={{
+                    top: 10,
+                    right: 22,
+                    left: 8,
+                    bottom: 4,
+                  }}
+                >
+                  <CartesianGrid
+                    stroke={C.line}
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="mois"
+                    tick={{ fontSize: 10, fill: C.sub }}
+                    axisLine={{ stroke: C.line }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: C.sub }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={76}
+                    tickFormatter={(value) =>
+                      evolutionDisplayMode === 'comparaison'
+                        ? Number(value).toFixed(0)
+                        : fmtCompactMontant(value)
+                    }
+                  />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (
+                        evolutionDisplayMode === 'comparaison'
+                      ) {
+                        return [
+                          `${Number(value).toFixed(2)}`,
+                          name,
+                        ];
+                      }
+
+                      const currency =
+                        evolutionDisplayMode === 'national'
+                          ? evolutionNationalCurrency
+                          : evolutionCurrencyActive;
+
+                      return [
+                        `${fmt(Math.round(Number(value)))} ${currency}`,
+                        name,
+                      ];
+                    }}
+                    labelFormatter={(label) => `Période : ${label}`}
+                    contentStyle={{
+                      borderRadius: 10,
+                      border: `1px solid ${C.line}`,
+                      fontSize: 11,
+                    }}
+                  />
+
+                  {evolutionDisplayMode === 'national' && (
+                    <Line
+                      type="monotone"
+                      dataKey="nationalValue"
+                      name={`Valeur en ${evolutionNationalCurrency}`}
+                      stroke={C.navy}
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {evolutionDisplayMode === 'investment' && (
+                    <Line
+                      type="monotone"
+                      dataKey="investmentValue"
+                      name={`Valeur en ${evolutionCurrencyActive}`}
+                      stroke={C.teal}
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {evolutionDisplayMode === 'comparaison' && (
+                    <>
+                      <Line
+                        type="monotone"
+                        dataKey="nationalIndex"
+                        name={`Monnaie nationale · ${evolutionNationalCurrency}`}
+                        stroke={C.navy}
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        isAnimationActive={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="investmentIndex"
+                        name={`Monnaie d’investissement · ${evolutionCurrencyActive}`}
+                        stroke={C.teal}
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        isAnimationActive={false}
+                      />
+                    </>
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+
+              {evolutionSeries.length === 0 && (
+                <div
+                  className="text-center text-xs py-8"
+                  style={{ color: C.sub }}
+                >
+                  Aucune donnée disponible pour la période sélectionnée.
+                </div>
+              )}
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: C.line }}
+            >
+              <Eyebrow>Monnaies d&apos;investissement</Eyebrow>
+              <div
+                className="text-xs font-bold"
+                style={{ color: C.ink }}
+              >
+                Filtrer l&apos;exposition
+              </div>
+              <div
+                className="text-[9px] mt-1"
+                style={{ color: C.sub }}
+              >
+                Cliquez sur une monnaie pour l&apos;afficher dans
+                le graphique.
+              </div>
+
+              <div className="space-y-2 mt-3">
+                {evolutionCurrencyWeightRows.map(
+                  ([currency, weight]) => {
+                    const active =
+                      currency === evolutionCurrencyActive;
+
+                    return (
+                      <button
+                        key={currency}
+                        type="button"
+                        onClick={() =>
+                          setEvolutionInvestmentCurrency(
+                            currency
+                          )
+                        }
+                        className="w-full p-2.5 rounded-xl border text-left"
+                        style={{
+                          borderColor: active
+                            ? C.indigo
+                            : C.line,
+                          background: active
+                            ? '#F4F6FF'
+                            : '#FFFFFF',
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="text-xs font-bold"
+                            style={{
+                              color: active
+                                ? C.indigo
+                                : C.ink,
+                              ...F_MONO,
+                            }}
+                          >
+                            {currency}
+                          </span>
+                          <Badge
+                            tone={active ? 'navy' : 'slate'}
+                          >
+                            {Number(weight).toFixed(1)} %
+                          </Badge>
+                        </div>
+                        <div
+                          className="h-1.5 rounded-full mt-2 overflow-hidden"
+                          style={{ background: '#ECEEF3' }}
+                        >
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  Number(weight || 0)
+                                )
+                              )}%`,
+                              background: active
+                                ? C.indigo
+                                : C.navy,
+                            }}
+                          />
+                        </div>
+                      </button>
+                    );
+                  }
+                )}
+              </div>
+
+              <div
+                className="mt-4 p-3 rounded-xl text-[9px]"
+                style={{
+                  background: '#FBF7EE',
+                  color: C.sub,
+                }}
+              >
+                <b style={{ color: C.ink }}>
+                  Lecture :
+                </b>{' '}
+                la courbe en monnaie nationale intègre l&apos;effet
+                de conversion de la monnaie d&apos;investissement.
+                La comparaison base 100 permet d&apos;isoler visuellement
+                l&apos;écart de trajectoire.
+              </div>
+            </div>
+          </div>
+
+
+
+          {/* -------- ÉTAT DU PORTEFEUILLE À LA DATE SÉLECTIONNÉE -------- */}
+          <div
+            className="mt-4 rounded-2xl border overflow-hidden"
+            style={{ borderColor: C.navy }}
+          >
+            <div
+              className="p-4 flex items-start justify-between gap-4 flex-wrap"
+              style={{ background: '#F7F8FA' }}
+            >
+              <div>
+                <Eyebrow>
+                  État du portefeuille à la date sélectionnée
+                </Eyebrow>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: C.ink }}
+                >
+                  {evolutionClient?.nom || 'Portefeuille'} ·{' '}
+                  {portfolioStateDateLabel}
+                </div>
+                <div
+                  className="text-[10px] mt-1 max-w-4xl"
+                  style={{ color: C.sub }}
+                >
+                  Lecture multidevise des positions : le CMP et la
+                  +/- Value d&apos;investissement sont exprimés dans la
+                  devise de chaque ligne ; la seconde lecture convertit
+                  le résultat dans la devise locale du client.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge tone="navy">
+                  Devise locale :{' '}
+                  {portfolioStateAtSelectedDate.localCurrency}
+                </Badge>
+                <Badge tone="teal">
+                  {portfolioStateListedCount} coté(s)
+                </Badge>
+                <Badge tone="gold">
+                  {portfolioStateNonListedCount} non coté(s)
+                </Badge>
+              </div>
+            </div>
+
+            <div
+              className="px-4 py-3 flex items-end justify-between gap-4 flex-wrap"
+              style={{
+                borderTop: `1px solid ${C.line}`,
+                borderBottom: `1px solid ${C.line}`,
+                background: '#FFFFFF',
+              }}
+            >
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="text-[10px] font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Monnaie d&apos;investissement
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPortfolioStateCurrencyFilter(
+                      'Toutes'
+                    )
+                  }
+                  className="px-2.5 py-1.5 rounded-lg border text-[10px] font-semibold"
+                  style={{
+                    borderColor:
+                      portfolioStateCurrencyFilter ===
+                      'Toutes'
+                        ? C.indigo
+                        : C.line,
+                    background:
+                      portfolioStateCurrencyFilter ===
+                      'Toutes'
+                        ? '#F4F6FF'
+                        : '#fff',
+                    color:
+                      portfolioStateCurrencyFilter ===
+                      'Toutes'
+                        ? C.indigo
+                        : C.sub,
+                  }}
+                >
+                  Toutes
+                </button>
+
+                {portfolioStateAtSelectedDate.currencies.map(
+                  (currency) => (
+                    <button
+                      key={currency}
+                      type="button"
+                      onClick={() =>
+                        setPortfolioStateCurrencyFilter(
+                          currency
+                        )
+                      }
+                      className="px-2.5 py-1.5 rounded-lg border text-[10px] font-semibold"
+                      style={{
+                        borderColor:
+                          portfolioStateCurrencyFilter ===
+                          currency
+                            ? C.indigo
+                            : C.line,
+                        background:
+                          portfolioStateCurrencyFilter ===
+                          currency
+                            ? '#F4F6FF'
+                            : '#fff',
+                        color:
+                          portfolioStateCurrencyFilter ===
+                          currency
+                            ? C.indigo
+                            : C.sub,
+                      }}
+                    >
+                      {currency}
+                    </button>
+                  )
+                )}
+              </div>
+
+              <div className="flex items-center gap-4 flex-wrap">
+                <div>
+                  <div
+                    className="text-[8px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    Montant affiché
+                  </div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ ...F_MONO, color: C.ink }}
+                  >
+                    {fmt(
+                      Math.round(
+                        portfolioStateTotalDisplayedLocal
+                      )
+                    )}{' '}
+                    {portfolioStateAtSelectedDate.localCurrency}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    className="text-[8px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    +/- Value locale
+                  </div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{
+                      ...F_MONO,
+                      color:
+                        portfolioStatePmvDisplayedLocal >= 0
+                          ? C.teal
+                          : C.coral,
+                    }}
+                  >
+                    {portfolioStatePmvDisplayedLocal >= 0
+                      ? '+'
+                      : ''}
+                    {fmt(
+                      Math.round(
+                        portfolioStatePmvDisplayedLocal
+                      )
+                    )}{' '}
+                    {portfolioStateAtSelectedDate.localCurrency}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    className="text-[8px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    Lignes
+                  </div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ ...F_MONO, color: C.ink }}
+                  >
+                    {portfolioStateRows.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {portfolioStateAtSelectedDate.beforeOpening ? (
+              <div
+                className="p-6 text-center text-xs"
+                style={{ color: C.sub }}
+              >
+                Le portefeuille n&apos;était pas encore ouvert à cette date.
+              </div>
+            ) : (
+              <div
+                className="overflow-y-auto overflow-x-hidden"
+                style={{
+                  maxHeight: 440,
+                  scrollbarGutter: 'stable',
+                  width: '100%',
+                }}
+              >
+                <table
+                  className="w-full"
+                  style={{
+                    width: '100%',
+                    tableLayout: 'fixed',
+                    borderCollapse: 'collapse',
+                  }}
+                >
+                  <colgroup>
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '17%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '11%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '9%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '10%' }} />
+                  </colgroup>
+
+                  <thead
+                    className="sticky top-0"
+                    style={{
+                      background: '#FAFAFC',
+                      zIndex: 3,
+                      boxShadow: `0 1px 0 ${C.line}`,
+                    }}
+                  >
+                    <tr>
+                      <PortfolioStateCompactTh>
+                        Type
+                        <br />
+                        d&apos;actif
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh>
+                        Intitulé
+                        <br />
+                        de l&apos;actif
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        Quantité en
+                        <br />
+                        portefeuille
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        CMP
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        +/- Value
+                        <br />
+                        devise d&apos;investissement
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        +/- Value
+                        <br />
+                        devise locale
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        Rendement
+                        <br />
+                        devise d&apos;investissement
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        Rendement
+                        <br />
+                        devise locale
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        Pondération
+                        <br />
+                        devise locale
+                      </PortfolioStateCompactTh>
+                      <PortfolioStateCompactTh align="right">
+                        Montant
+                        <br />
+                        devise locale
+                      </PortfolioStateCompactTh>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {portfolioStateRows.map(
+                      (row, index) => {
+                        const gainInvestment =
+                          row.plusMinusInvestment >= 0;
+                        const gainLocal =
+                          row.plusMinusLocal >= 0;
+
+                        return (
+                          <tr
+                            key={row.id}
+                            style={{
+                              borderTop: `1px solid ${C.line}`,
+                              background:
+                                index % 2
+                                  ? '#FCFCFD'
+                                  : '#fff',
+                            }}
+                          >
+                            <PortfolioStateCompactTd>
+                              <div className="flex flex-col gap-1 items-start">
+                                <span
+                                  className="rounded-full font-semibold"
+                                  style={{
+                                    padding: '2px 5px',
+                                    fontSize: 7.5,
+                                    lineHeight: 1.1,
+                                    background:
+                                      row.quotation === 'Coté'
+                                        ? '#E9ECF5'
+                                        : '#E4F5EF',
+                                    color:
+                                      row.quotation === 'Coté'
+                                        ? C.navy
+                                        : C.teal,
+                                  }}
+                                >
+                                  {row.quotation}
+                                </span>
+                                <span
+                                  style={{
+                                    color: C.sub,
+                                    fontSize: 7.5,
+                                    lineHeight: 1.15,
+                                  }}
+                                >
+                                  {row.assetLabel}
+                                </span>
+                              </div>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd>
+                              <div
+                                className="font-semibold"
+                                style={{
+                                  color: C.ink,
+                                  fontSize: 8.5,
+                                  lineHeight: 1.18,
+                                }}
+                              >
+                                {row.title}
+                              </div>
+                              <div
+                                className="mt-0.5"
+                                style={{
+                                  color: C.sub,
+                                  fontSize: 7.5,
+                                  lineHeight: 1.15,
+                                }}
+                              >
+                                Devise d&apos;investissement :{' '}
+                                <b
+                                  style={{
+                                    ...F_MONO,
+                                    color: C.ink,
+                                  }}
+                                >
+                                  {row.currency}
+                                </b>
+                              </div>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              {Number(row.quantity) >= 1
+                                ? fmt(
+                                    Math.round(
+                                      row.quantity
+                                    )
+                                  )
+                                : Number(
+                                    row.quantity
+                                  ).toFixed(2)}
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span className="inline-block">
+                                {fmtPrice(row.cmp)}
+                                <br />
+                                <span
+                                  style={{
+                                    color: C.sub,
+                                    fontSize: 7.5,
+                                  }}
+                                >
+                                  {row.currency}
+                                </span>
+                              </span>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span
+                                style={{
+                                  color: gainInvestment
+                                    ? C.teal
+                                    : C.coral,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {gainInvestment ? '+' : ''}
+                                {fmt(
+                                  Math.round(
+                                    row.plusMinusInvestment
+                                  )
+                                )}
+                                <br />
+                                <span
+                                  style={{
+                                    fontSize: 7.5,
+                                  }}
+                                >
+                                  {row.currency}
+                                </span>
+                              </span>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span
+                                style={{
+                                  color: gainLocal
+                                    ? C.teal
+                                    : C.coral,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {gainLocal ? '+' : ''}
+                                {fmt(
+                                  Math.round(
+                                    row.plusMinusLocal
+                                  )
+                                )}
+                                <br />
+                                <span
+                                  style={{
+                                    fontSize: 7.5,
+                                  }}
+                                >
+                                  {row.localCurrency}
+                                </span>
+                              </span>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span
+                                style={{
+                                  color:
+                                    row.returnInvestment >= 0
+                                      ? C.teal
+                                      : C.coral,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {row.returnInvestment >= 0
+                                  ? '+'
+                                  : ''}
+                                {Number(
+                                  row.returnInvestment || 0
+                                ).toFixed(2)}
+                                %
+                              </span>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span
+                                style={{
+                                  color:
+                                    row.returnLocal >= 0
+                                      ? C.teal
+                                      : C.coral,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {row.returnLocal >= 0 ? '+' : ''}
+                                {Number(
+                                  row.returnLocal || 0
+                                ).toFixed(2)}
+                                %
+                              </span>
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              {Number(
+                                row.weightingLocal || 0
+                              ).toFixed(2)}
+                              %
+                            </PortfolioStateCompactTd>
+
+                            <PortfolioStateCompactTd
+                              mono
+                              align="right"
+                            >
+                              <span className="inline-block">
+                                {fmt(
+                                  Math.round(
+                                    row.amountLocal
+                                  )
+                                )}
+                                <br />
+                                <span
+                                  style={{
+                                    color: C.sub,
+                                    fontSize: 7.5,
+                                  }}
+                                >
+                                  {row.localCurrency}
+                                </span>
+                              </span>
+                            </PortfolioStateCompactTd>
+                          </tr>
+                        );
+                      }
+                    )}
+
+                    {portfolioStateRows.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={10}
+                          className="p-6 text-center"
+                          style={{
+                            color: C.sub,
+                            fontSize: 9,
+                            ...F_BODY,
+                          }}
+                        >
+                          Aucune position disponible pour la devise et la date sélectionnées.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div
+              className="px-4 py-3 text-[9px]"
+              style={{
+                background: '#FBF7EE',
+                color: C.sub,
+                borderTop: `1px solid ${C.line}`,
+              }}
+            >
+              <b style={{ color: C.ink }}>
+                Lecture :
+              </b>{' '}
+              le rendement en devise d&apos;investissement mesure
+              l&apos;écart entre le prix valorisé à la date choisie et
+              le CMP. Le rendement en devise locale ajoute l&apos;effet
+              de conversion monétaire entre la date d&apos;acquisition
+              de référence et la date sélectionnée. La pondération est
+              calculée sur l&apos;encours local reconstitué à la même date.
+            </div>
+          </div>
+
+          <div
+            className="mt-3 p-3 rounded-xl text-[9px]"
+            style={{
+              background: '#F7F8FA',
+              color: C.sub,
+            }}
+          >
+            <b style={{ color: C.ink }}>
+              Données de démonstration :
+            </b>{' '}
+            les historiques d&apos;encours utilisent le moteur
+            déterministe déjà présent dans la maquette. Les variations
+            de change historiques sont simulées autour des taux FX
+            courants du prototype. L&apos;état détaillé à date réutilise
+            les positions/CMP explicites lorsqu&apos;ils existent et
+            complète uniquement les informations absentes pour rendre
+            la maquette multidevise visible. En production, ces éléments
+            devront provenir des lots, positions et taux FX historiques
+            réellement enregistrés.
+          </div>
+
+          {/* -------- LIQUIDITÉ DU PORTEFEUILLE PAR DEVISE -------- */}
+          <div
+            className="mt-4 rounded-2xl border overflow-hidden"
+            style={{ borderColor: C.teal }}
+          >
+            <div
+              className="p-4 flex items-start justify-between gap-4 flex-wrap"
+              style={{ background: '#F1FAF6' }}
+            >
+              <div>
+                <Eyebrow>
+                  Liquidité par devise d&apos;investissement
+                </Eyebrow>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: C.ink }}
+                >
+                  {evolutionClient?.nom || 'Portefeuille'} ·{' '}
+                  {portfolioStateDateLabel}
+                </div>
+                <div
+                  className="text-[10px] mt-1 max-w-4xl"
+                  style={{ color: C.sub }}
+                >
+                  La liquidité est présentée séparément des titres
+                  détenus. Pour chaque monnaie d&apos;investissement,
+                  le gestionnaire distingue la part disponible, la
+                  part réservée et la liquidité totale.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge tone="navy">
+                  Devise locale :{' '}
+                  {portfolioLiquidityAtSelectedDate.localCurrency}
+                </Badge>
+                <Badge tone="teal">
+                  {
+                    portfolioLiquidityAtSelectedDate.rows
+                      .length
+                  }{' '}
+                  devise(s)
+                </Badge>
+              </div>
+            </div>
+
+            {portfolioLiquidityAtSelectedDate.beforeOpening ? (
+              <div
+                className="p-6 text-center text-xs"
+                style={{ color: C.sub }}
+              >
+                Le portefeuille n&apos;était pas encore ouvert à cette date.
+              </div>
+            ) : (
+              <>
+                <div
+                  className="grid grid-cols-3 gap-3 p-4"
+                  style={{
+                    borderTop: `1px solid ${C.line}`,
+                    borderBottom: `1px solid ${C.line}`,
+                    background: '#fff',
+                  }}
+                >
+                  <div
+                    className="p-3 rounded-xl"
+                    style={{ background: '#EAF8F3' }}
+                  >
+                    <div
+                      className="text-[9px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Liquidité disponible
                     </div>
-                  </Td>
-                  <Td>
-                    <Badge tone="navy">
-                      {c.marche} · {c.devise}
-                    </Badge>
-                  </Td>
-                  <Td mono>
-                    {fmt(c.encours)} {c.devise}
-                  </Td>
-                  <Td>
-                    <Pct v={c.perf} />
-                  </Td>
-                  <Td>
-                    {ecart >= 8 ? (
-                      <Badge tone="coral">{ecart} pts</Badge>
-                    ) : (
-                      <Badge tone="teal">{ecart} pts</Badge>
+                    <div
+                      className="text-base font-bold mt-1"
+                      style={{
+                        ...F_MONO,
+                        color: C.teal,
+                      }}
+                    >
+                      {fmt(
+                        Math.round(
+                          portfolioLiquidityAtSelectedDate.availableLocal
+                        )
+                      )}{' '}
+                      {
+                        portfolioLiquidityAtSelectedDate.localCurrency
+                      }
+                    </div>
+                  </div>
+
+                  <div
+                    className="p-3 rounded-xl"
+                    style={{ background: '#FFF8E9' }}
+                  >
+                    <div
+                      className="text-[9px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Liquidité réservée
+                    </div>
+                    <div
+                      className="text-base font-bold mt-1"
+                      style={{
+                        ...F_MONO,
+                        color: C.gold,
+                      }}
+                    >
+                      {fmt(
+                        Math.round(
+                          portfolioLiquidityAtSelectedDate.reservedLocal
+                        )
+                      )}{' '}
+                      {
+                        portfolioLiquidityAtSelectedDate.localCurrency
+                      }
+                    </div>
+                  </div>
+
+                  <div
+                    className="p-3 rounded-xl"
+                    style={{ background: '#F4F6FF' }}
+                  >
+                    <div
+                      className="text-[9px] uppercase font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Liquidité totale
+                    </div>
+                    <div
+                      className="text-base font-bold mt-1"
+                      style={{
+                        ...F_MONO,
+                        color: C.navy,
+                      }}
+                    >
+                      {fmt(
+                        Math.round(
+                          portfolioLiquidityAtSelectedDate.totalLocal
+                        )
+                      )}{' '}
+                      {
+                        portfolioLiquidityAtSelectedDate.localCurrency
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4">
+                  <div
+                    className="grid gap-3"
+                    style={{
+                      gridTemplateColumns:
+                        'repeat(auto-fit, minmax(215px, 1fr))',
+                    }}
+                  >
+                    {portfolioLiquidityAtSelectedDate.rows.map(
+                      (row) => {
+                        const reservedPct =
+                          row.total > 0
+                            ? (row.reserved /
+                                row.total) *
+                              100
+                            : 0;
+                        const availablePct =
+                          row.total > 0
+                            ? (row.available /
+                                row.total) *
+                              100
+                            : 0;
+
+                        return (
+                          <div
+                            key={row.currency}
+                            className="rounded-xl border overflow-hidden"
+                            style={{
+                              borderColor: C.line,
+                              background: '#fff',
+                            }}
+                          >
+                            <div
+                              className="px-3 py-2 flex items-center justify-between gap-2"
+                              style={{
+                                background: '#FAFAFC',
+                                borderBottom: `1px solid ${C.line}`,
+                              }}
+                            >
+                              <div>
+                                <div
+                                  className="text-sm font-bold"
+                                  style={{
+                                    ...F_MONO,
+                                    color: C.ink,
+                                  }}
+                                >
+                                  {row.currency}
+                                </div>
+                                <div
+                                  className="text-[8px] mt-0.5"
+                                  style={{ color: C.sub }}
+                                >
+                                  {Number(
+                                    row.weight || 0
+                                  ).toFixed(1)}
+                                  % de l&apos;exposition devise
+                                </div>
+                              </div>
+
+                              <Badge
+                                tone={
+                                  row.reserved > 0
+                                    ? 'gold'
+                                    : 'teal'
+                                }
+                              >
+                                {availablePct.toFixed(0)}
+                                % disponible
+                              </Badge>
+                            </div>
+
+                            <div className="p-3 space-y-2">
+                              <div
+                                className="flex items-center justify-between gap-3"
+                              >
+                                <span
+                                  className="text-[9px] font-semibold"
+                                  style={{ color: C.sub }}
+                                >
+                                  Liquidité disponible
+                                </span>
+                                <span
+                                  className="text-[10px] font-bold text-right"
+                                  style={{
+                                    ...F_MONO,
+                                    color: C.teal,
+                                  }}
+                                >
+                                  {fmt(
+                                    Math.round(
+                                      row.available
+                                    )
+                                  )}{' '}
+                                  {row.currency}
+                                </span>
+                              </div>
+
+                              <div
+                                className="flex items-center justify-between gap-3"
+                              >
+                                <span
+                                  className="text-[9px] font-semibold"
+                                  style={{ color: C.sub }}
+                                >
+                                  Liquidité réservée
+                                </span>
+                                <span
+                                  className="text-[10px] font-bold text-right"
+                                  style={{
+                                    ...F_MONO,
+                                    color:
+                                      row.reserved > 0
+                                        ? C.gold
+                                        : C.sub,
+                                  }}
+                                >
+                                  {fmt(
+                                    Math.round(
+                                      row.reserved
+                                    )
+                                  )}{' '}
+                                  {row.currency}
+                                </span>
+                              </div>
+
+                              <div
+                                className="flex items-center justify-between gap-3 pt-2"
+                                style={{
+                                  borderTop: `1px solid ${C.line}`,
+                                }}
+                              >
+                                <span
+                                  className="text-[9px] font-bold"
+                                  style={{ color: C.ink }}
+                                >
+                                  Liquidité totale
+                                </span>
+                                <span
+                                  className="text-[11px] font-bold text-right"
+                                  style={{
+                                    ...F_MONO,
+                                    color: C.navy,
+                                  }}
+                                >
+                                  {fmt(
+                                    Math.round(
+                                      row.total
+                                    )
+                                  )}{' '}
+                                  {row.currency}
+                                </span>
+                              </div>
+
+                              <div
+                                className="h-1.5 rounded-full overflow-hidden flex"
+                                style={{
+                                  background: '#ECEEF3',
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      Math.min(
+                                        100,
+                                        availablePct
+                                      )
+                                    )}%`,
+                                    background: C.teal,
+                                  }}
+                                />
+                                <div
+                                  style={{
+                                    width: `${Math.max(
+                                      0,
+                                      Math.min(
+                                        100,
+                                        reservedPct
+                                      )
+                                    )}%`,
+                                    background: C.gold,
+                                  }}
+                                />
+                              </div>
+
+                              {row.currency !==
+                                row.localCurrency && (
+                                <div
+                                  className="text-[8px] leading-relaxed"
+                                  style={{ color: C.sub }}
+                                >
+                                  Éq. local :{' '}
+                                  <b
+                                    style={{
+                                      ...F_MONO,
+                                      color: C.ink,
+                                    }}
+                                  >
+                                    {fmt(
+                                      Math.round(
+                                        row.availableLocal
+                                      )
+                                    )}{' '}
+                                    {row.localCurrency}
+                                  </b>{' '}
+                                  disponible ·{' '}
+                                  <b
+                                    style={{
+                                      ...F_MONO,
+                                      color: C.ink,
+                                    }}
+                                  >
+                                    {fmt(
+                                      Math.round(
+                                        row.reservedLocal
+                                      )
+                                    )}{' '}
+                                    {row.localCurrency}
+                                  </b>{' '}
+                                  réservée
+                                </div>
+                              )}
+
+                              <div
+                                className="text-[8px]"
+                                style={{ color: C.sub }}
+                              >
+                                Réservation :{' '}
+                                {row.reservationSource}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
                     )}
-                  </Td>
-                  <Td>{c.risque}</Td>
-                  <Td>
-                    {c.alertes > 0 ? (
-                      <Badge tone="coral">{c.alertes}</Badge>
-                    ) : (
-                      <Badge tone="teal">0</Badge>
-                    )}
-                  </Td>
-                  <Td>
-                    <ChevronRight size={15} color={C.sub} />
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+                  </div>
+
+                  {portfolioLiquidityAtSelectedDate.rows.length ===
+                    0 && (
+                    <div
+                      className="py-6 text-center text-xs"
+                      style={{ color: C.sub }}
+                    >
+                      Aucune liquidité disponible pour cette situation.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            <div
+              className="px-4 py-3 text-[9px]"
+              style={{
+                background: '#F7F8FA',
+                color: C.sub,
+                borderTop: `1px solid ${C.line}`,
+              }}
+            >
+              <b style={{ color: C.ink }}>
+                Contrôle :
+              </b>{' '}
+              pour chaque devise, Liquidité totale =
+              Liquidité disponible + Liquidité réservée.
+              Les données explicites du portefeuille sont utilisées
+              en priorité. À défaut, les ordres d&apos;achat ouverts
+              déjà présents dans l&apos;application alimentent la
+              liquidité réservée sur la situation courante.
+            </div>
+          </div>
+
+        </Card>
+      )}
     </div>
   );
 }
@@ -10657,78 +13585,181 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </div>
       </Card>
 
-      <Card className="p-5" style={{ borderColor: C.teal }}>
+      <Card
+        className="p-5"
+        style={{ borderColor: C.teal }}
+      >
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <Eyebrow>Obligations non cotées détenues</Eyebrow>
+            <Eyebrow>
+              Obligations non cotées détenues
+            </Eyebrow>
             <div
-              className="text-[10px] mt-1 max-w-3xl"
+              className="text-sm font-semibold mt-1"
+              style={{ color: C.ink }}
+            >
+              Positions de gré à gré intégrées au portefeuille
+            </div>
+            <div
+              className="text-[10px] mt-1 max-w-4xl"
               style={{ color: C.sub, ...F_BODY }}
             >
-              Ces lignes appartiennent à la poche « Obl. privées » du
-              portefeuille. Elles ne sont pas envoyées au carnet de bourse :
-              en cas de retrait, leur cession passe exclusivement par la
-              recherche de contreparties internes.
+              Ces lignes font partie de la poche « Obl. privées » déjà
+              comptabilisée dans l'allocation. Elles ne gonflent pas
+              l'encours du portefeuille et ne sont jamais envoyées au
+              carnet de bourse. En cas de retrait, elles passent
+              exclusivement par les cessions internes.
             </div>
           </div>
-          <Badge tone={obligationsNonCotees.length > 0 ? 'teal' : 'slate'}>
-            {obligationsNonCotees.length} ligne(s) non cotée(s)
-          </Badge>
+
+          <div className="flex gap-2 flex-wrap">
+            <Badge
+              tone={
+                obligationsNonCotees.length > 0
+                  ? 'teal'
+                  : 'slate'
+              }
+            >
+              {obligationsNonCotees.length} ligne(s)
+            </Badge>
+            <Badge tone="navy">
+              Marché non coté
+            </Badge>
+          </div>
         </div>
 
         <div className="overflow-x-auto mt-4">
-          <table className="w-full" style={{ minWidth: 1150 }}>
+          <table
+            className="w-full"
+            style={{ minWidth: 1250 }}
+          >
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>Titre</Th>
                 <Th>Émetteur</Th>
+                <Th>Marché réf.</Th>
                 <Th>Coupon</Th>
+                <Th>Rendement</Th>
                 <Th>Échéance</Th>
                 <Th>Exposition</Th>
                 <Th>Quantité</Th>
-                <Th>Prix de valorisation</Th>
+                <Th>CMP</Th>
+                <Th>Prix valorisation</Th>
                 <Th>Valeur</Th>
                 <Th>Cotation</Th>
                 <Th>Canal de cession</Th>
               </tr>
             </thead>
+
             <tbody>
-              {obligationsNonCotees.map((position) => (
-                <tr
-                  key={position.titre}
-                  style={{ borderTop: `1px solid ${C.line}` }}
-                >
-                  <Td className="font-semibold">{position.titre}</Td>
-                  <Td>{position.emetteur}</Td>
-                  <Td mono>{Number(position.coupon || 0).toFixed(2)}%</Td>
-                  <Td mono>{position.echeance}</Td>
-                  <Td mono>
-                    {Number(position.expositionPct || 0).toFixed(2)}%
-                  </Td>
-                  <Td mono>{fmt(position.quantite)}</Td>
-                  <Td mono>
-                    {fmtPrice(position.prixValorisation)} {position.devise}
-                  </Td>
-                  <Td mono className="whitespace-nowrap">
-                    {fmt(Math.round(position.valeur))} {position.devise}
-                  </Td>
-                  <Td>
-                    <Badge tone="teal">Non coté</Badge>
-                  </Td>
-                  <Td>
-                    <Badge tone="navy">Cession interne</Badge>
-                  </Td>
-                </tr>
-              ))}
+              {obligationsNonCotees.map(
+                (position, index) => {
+                  const plusMoinsValue =
+                    (Number(
+                      position.prixValorisation || 0
+                    ) -
+                      Number(position.cmp || 0)) *
+                    Number(position.quantite || 0);
+
+                  return (
+                    <tr
+                      key={`${position.titre}-${index}`}
+                      style={{
+                        borderTop: `1px solid ${C.line}`,
+                        background:
+                          index % 2 ? '#FCFCFD' : '#fff',
+                      }}
+                    >
+                      <Td className="font-semibold">
+                        {position.titre}
+                      </Td>
+                      <Td>{position.emetteur}</Td>
+                      <Td>
+                        <Badge tone="slate">
+                          {position.marche}
+                        </Badge>
+                      </Td>
+                      <Td mono>
+                        {Number(
+                          position.coupon || 0
+                        ).toFixed(2)}
+                        %
+                      </Td>
+                      <Td mono>
+                        {Number(
+                          position.rendement || 0
+                        ).toFixed(2)}
+                        %
+                      </Td>
+                      <Td mono>
+                        {position.echeance}
+                      </Td>
+                      <Td mono>
+                        {Number(
+                          position.expositionPct || 0
+                        ).toFixed(2)}
+                        %
+                      </Td>
+                      <Td mono>
+                        {fmt(position.quantite)}
+                      </Td>
+                      <Td mono className="whitespace-nowrap">
+                        {fmtPrice(position.cmp)}{' '}
+                        {position.devise}
+                      </Td>
+                      <Td mono className="whitespace-nowrap">
+                        {fmtPrice(
+                          position.prixValorisation
+                        )}{' '}
+                        {position.devise}
+                      </Td>
+                      <Td mono className="whitespace-nowrap">
+                        {fmt(
+                          Math.round(position.valeur)
+                        )}{' '}
+                        {position.devise}
+                        <div
+                          className="text-[9px] mt-1"
+                          style={{
+                            color:
+                              plusMoinsValue >= 0
+                                ? C.teal
+                                : C.coral,
+                          }}
+                        >
+                          {plusMoinsValue >= 0
+                            ? '+'
+                            : ''}
+                          {fmt(
+                            Math.round(plusMoinsValue)
+                          )}{' '}
+                          latent
+                        </div>
+                      </Td>
+                      <Td>
+                        <Badge tone="teal">
+                          Non coté
+                        </Badge>
+                      </Td>
+                      <Td>
+                        <Badge tone="navy">
+                          Cession interne
+                        </Badge>
+                      </Td>
+                    </tr>
+                  );
+                }
+              )}
 
               {obligationsNonCotees.length === 0 && (
                 <tr>
                   <td
-                    colSpan={10}
-                    className="text-center text-xs py-4"
+                    colSpan={13}
+                    className="text-center text-xs py-5"
                     style={{ color: C.sub }}
                   >
-                    Aucune obligation non cotée dans ce portefeuille.
+                    Aucune obligation non cotée dans ce
+                    portefeuille.
                   </td>
                 </tr>
               )}
@@ -10738,12 +13769,19 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
         <div
           className="text-[10px] mt-3 p-3 rounded-xl"
-          style={{ background: '#EAF8F3', color: C.sub, ...F_BODY }}
+          style={{
+            background: '#EAF8F3',
+            color: C.sub,
+            ...F_BODY,
+          }}
         >
-          <b style={{ color: C.ink }}>Maquette :</b> les positions non cotées
-          sont générées de façon déterministe à l'intérieur de la poche
-          « Obl. privées ». Elles ne gonflent donc pas artificiellement
-          l'encours du portefeuille.
+          <b style={{ color: C.ink }}>
+            Données de démonstration :
+          </b>{' '}
+          les positions non cotées sont générées de façon
+          déterministe à l'intérieur de la poche « Obl. privées ».
+          En production, elles devront être remplacées par les
+          positions réelles du backend.
         </div>
       </Card>
 
@@ -10862,9 +13900,12 @@ function Carnet({ initial }) {
   const [instrumentFilter, setInstrumentFilter] = useState(
     initial?.instrument || null
   );
+  const [cessionA4ModalVisible, setCessionA4ModalVisible] =
+    useState(false);
   const cessionRows = Array.isArray(initial?.cessionOrders)
     ? initial.cessionOrders
     : [];
+  const cessionA4 = initial?.cessionA4 || null;
   const sourceRows = [...cessionRows, ...ORDERS];
   const rows = sourceRows.filter(
     (o) =>
@@ -10925,10 +13966,30 @@ function Carnet({ initial }) {
                 réelle.
               </div>
             </div>
-            <Badge tone="gold">{cessionRows.length} ordre(s) importé(s)</Badge>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone="gold">
+                {cessionRows.length} ordre(s) importé(s)
+              </Badge>
+              {cessionA4 && (
+                <Btn
+                  tone="ghost"
+                  onClick={() =>
+                    setCessionA4ModalVisible(true)
+                  }
+                >
+                  Revoir le récapitulatif A4
+                </Btn>
+              )}
+            </div>
           </div>
         </Card>
       )}
+
+      <CessionA4Modal
+        open={cessionA4ModalVisible}
+        onClose={() => setCessionA4ModalVisible(false)}
+        payload={cessionA4}
+      />
       {rows.length === 0 && (
         <Card className="p-6 text-center text-sm" style={{ color: C.sub }}>
           Aucun ordre pour ce filtre.
@@ -14077,6 +17138,11 @@ const CESSION_RETRAIT_SEED = {
     date: '2026-09-15',
     urgence: 'Normale',
   },
+  /*
+   * Cas de démonstration dédié au marché non coté :
+   * c7 détient des obligations privées non cotées et sa demande de retrait
+   * provoque une ligne de cession interne visible immédiatement.
+   */
   c7: {
     selected: true,
     montant: 65_000_000,
@@ -14136,7 +17202,7 @@ const CESSION_RETRAIT_ETATS_DEMO = [
     dateSouhaitee: '2026-09-16',
     chargeeClientele: 'Awa Diop',
     observationChargeeClientele:
-      'Demande de retrait de démonstration incluant une obligation non cotée à rapprocher par cession interne.',
+      "Cas de démonstration : le portefeuille détient des obligations non cotées à rapprocher par cession interne.",
     modePaiement: 'Virement bancaire',
   },
   {
@@ -14265,18 +17331,44 @@ const CESSION_NON_LISTED_BONDS = [
   },
 ];
 
+const CESSION_INSTRUMENT_UNIVERSE = [
+  ...CLIENT_TRADABLE_MARKETS.map((instrument) => ({
+    ...instrument,
+    cotation: 'Coté',
+    listed: true,
+  })),
+  ...CESSION_NON_LISTED_BONDS,
+];
+
+const cessionAssetClass = (instrument) => {
+  if (!instrument) return 'Autres';
+  if (instrument.assetClass) return instrument.assetClass;
+  if (instrument.type === 'Action') return 'Actions';
+  if (/corporate|priv|non cot/i.test(String(instrument.nom || ''))) {
+    return 'Obl. privées';
+  }
+  return 'Obl. souveraines';
+};
+
+/* ---------------- POSITIONS D'OBLIGATIONS NON COTÉES ---------------- */
 /*
- * POSITIONS D'OBLIGATIONS NON COTÉES DANS LES PORTEFEUILLES
+ * Les obligations non cotées ci-dessus ne sont plus seulement des titres
+ * disponibles dans le moteur de Cession : elles deviennent de vraies lignes
+ * de portefeuille dans la maquette.
  *
- * Ces positions sont de vraies lignes de portefeuille dans la maquette :
- * - elles consomment la poche "Obl. privées" existante ;
- * - elles ne s'ajoutent donc pas à l'encours total ;
- * - elles sont générées de manière déterministe par client ;
- * - elles alimentent directement le moteur de Cession non cotée.
- *
- * Si le backend fournit déjà `obligationsNonCotees`, ces lignes sont conservées.
+ * Principes :
+ * - la position reste incluse dans la poche "Obl. privées" déjà existante ;
+ * - l'encours total du client n'est donc pas augmenté ;
+ * - les quantités et valeurs sont déterministes ;
+ * - si le backend fournit déjà `obligationsNonCotees`, ses positions sont
+ *   conservées au lieu d'être remplacées ;
+ * - ces positions alimentent directement Cession_Retrait et la page Cession.
  */
-const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
+const cessionNormalizeNonListedPosition = (
+  client,
+  position,
+  index = 0
+) => {
   const instrument =
     CESSION_NON_LISTED_BONDS.find(
       (item) =>
@@ -14284,7 +17376,8 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
         (!position?.marche || item.marche === position.marche)
     ) ||
     CESSION_NON_LISTED_BONDS.find(
-      (item) => item.marche === (position?.marche || client?.marche)
+      (item) =>
+        item.marche === (position?.marche || client?.marche)
     );
 
   if (!instrument) return null;
@@ -14300,7 +17393,7 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
     )
   );
 
-  const expositionPct = Math.max(
+  const expositionPctDemandee = Math.max(
     0,
     Number(
       position?.expositionPct ??
@@ -14311,7 +17404,7 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
   );
 
   const valeurDepuisExposition =
-    (Number(client?.encours || 0) * expositionPct) / 100;
+    (Number(client?.encours || 0) * expositionPctDemandee) / 100;
 
   const quantiteExplicite = Number(position?.quantite);
   const quantite =
@@ -14320,24 +17413,31 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
       : Math.max(
           0,
           Math.floor(
-            Number(position?.valeur || valeurDepuisExposition || 0) /
-              prix
+            Number(
+              position?.valeur ||
+                valeurDepuisExposition ||
+                0
+            ) / prix
           )
         );
 
   const valeur =
     quantite > 0
       ? quantite * prix
-      : Math.max(0, Number(position?.valeur || valeurDepuisExposition || 0));
+      : Math.max(
+          0,
+          Number(position?.valeur || valeurDepuisExposition || 0)
+        );
 
-  const expositionReelle =
+  const expositionPct =
     Number(client?.encours || 0) > 0
       ? (valeur / Number(client.encours)) * 100
-      : expositionPct;
+      : expositionPctDemandee;
 
   const seed = liquidityHistorySeed(
     `${client?.id || 'client'}-${instrument.nom}-${index}`
   );
+
   const cmp =
     Number(position?.cmp) > 0
       ? Number(position.cmp)
@@ -14367,8 +17467,9 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
     cmp,
     quantite,
     valeur,
-    expositionPct: Number(expositionReelle.toFixed(2)),
-    source: position?.source || 'Simulation portefeuille GSM',
+    expositionPct: Number(expositionPct.toFixed(2)),
+    source:
+      position?.source || 'Simulation portefeuille GSM',
   };
 };
 
@@ -14386,6 +17487,11 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
 
   if (!candidates.length) return [];
 
+  /*
+   * On regarde si la place dispose également d'obligations privées cotées.
+   * Si ce n'est pas le cas, toute la poche privée peut être matérialisée
+   * par les obligations non cotées de démonstration.
+   */
   const listedPrivateCandidates = CLIENT_TRADABLE_MARKETS.filter(
     (instrument) =>
       instrument.marche === client?.marche &&
@@ -14397,10 +17503,13 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
   );
 
   /*
-   * Quand aucun titre privé coté n'existe dans l'univers de démonstration
-   * du marché, toute la poche "Obl. privées" est représentée par du non coté.
-   * S'il existe aussi du privé coté (ex. GSE), le non coté représente
-   * 55 % à 70 % de la poche privée.
+   * BRVM / NGX dans la maquette :
+   * la poche privée est matérialisée à 100 % en non coté quand aucun
+   * instrument privé coté n'est disponible.
+   *
+   * GSE :
+   * une partie reste sur l'obligation corporate cotée et 55 à 70 %
+   * de la poche privée est matérialisée en non coté.
    */
   const totalNonListedPct =
     listedPrivateCandidates.length === 0
@@ -14410,6 +17519,10 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
           privatePct * (0.55 + (seed % 4) * 0.05)
         );
 
+  /*
+   * Sur BRVM, deux lignes non cotées peuvent être détenues par un même
+   * portefeuille ; NGX et GSE disposent ici d'une ligne de démonstration.
+   */
   const selectedCount =
     candidates.length === 1
       ? 1
@@ -14424,7 +17537,12 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
   ) {
     const candidate =
       candidates[(seed + offset) % candidates.length];
-    if (!selected.some((item) => item.nom === candidate.nom)) {
+
+    if (
+      !selected.some(
+        (item) => item.nom === candidate.nom
+      )
+    ) {
       selected.push(candidate);
     }
   }
@@ -14438,30 +17556,38 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
 
   return selected
     .map((instrument, positionIndex) => {
-      const expositionPct =
-        totalNonListedPct * Number(rawParts[positionIndex] || 0);
+      const expositionCible =
+        totalNonListedPct *
+        Number(rawParts[positionIndex] || 0);
+
       const valeurCible =
-        (Number(client?.encours || 0) * expositionPct) / 100;
+        (Number(client?.encours || 0) *
+          expositionCible) /
+        100;
+
       const prix = Math.max(
         0.000001,
         Number(instrument.cours || 0)
       );
+
       const quantite = Math.max(
         1,
         Math.floor(valeurCible / prix)
       );
+
       const valeur = quantite * prix;
-      const expositionReelle =
+
+      const expositionPct =
         Number(client?.encours || 0) > 0
           ? (valeur / Number(client.encours)) * 100
-          : expositionPct;
+          : expositionCible;
 
       return cessionNormalizeNonListedPosition(
         client,
         {
           ...instrument,
           titre: instrument.nom,
-          expositionPct: expositionReelle,
+          expositionPct,
           quantite,
           valeur,
           prixValorisation: prix,
@@ -14473,8 +17599,13 @@ const cessionGenerateNonListedPositions = (client, index = 0) => {
     .filter(Boolean);
 };
 
-const cessionNonListedPositionsForClient = (client, index = 0) => {
-  const existing = Array.isArray(client?.obligationsNonCotees)
+const cessionNonListedPositionsForClient = (
+  client,
+  index = 0
+) => {
+  const existing = Array.isArray(
+    client?.obligationsNonCotees
+  )
     ? client.obligationsNonCotees
         .map((position, positionIndex) =>
           cessionNormalizeNonListedPosition(
@@ -14491,40 +17622,23 @@ const cessionNonListedPositionsForClient = (client, index = 0) => {
     : cessionGenerateNonListedPositions(client, index);
 };
 
-const cessionAttachNonListedPositions = (client, index = 0) => ({
+const cessionAttachNonListedPositions = (
+  client,
+  index = 0
+) => ({
   ...client,
-  obligationsNonCotees: cessionNonListedPositionsForClient(
-    client,
-    index
-  ),
+  obligationsNonCotees:
+    cessionNonListedPositionsForClient(client, index),
 });
 
 /*
- * CLIENTS est déclaré avec `let` plus haut : on enrichit donc ici les clients
- * de démonstration une fois le référentiel des obligations non cotées connu.
+ * CLIENTS est une variable (`let`) dans cette maquette.
+ * On enrichit donc tous les portefeuilles une fois le référentiel non coté
+ * défini.
  */
 CLIENTS = CLIENTS.map((client, index) =>
   cessionAttachNonListedPositions(client, index)
 );
-
-const CESSION_INSTRUMENT_UNIVERSE = [
-  ...CLIENT_TRADABLE_MARKETS.map((instrument) => ({
-    ...instrument,
-    cotation: 'Coté',
-    listed: true,
-  })),
-  ...CESSION_NON_LISTED_BONDS,
-];
-
-const cessionAssetClass = (instrument) => {
-  if (!instrument) return 'Autres';
-  if (instrument.assetClass) return instrument.assetClass;
-  if (instrument.type === 'Action') return 'Actions';
-  if (/corporate|priv|non cot/i.test(String(instrument.nom || ''))) {
-    return 'Obl. privées';
-  }
-  return 'Obl. souveraines';
-};
 
 const cessionInstrumentListingStatus = (instrumentLike) => {
   if (!instrumentLike) return 'Non renseigné';
@@ -14648,49 +17762,68 @@ const cessionSimulatedHoldings = (client, assetClass) => {
 
   const nonListedPositions =
     cessionNonListedPositionsForClient(client);
-  const totalNonListedExposurePct = nonListedPositions.reduce(
-    (sum, position) =>
-      sum + Number(position.expositionPct || 0),
-    0
-  );
+
+  const totalNonListedExposurePct =
+    nonListedPositions.reduce(
+      (sum, position) =>
+        sum + Number(position.expositionPct || 0),
+      0
+    );
+
   const listedCandidates = candidates.filter(
     (instrument) =>
       cessionExecutionChannel(instrument) === 'cote'
   );
+
   const remainingPrivateExposurePct =
     assetClass === 'Obl. privées'
       ? Math.max(
           0,
-          Number(client.alloc?.['Obl. privées'] || 0) -
-            totalNonListedExposurePct
+          Number(
+            client.alloc?.['Obl. privées'] || 0
+          ) - totalNonListedExposurePct
         )
       : 0;
 
   const rawWeights = candidates.map((instrument) => {
-    const nonListedPosition = nonListedPositions.find(
-      (position) => position.titre === instrument.nom
-    );
+    const nonListedPosition =
+      nonListedPositions.find(
+        (position) =>
+          position.titre === instrument.nom
+      );
 
     if (nonListedPosition) {
       return Math.max(
         0,
-        Number(nonListedPosition.expositionPct || 0)
+        Number(
+          nonListedPosition.expositionPct || 0
+        )
       );
     }
 
+    /*
+     * Le reliquat de la poche privée reste réparti entre les éventuelles
+     * obligations privées cotées de la place.
+     */
     if (
       assetClass === 'Obl. privées' &&
       cessionExecutionChannel(instrument) === 'cote' &&
       listedCandidates.length > 0
     ) {
-      return remainingPrivateExposurePct / listedCandidates.length;
+      return (
+        remainingPrivateExposurePct /
+        listedCandidates.length
+      );
     }
 
     return Math.max(
       0,
-      Number(exposureOf(client.id, instrument.nom) || 0)
+      Number(
+        exposureOf(client.id, instrument.nom) || 0
+      )
     );
   });
+
   const rawTotal = rawWeights.reduce(
     (sum, value) => sum + value,
     0
@@ -16559,7 +19692,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
     CESSION_RETRAIT_DEFAULT_PARTICIPATION
   );
   const [optimisationVisible, setOptimisationVisible] = useState(true);
-  const [clientOuvert, setClientOuvert] = useState('c1');
+  const [clientOuvert, setClientOuvert] = useState('c7');
   const [editionPlans, setEditionPlans] = useState(false);
   const [managerEdits, setManagerEdits] = useState({});
   const [managerTitleEdits, setManagerTitleEdits] = useState({});
@@ -19255,7 +22388,571 @@ const cessionBuildListedMarketPlan = (match) => {
   };
 };
 
-function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
+
+function CessionA4Modal({
+  open,
+  onClose,
+  payload,
+  onOpenOrderBook = null,
+}) {
+  if (!open || !payload) return null;
+
+  const {
+    reference = '—',
+    lancementAt = null,
+    devise = 'XOF',
+    summary = {},
+    internalOrders = [],
+    marketOrders = [],
+    recourseRows = [],
+  } = payload;
+
+  const formatTimestamp = (value) =>
+    value
+      ? new Intl.DateTimeFormat('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date(value))
+      : '—';
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+      style={{ background: 'rgba(15, 27, 51, 0.58)' }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose?.();
+        }
+      }}
+    >
+      <div
+        className="w-full rounded-2xl overflow-hidden"
+        style={{
+          maxWidth: 1180,
+          maxHeight: '94vh',
+          background: '#EEF0F4',
+          boxShadow: '0 24px 80px rgba(15,27,51,0.30)',
+        }}
+      >
+        <div
+          className="sticky top-0 z-20 flex items-center justify-between gap-4 px-5 py-3"
+          style={{
+            background: '#FFFFFF',
+            borderBottom: `1px solid ${C.line}`,
+          }}
+        >
+          <div>
+            <Eyebrow>Aperçu A4 · cessions lancées</Eyebrow>
+            <div
+              className="text-sm font-bold"
+              style={{ color: C.ink }}
+            >
+              Récapitulatif des ordres de cession
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Badge tone="navy">Réf. {reference}</Badge>
+
+            {onOpenOrderBook && (
+              <Btn
+                tone="ghost"
+                onClick={onOpenOrderBook}
+              >
+                Ouvrir dans le carnet d'ordres →
+              </Btn>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onClose?.()}
+              className="w-9 h-9 rounded-full flex items-center justify-center"
+              style={{
+                background: '#F0F1F5',
+                color: C.ink,
+              }}
+              title="Fermer"
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="overflow-y-auto p-4"
+          style={{ maxHeight: 'calc(94vh - 66px)' }}
+        >
+          <div
+            style={{
+              width: '210mm',
+              minHeight: '297mm',
+              maxWidth: '100%',
+              margin: '0 auto',
+              background: '#FFFFFF',
+              padding: '13mm 12mm',
+              boxShadow: '0 10px 30px rgba(15,27,51,0.12)',
+              color: C.ink,
+              ...F_BODY,
+            }}
+          >
+            <div
+              style={{
+                borderBottom: `2px solid ${C.navy}`,
+                paddingBottom: 12,
+                marginBottom: 14,
+              }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div
+                    className="text-[10px] uppercase font-bold tracking-[0.18em]"
+                    style={{ color: C.gold }}
+                  >
+                    Gestion sous mandat
+                  </div>
+                  <div
+                    className="text-xl font-bold mt-1"
+                    style={{ ...F_DISPLAY, color: C.navy }}
+                  >
+                    Récapitulatif des ordres de cession
+                  </div>
+                  <div
+                    className="text-[10px] mt-1"
+                    style={{ color: C.sub }}
+                  >
+                    Cession_Retrait · exécution interne et marché coté
+                  </div>
+                </div>
+
+                <div
+                  className="text-right text-[9px]"
+                  style={{ color: C.sub }}
+                >
+                  <div>
+                    <b style={{ color: C.ink }}>Référence :</b>{' '}
+                    {reference}
+                  </div>
+                  <div className="mt-1">
+                    <b style={{ color: C.ink }}>Lancement :</b>{' '}
+                    {formatTimestamp(lancementAt)}
+                  </div>
+                  <div className="mt-1">
+                    <b style={{ color: C.ink }}>Statut :</b>{' '}
+                    Cessions lancées
+                  </div>
+                  <div className="mt-1">
+                    <b style={{ color: C.ink }}>Devise synthèse :</b>{' '}
+                    {devise}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                {
+                  label: 'Retraits demandés',
+                  value: `${fmt(
+                    Math.round(summary.totalWithdrawalRequested || 0)
+                  )} ${devise}`,
+                },
+                {
+                  label: 'Besoin après liquidité',
+                  value: `${fmt(
+                    Math.round(summary.totalNeedAfterCash || 0)
+                  )} ${devise}`,
+                },
+                {
+                  label: 'Cession interne',
+                  value: `${fmt(
+                    Math.round(summary.totalInternalCoverage || 0)
+                  )} ${devise}`,
+                },
+                {
+                  label: 'Marché coté',
+                  value: `${fmt(
+                    Math.round(summary.totalListedCoverage || 0)
+                  )} ${devise}`,
+                },
+                {
+                  label: 'Autres recours',
+                  value: `${fmt(
+                    Math.round(summary.totalAlternativeRecourse || 0)
+                  )} ${devise}`,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="p-2 rounded-lg"
+                  style={{
+                    border: `1px solid ${C.line}`,
+                    background: '#FAFAFC',
+                  }}
+                >
+                  <div
+                    className="text-[7px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    {item.label}
+                  </div>
+                  <div
+                    className="text-[10px] font-bold mt-1"
+                    style={{ ...F_MONO, color: C.ink }}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: '#F4FBF8' }}
+              >
+                <div
+                  className="text-[8px] uppercase font-bold"
+                  style={{ color: C.teal }}
+                >
+                  Non coté · interne
+                </div>
+                <div
+                  className="text-base font-bold mt-1"
+                  style={{ ...F_MONO, color: C.teal }}
+                >
+                  {fmt(
+                    Math.round(summary.totalInternalCoverage || 0)
+                  )}{' '}
+                  {devise}
+                </div>
+                <div
+                  className="text-[8px] mt-1"
+                  style={{ color: C.sub }}
+                >
+                  {internalOrders.length} ordre(s) interne(s)
+                </div>
+              </div>
+
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: '#F3F6FC' }}
+              >
+                <div
+                  className="text-[8px] uppercase font-bold"
+                  style={{ color: C.navy }}
+                >
+                  Marché coté
+                </div>
+                <div
+                  className="text-base font-bold mt-1"
+                  style={{ ...F_MONO, color: C.navy }}
+                >
+                  {fmt(
+                    Math.round(summary.totalListedCoverage || 0)
+                  )}{' '}
+                  {devise}
+                </div>
+                <div
+                  className="text-[8px] mt-1"
+                  style={{ color: C.sub }}
+                >
+                  {marketOrders.length} ordre(s) marché
+                </div>
+              </div>
+
+              <div
+                className="p-3 rounded-xl"
+                style={{ background: '#FFF8F7' }}
+              >
+                <div
+                  className="text-[8px] uppercase font-bold"
+                  style={{ color: C.coral }}
+                >
+                  Recours complémentaires
+                </div>
+                <div
+                  className="text-base font-bold mt-1"
+                  style={{ ...F_MONO, color: C.coral }}
+                >
+                  {fmt(
+                    Math.round(summary.totalAlternativeRecourse || 0)
+                  )}{' '}
+                  {devise}
+                </div>
+                <div
+                  className="text-[8px] mt-1"
+                  style={{ color: C.sub }}
+                >
+                  {recourseRows.length} client(s) concerné(s)
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div
+                className="text-[10px] font-bold uppercase"
+                style={{ color: C.navy }}
+              >
+                1. Ordres de cession interne lancés
+              </div>
+
+              <table
+                className="w-full mt-2"
+                style={{
+                  borderCollapse: 'collapse',
+                  fontSize: 8,
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#EEF1F7' }}>
+                    <th className="text-left p-1.5">Réf.</th>
+                    <th className="text-left p-1.5">Vendeur</th>
+                    <th className="text-left p-1.5">Titre</th>
+                    <th className="text-left p-1.5">Acheteur</th>
+                    <th className="text-right p-1.5">Qté</th>
+                    <th className="text-right p-1.5">Montant</th>
+                    <th className="text-left p-1.5">Devise</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {internalOrders.map((row) => (
+                    <tr
+                      key={row.id}
+                      style={{
+                        borderBottom: `1px solid ${C.line}`,
+                      }}
+                    >
+                      <td className="p-1.5" style={F_MONO}>
+                        {row.id}
+                      </td>
+                      <td className="p-1.5">{row.vendeur}</td>
+                      <td className="p-1.5">{row.titre}</td>
+                      <td className="p-1.5">{row.acheteur}</td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(row.quantite)}
+                      </td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(Math.round(row.montant))}
+                      </td>
+                      <td className="p-1.5">{row.devise}</td>
+                    </tr>
+                  ))}
+
+                  {internalOrders.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="p-3 text-center"
+                        style={{ color: C.sub }}
+                      >
+                        Aucun ordre interne lancé.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5">
+              <div
+                className="text-[10px] font-bold uppercase"
+                style={{ color: C.navy }}
+              >
+                2. Ordres marché coté lancés
+              </div>
+
+              <table
+                className="w-full mt-2"
+                style={{
+                  borderCollapse: 'collapse',
+                  fontSize: 8,
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#EEF1F7' }}>
+                    <th className="text-left p-1.5">Réf.</th>
+                    <th className="text-left p-1.5">Portefeuille</th>
+                    <th className="text-left p-1.5">Titre</th>
+                    <th className="text-left p-1.5">Type</th>
+                    <th className="text-left p-1.5">Marché</th>
+                    <th className="text-right p-1.5">Qté</th>
+                    <th className="text-right p-1.5">Prix limite</th>
+                    <th className="text-right p-1.5">Montant</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketOrders.map((row) => (
+                    <tr
+                      key={row.id}
+                      style={{
+                        borderBottom: `1px solid ${C.line}`,
+                      }}
+                    >
+                      <td className="p-1.5" style={F_MONO}>
+                        {row.id}
+                      </td>
+                      <td className="p-1.5">
+                        {row.vendeur || row.pf}
+                      </td>
+                      <td className="p-1.5">{row.titre}</td>
+                      <td className="p-1.5">{row.type}</td>
+                      <td className="p-1.5">{row.marche}</td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(row.qte)}
+                      </td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmtPrice(row.prix)}
+                      </td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(Math.round(row.montant))} {row.devise}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {marketOrders.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="p-3 text-center"
+                        style={{ color: C.sub }}
+                      >
+                        Aucun ordre marché lancé.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5">
+              <div
+                className="text-[10px] font-bold uppercase"
+                style={{ color: C.coral }}
+              >
+                3. Besoins restant à traiter par d'autres recours
+              </div>
+
+              <table
+                className="w-full mt-2"
+                style={{
+                  borderCollapse: 'collapse',
+                  fontSize: 8,
+                }}
+              >
+                <thead>
+                  <tr style={{ background: '#FFF3F1' }}>
+                    <th className="text-left p-1.5">Client</th>
+                    <th className="text-right p-1.5">Retrait demandé</th>
+                    <th className="text-right p-1.5">Couvert</th>
+                    <th className="text-right p-1.5">Reste à traiter</th>
+                    <th className="text-left p-1.5">Devise</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recourseRows.map((coverage) => (
+                    <tr
+                      key={coverage.clientId || coverage.client}
+                      style={{
+                        borderBottom: `1px solid ${C.line}`,
+                      }}
+                    >
+                      <td className="p-1.5">
+                        {coverage.client}
+                      </td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(Math.round(coverage.withdrawal))}
+                      </td>
+                      <td
+                        className="p-1.5 text-right"
+                        style={F_MONO}
+                      >
+                        {fmt(Math.round(coverage.covered))}
+                      </td>
+                      <td
+                        className="p-1.5 text-right font-bold"
+                        style={{ ...F_MONO, color: C.coral }}
+                      >
+                        {fmt(Math.round(coverage.remaining))}
+                      </td>
+                      <td className="p-1.5">
+                        {coverage.devise}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {recourseRows.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="p-3 text-center"
+                        style={{ color: C.teal }}
+                      >
+                        Aucun besoin complémentaire.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              className="mt-6 pt-3 flex items-end justify-between gap-4"
+              style={{
+                borderTop: `1px solid ${C.line}`,
+              }}
+            >
+              <div
+                className="text-[7px]"
+                style={{ color: C.sub }}
+              >
+                Document de synthèse généré par la maquette GSM. Les
+                ordres restent soumis aux contrôles opérationnels,
+                au règlement-livraison et à la confirmation effective
+                des contreparties.
+              </div>
+              <div
+                className="text-right text-[8px]"
+                style={{ color: C.sub }}
+              >
+                <div>Gestion sous mandat</div>
+                <div style={F_MONO}>{reference}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Cession({
+  ctx,
+  go,
+  devise = 'XOF',
+  onCessionStatusChange,
+  cessionRetraitEtats = [],
+}) {
   const plans = Array.isArray(ctx?.plans) ? ctx.plans : [];
   const counterpartyConstraints = Array.isArray(
     ctx?.counterpartyConstraints
@@ -19290,7 +22987,11 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
   const [buyersDisabledByOrder, setBuyersDisabledByOrder] =
     useState({});
   const [cessionValidee, setCessionValidee] = useState(false);
-  const [retraitDisponible, setRetraitDisponible] = useState(false);
+  const [cessionsLancees, setCessionsLancees] = useState(false);
+  const [validationAt, setValidationAt] = useState(null);
+  const [lancementAt, setLancementAt] = useState(null);
+  const [apercuA4Visible, setApercuA4Visible] = useState(false);
+  const [detailsAvancesVisible, setDetailsAvancesVisible] = useState(false);
   const [modePaiement, setModePaiement] = useState('Chèque');
 
   const effectiveInternalMatches = baseInternalMatches.map((match) =>
@@ -19465,6 +23166,533 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
       ? buyersDisabledByOrder[selectedInternalOrderKey] || []
       : [];
 
+  /*
+   * COUVERTURE DU BESOIN DE RETRAIT
+   *
+   * Le dénominateur est toujours le retrait demandé par le client.
+   *
+   * Les sources de couverture distinguées sont :
+   * 1. liquidité déjà disponible avant cession ;
+   * 2. obligations non cotées effectivement rapprochées en interne ;
+   * 3. obligations cotées présentes dans le carnet de vente ;
+   * 4. actions cotées présentes dans le carnet de vente.
+   *
+   * Les ventes sont ramenées au besoin restant après liquidité, au prorata
+   * de leurs montants mobilisables, afin que les parts de couverture ne
+   * dépassent jamais artificiellement 100 % du retrait demandé.
+   */
+  const buildWithdrawalCoverage = (clientId) => {
+    if (!clientId) return null;
+
+    const plan = plans.find(
+      (item) => item?.client?.id === clientId
+    );
+
+    if (!plan) return null;
+
+    const withdrawal = Math.max(
+      0,
+      Number(plan.withdrawal || 0)
+    );
+
+    const cashAvailable = Math.max(
+      0,
+      Number(plan.cashBeforeSale || 0)
+    );
+
+    const cashContribution = Math.min(
+      withdrawal,
+      cashAvailable
+    );
+
+    const internalMatchedGross =
+      effectiveInternalMatches
+        .filter(
+          (match) =>
+            match?.order?.clientId === clientId
+        )
+        .reduce(
+          (sum, match) =>
+            sum + Number(match.amountMatched || 0),
+          0
+        );
+
+    const nonListedAvailableNet =
+      internalMatchedGross *
+      (1 - CESSION_RETRAIT_FEE_RATE);
+
+    const listedRowsForClient = listedOrders
+      .map((order, index) => ({
+        order,
+        listedPlan: listedPlans[index],
+      }))
+      .filter(
+        ({ order }) => order?.clientId === clientId
+      );
+
+    const actionListedAvailableNet =
+      listedRowsForClient
+        .filter(
+          ({ order }) =>
+            order.assetClass === 'Actions'
+        )
+        .reduce((sum, { listedPlan }) => {
+          const grossVisible = (
+            listedPlan?.launchOrders || []
+          ).reduce(
+            (amount, row) =>
+              amount +
+              Number(row.qte || 0) *
+                Number(row.prix || 0),
+            0
+          );
+
+          return (
+            sum +
+            grossVisible *
+              (1 - CESSION_RETRAIT_FEE_RATE)
+          );
+        }, 0);
+
+    const listedBondAvailableNet =
+      listedRowsForClient
+        .filter(
+          ({ order }) =>
+            order.assetClass !== 'Actions'
+        )
+        .reduce((sum, { listedPlan }) => {
+          const grossVisible = (
+            listedPlan?.launchOrders || []
+          ).reduce(
+            (amount, row) =>
+              amount +
+              Number(row.qte || 0) *
+                Number(row.prix || 0),
+            0
+          );
+
+          return (
+            sum +
+            grossVisible *
+              (1 - CESSION_RETRAIT_FEE_RATE)
+          );
+        }, 0);
+
+    const securitiesAvailable =
+      nonListedAvailableNet +
+      listedBondAvailableNet +
+      actionListedAvailableNet;
+
+    const needAfterCash = Math.max(
+      0,
+      withdrawal - cashContribution
+    );
+
+    /*
+     * Si les titres mobilisables dépassent le besoin restant, on répartit
+     * la part effectivement nécessaire au retrait au prorata des trois
+     * poches. Cela donne une lecture de couverture cohérente et plafonnée.
+     */
+    const securitiesScale =
+      securitiesAvailable > 0
+        ? Math.min(
+            1,
+            needAfterCash / securitiesAvailable
+          )
+        : 0;
+
+    const nonListedContribution =
+      nonListedAvailableNet * securitiesScale;
+
+    const listedBondContribution =
+      listedBondAvailableNet * securitiesScale;
+
+    const actionListedContribution =
+      actionListedAvailableNet * securitiesScale;
+
+    const totalCovered = Math.min(
+      withdrawal,
+      cashContribution +
+        nonListedContribution +
+        listedBondContribution +
+        actionListedContribution
+    );
+
+    const remaining = Math.max(
+      0,
+      withdrawal - totalCovered
+    );
+
+    const pct = (amount) =>
+      withdrawal > 0
+        ? Math.max(
+            0,
+            Math.min(
+              100,
+              (Number(amount || 0) / withdrawal) * 100
+            )
+          )
+        : 0;
+
+    return {
+      plan,
+      client: plan.client,
+      devise: plan.client?.devise || devise,
+      withdrawal,
+      cashAvailable,
+      cashContribution,
+      cashPct: pct(cashContribution),
+      nonListedAvailableNet,
+      nonListedContribution,
+      nonListedPct: pct(nonListedContribution),
+      listedBondAvailableNet,
+      listedBondContribution,
+      listedBondPct: pct(listedBondContribution),
+      actionListedAvailableNet,
+      actionListedContribution,
+      actionListedPct: pct(actionListedContribution),
+      totalCovered,
+      totalPct: pct(totalCovered),
+      remaining,
+      remainingPct: pct(remaining),
+    };
+  };
+
+  const selectedInternalCoverage =
+    buildWithdrawalCoverage(
+      selectedInternalMatch?.order?.clientId
+    );
+
+  const selectedListedCoverage =
+    buildWithdrawalCoverage(
+      selectedListedOrder?.clientId
+    );
+
+  /*
+   * SYNTHÈSE GLOBALE DES CESSIONS
+   * Le graphique porte sur le besoin restant après liquidité disponible.
+   */
+  const withdrawalCoverages = plans
+    .map((plan) => buildWithdrawalCoverage(plan?.client?.id))
+    .filter(Boolean);
+
+  const coverageToRef = (amount, currency) =>
+    convertCurrency(
+      Number(amount || 0),
+      currency || devise,
+      devise
+    );
+
+  const totalWithdrawalRequestedRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.withdrawal, coverage.devise),
+    0
+  );
+
+  const totalCashContributionRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.cashContribution, coverage.devise),
+    0
+  );
+
+  const totalNeedAfterCashRef = Math.max(
+    0,
+    totalWithdrawalRequestedRef - totalCashContributionRef
+  );
+
+  const totalInternalCoverageGlobalRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.nonListedContribution, coverage.devise),
+    0
+  );
+
+  const totalListedBondCoverageGlobalRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.listedBondContribution, coverage.devise),
+    0
+  );
+
+  const totalListedActionCoverageGlobalRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.actionListedContribution, coverage.devise),
+    0
+  );
+
+  const totalListedCoverageGlobalRef =
+    totalListedBondCoverageGlobalRef + totalListedActionCoverageGlobalRef;
+
+  const totalAlternativeRecourseRef = withdrawalCoverages.reduce(
+    (sum, coverage) =>
+      sum + coverageToRef(coverage.remaining, coverage.devise),
+    0
+  );
+
+  const totalCessionCoverageRef =
+    totalInternalCoverageGlobalRef + totalListedCoverageGlobalRef;
+
+  const globalCessionCoveragePct = (amount) =>
+    totalNeedAfterCashRef > 0
+      ? Math.max(
+          0,
+          Math.min(
+            100,
+            (Number(amount || 0) / totalNeedAfterCashRef) * 100
+          )
+        )
+      : 0;
+
+  const globalCessionCoverageData = [
+    {
+      name: 'Cession interne · non coté',
+      value: Number(
+        globalCessionCoveragePct(totalInternalCoverageGlobalRef).toFixed(1)
+      ),
+      montant: totalInternalCoverageGlobalRef,
+      devise,
+      color: C.teal,
+    },
+    {
+      name: 'Marché coté',
+      value: Number(
+        globalCessionCoveragePct(totalListedCoverageGlobalRef).toFixed(1)
+      ),
+      montant: totalListedCoverageGlobalRef,
+      devise,
+      color: C.navy,
+    },
+    {
+      name: 'Autres recours nécessaires',
+      value: Number(
+        globalCessionCoveragePct(totalAlternativeRecourseRef).toFixed(1)
+      ),
+      montant: totalAlternativeRecourseRef,
+      devise,
+      color: C.coral,
+    },
+  ];
+
+  const totalCessionCoveragePct = globalCessionCoveragePct(
+    totalCessionCoverageRef
+  );
+
+  /*
+   * PILOTAGE DE LA CESSION EN COURS
+   *
+   * Ces lignes sont les ordres réellement préparés par les deux canaux :
+   * - allocations internes des obligations non cotées ;
+   * - ordres de vente construits sur le carnet coté.
+   */
+  const internalPreparedOrders = effectiveInternalMatches.flatMap(
+    (match) =>
+      (match.allocations || []).map((allocation, index) => ({
+        id: `CR-INT-${match.order.clientId}-${String(match.order.titre)
+          .replace(/\s+/g, '-')
+          .toUpperCase()}-${index + 1}`,
+        canal: 'Cession interne',
+        vendeur: match.order.client,
+        vendeurId: match.order.clientId,
+        acheteur: allocation.buyer?.nom || '—',
+        gestionnaire: allocation.gestionnaire || '—',
+        titre: match.order.titre,
+        type: 'Obligation non cotée',
+        marche: match.order.marche,
+        quantite: Number(allocation.quantity || 0),
+        prix: Number(match.order.prix || 0),
+        montant: Number(allocation.amount || 0),
+        devise: match.order.devise,
+      }))
+  );
+
+  const marketPreparedOrders = allListedOrders.map((row) => ({
+    ...row,
+    canal: 'Marché coté',
+    vendeur: row.pf,
+    type:
+      listedOrders.find(
+        (order) =>
+          order.titre === row.titre &&
+          order.marche === row.marche
+      )?.assetClass === 'Actions'
+        ? 'Action cotée'
+        : 'Obligation cotée',
+    montant:
+      Number(row.qte || 0) * Number(row.prix || 0),
+  }));
+
+  const totalPreparedOrders =
+    internalPreparedOrders.length + marketPreparedOrders.length;
+
+  const clientsConcernedCount = new Set(
+    orders.map((order) => order.clientId)
+  ).size;
+
+  const clientsFullyCoveredCount = withdrawalCoverages.filter(
+    (coverage) => Number(coverage.remaining || 0) <= 1
+  ).length;
+
+  const clientsWithRecourse = withdrawalCoverages.filter(
+    (coverage) => Number(coverage.remaining || 0) > 1
+  );
+
+  const marketDepthShortfallCount = listedPlans.filter(
+    (plan) => Number(plan.quantityBeyondVisibleBook || 0) > 0
+  ).length;
+
+  /*
+   * ÉTAPE 4 — RETRAITS DISPONIBLES
+   *
+   * On ne traite plus le retrait disponible comme un simple booléen global.
+   * La page compte les demandes de retrait présentes dans la cession courante
+   * et vérifie, client par client, lesquelles sont déjà passées au statut
+   * « Retrait disponible » dans l'état Cession_Retrait partagé par l'app.
+   *
+   * Exemple de lecture : 2 / 5 = deux retraits disponibles sur cinq demandes.
+   */
+  const requestedWithdrawalCount = plans.length;
+  const requestedWithdrawalClientIds = new Set(
+    plans.map((plan) => plan?.client?.id).filter(Boolean)
+  );
+
+  const availableWithdrawalCount = cessionRetraitEtats.filter(
+    (item) =>
+      requestedWithdrawalClientIds.has(item?.clientId) &&
+      item?.statut === 'Retrait disponible'
+  ).length;
+
+  const allWithdrawalsAvailable =
+    requestedWithdrawalCount > 0 &&
+    availableWithdrawalCount >= requestedWithdrawalCount;
+
+  const someWithdrawalsAvailable =
+    availableWithdrawalCount > 0 && !allWithdrawalsAvailable;
+
+  const withdrawalAvailabilityRatio = `${availableWithdrawalCount}/${requestedWithdrawalCount}`;
+
+  const cessionStatusLabel = allWithdrawalsAvailable
+    ? 'Retraits disponibles'
+    : someWithdrawalsAvailable
+    ? `Retraits disponibles ${withdrawalAvailabilityRatio}`
+    : cessionsLancees
+    ? 'Cessions lancées'
+    : cessionValidee
+    ? 'Cessions validées'
+    : 'Préparation';
+
+  const cessionStatusTone = allWithdrawalsAvailable
+    ? 'teal'
+    : someWithdrawalsAvailable
+    ? 'gold'
+    : cessionsLancees
+    ? 'navy'
+    : cessionValidee
+    ? 'gold'
+    : 'slate';
+
+  const formatCycleTimestamp = (value) =>
+    value
+      ? new Intl.DateTimeFormat('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }).format(new Date(value))
+      : '—';
+
+  const a4Reference = `CR-${CESSION_RETRAIT_REFERENCE_DATE.replace(
+    /-/g,
+    ''
+  )}-${String(plans.length).padStart(2, '0')}`;
+
+  const cessionA4Payload = {
+    reference: a4Reference,
+    lancementAt,
+    devise,
+    summary: {
+      totalWithdrawalRequested: totalWithdrawalRequestedRef,
+      totalNeedAfterCash: totalNeedAfterCashRef,
+      totalInternalCoverage: totalInternalCoverageGlobalRef,
+      totalListedCoverage: totalListedCoverageGlobalRef,
+      totalAlternativeRecourse: totalAlternativeRecourseRef,
+    },
+    internalOrders: internalPreparedOrders,
+    marketOrders: marketPreparedOrders,
+    recourseRows: clientsWithRecourse.map((coverage) => ({
+      clientId: coverage.client?.id,
+      client: coverage.client?.nom || '—',
+      withdrawal: coverage.withdrawal,
+      covered: coverage.totalCovered,
+      remaining: coverage.remaining,
+      devise: coverage.devise,
+    })),
+  };
+
+  const renderWithdrawalCoverageCard = (
+    coverage,
+    {
+      showSelectedNonListedResidual = false,
+    } = {}
+  ) => {
+    if (!coverage) return null;
+
+    const rows = [
+      {
+        label: 'Obligation non cotée',
+        detail: 'Cession interne effectivement rapprochée',
+        amount: coverage.nonListedContribution,
+        available: coverage.nonListedAvailableNet,
+        pct: coverage.nonListedPct,
+        tone: 'teal',
+        background: '#EAF8F3',
+        color: C.teal,
+      },
+      {
+        label: 'Obligations cotées',
+        detail: 'Ordres de vente visibles sur le carnet coté',
+        amount: coverage.listedBondContribution,
+        available: coverage.listedBondAvailableNet,
+        pct: coverage.listedBondPct,
+        tone: 'gold',
+        background: '#FFF8E9',
+        color: '#8A6A16',
+      },
+      {
+        label: 'Actions cotées',
+        detail: 'Ordres de vente visibles sur le carnet coté',
+        amount: coverage.actionListedContribution,
+        available: coverage.actionListedAvailableNet,
+        pct: coverage.actionListedPct,
+        tone: 'navy',
+        background: '#F3F6FC',
+        color: C.navy,
+      },
+      {
+        label: 'Liquidité déjà disponible',
+        detail: 'Liquidité mobilisable avant les cessions',
+        amount: coverage.cashContribution,
+        available: coverage.cashAvailable,
+        pct: coverage.cashPct,
+        tone: 'slate',
+        background: '#F5F6F9',
+        color: C.sub,
+      },
+    ];
+
+    return (
+      <Card
+        className="p-5"
+        style={{
+          borderColor:
+            coverage.remaining > 1
+              ? C.gold
+              : C.teal,
+        }}
+      >
+        
+      </Card>
+    );
+  };
+
   const toggleBuyer = (buyerId) => {
     if (!selectedInternalOrderKey) return;
 
@@ -19505,7 +23733,29 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
   };
 
   const validerCession = () => {
+    const now = new Date().toISOString();
     setCessionValidee(true);
+    setValidationAt(now);
+
+    plans.forEach((plan) => {
+      onCessionStatusChange?.(plan.client.id, {
+        client: plan.client.nom,
+        montant: plan.withdrawal,
+        devise: plan.client.devise,
+        statut: 'Processus lancé',
+        dateSouhaitee: plan.request?.date,
+      });
+    });
+  };
+
+  const lancerCessions = () => {
+    if (!cessionValidee) return;
+
+    const now = new Date().toISOString();
+    setCessionsLancees(true);
+    setLancementAt(now);
+    setApercuA4Visible(true);
+
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
         client: plan.client.nom,
@@ -19518,7 +23768,6 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
   };
 
   const rendreRetraitDisponible = () => {
-    setRetraitDisponible(true);
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
         client: plan.client.nom,
@@ -19537,6 +23786,16 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
     go('carnet', {
       marche: 'Tous',
       cessionOrders: allListedOrders,
+      cessionA4: cessionsLancees ? cessionA4Payload : null,
+      source: 'cession',
+    });
+  };
+
+  const ouvrirCarnetAvecA4 = () => {
+    go('carnet', {
+      marche: 'Tous',
+      cessionOrders: allListedOrders,
+      cessionA4: cessionA4Payload,
       source: 'cession',
     });
   };
@@ -19579,7 +23838,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Breadcrumb
         items={['Accueil', 'Cession_Retrait', 'Cession']}
       />
@@ -19591,17 +23850,8 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
             className="text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Cession — routage par statut de cotation
+            Cession — pilotage des ordres
           </h2>
-          <div
-            className="text-xs mt-1 max-w-4xl"
-            style={{ color: C.sub }}
-          >
-            Les Actions et les Obligations cotées sont exécutées uniquement
-            sur le marché coté. Les cessions internes sont réservées
-            exclusivement aux Obligations non cotées. Un reliquat d'obligation
-            non cotée ne bascule jamais vers le carnet coté.
-          </div>
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -19622,65 +23872,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         </div>
       </div>
 
-      <Card className="p-4" style={{ borderColor: C.navy }}>
-        <div className="grid grid-cols-3 gap-3">
-          <div
-            className="p-3 rounded-xl"
-            style={{ background: '#F3F6FC' }}
-          >
-            <div
-              className="text-[10px] uppercase font-bold"
-              style={{ color: C.navy }}
-            >
-              Actions
-            </div>
-            <div
-              className="text-xs mt-1"
-              style={{ color: C.sub }}
-            >
-              Marché coté uniquement · carnet d'ordres
-            </div>
-          </div>
-
-          <div
-            className="p-3 rounded-xl"
-            style={{ background: '#FFF8E9' }}
-          >
-            <div
-              className="text-[10px] uppercase font-bold"
-              style={{ color: '#8A6A16' }}
-            >
-              Obligations cotées
-            </div>
-            <div
-              className="text-xs mt-1"
-              style={{ color: C.sub }}
-            >
-              Marché coté uniquement · carnet d'ordres
-            </div>
-          </div>
-
-          <div
-            className="p-3 rounded-xl"
-            style={{ background: '#EAF8F3' }}
-          >
-            <div
-              className="text-[10px] uppercase font-bold"
-              style={{ color: C.teal }}
-            >
-              Obligations non cotées
-            </div>
-            <div
-              className="text-xs mt-1"
-              style={{ color: C.sub }}
-            >
-              Cession interne uniquement · contreparties clients
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-5 gap-2">
         {[
           {
             label: 'Montant total à céder',
@@ -19710,7 +23902,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
               : 'entièrement couvert',
           },
         ].map((stat) => (
-          <Card key={stat.label} className="p-4">
+          <Card key={stat.label} className="p-3">
             <div
               className="text-[10px] uppercase font-semibold"
               style={{ color: C.sub }}
@@ -19733,15 +23925,765 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         ))}
       </div>
 
+      <Card className="p-4" style={{ borderColor: C.gold }}>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <Eyebrow>Couverture globale des retraits par les cessions</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Ce que les échanges peuvent réellement financer
+            </div>
+            <div
+              className="text-[9px] mt-0.5 max-w-4xl leading-4"
+              style={{ color: C.sub }}
+            >
+              Le graphique porte sur le besoin restant après utilisation de la
+              liquidité déjà disponible. Il sépare la couverture obtenue par
+              cession interne, celle réalisable sur le marché coté et le besoin
+              qui nécessitera un autre recours.
+            </div>
+          </div>
+
+          <Badge tone={totalAlternativeRecourseRef > 1 ? 'gold' : 'teal'}>
+            {totalCessionCoveragePct.toFixed(1)} % couvert par les cessions
+          </Badge>
+        </div>
+
+        {/*
+         * Version compacte : le contenu métier reste intégralement présent,
+         * mais les informations sont regroupées horizontalement afin de
+         * limiter la hauteur occupée sur la page Cession.
+         */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mt-3 items-stretch">
+          <div
+            className="xl:col-span-4 p-3 rounded-xl"
+            style={{ background: '#FAFAFC' }}
+          >
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <div
+                  className="text-[8px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Retraits demandés
+                </div>
+                <div
+                  className="text-sm font-bold mt-0.5"
+                  style={{ ...F_MONO, color: C.ink }}
+                >
+                  {fmt(Math.round(totalWithdrawalRequestedRef))} {devise}
+                </div>
+              </div>
+
+              <div>
+                <div
+                  className="text-[8px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Liquidité déjà disponible
+                </div>
+                <div
+                  className="text-sm font-bold mt-0.5"
+                  style={{ ...F_MONO, color: C.sub }}
+                >
+                  {fmt(Math.round(totalCashContributionRef))} {devise}
+                </div>
+              </div>
+
+              <div
+                className="px-2 py-1.5 rounded-lg"
+                style={{ background: '#fff', border: `1px solid ${C.line}` }}
+              >
+                <div
+                  className="text-[8px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  Besoin à financer par cessions
+                </div>
+                <div
+                  className="text-sm font-bold mt-0.5"
+                  style={{ ...F_MONO, color: C.ink }}
+                >
+                  {fmt(Math.round(totalNeedAfterCashRef))} {devise}
+                </div>
+              </div>
+            </div>
+
+            {totalNeedAfterCashRef > 0 ? (
+              <div className="grid grid-cols-2 gap-2 items-center mt-2">
+                <div className="min-w-0">
+                  <Donut data={globalCessionCoverageData} size={165} />
+                </div>
+                <div className="min-w-0">
+                  <Legende data={globalCessionCoverageData} />
+                </div>
+              </div>
+            ) : (
+              <div
+                className="p-4 mt-2 text-center text-[10px] rounded-xl"
+                style={{ color: C.sub, background: '#fff' }}
+              >
+                La liquidité disponible couvre déjà les retraits : aucune
+                cession supplémentaire n'est nécessaire.
+              </div>
+            )}
+          </div>
+
+          <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: '#CDEADF', background: '#F4FBF8' }}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Badge tone="teal">Marché non coté</Badge>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: C.teal, ...F_MONO }}
+                >
+                  {globalCessionCoveragePct(
+                    totalInternalCoverageGlobalRef
+                  ).toFixed(1)} %
+                </div>
+              </div>
+
+              <div
+                className="text-[9px] uppercase font-semibold mt-2"
+                style={{ color: C.sub }}
+              >
+                Couverture par cessions internes
+              </div>
+              <div
+                className="text-lg font-bold mt-1"
+                style={{ ...F_MONO, color: C.teal }}
+              >
+                {fmt(Math.round(totalInternalCoverageGlobalRef))} {devise}
+              </div>
+              <div
+                className="text-[9px] mt-2 leading-4"
+                style={{ color: C.sub }}
+              >
+                Obligations non cotées effectivement rapprochées avec des
+                contreparties internes sélectionnées.
+              </div>
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: '#D9DFEF', background: '#F3F6FC' }}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Badge tone="navy">Marché coté</Badge>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: C.navy, ...F_MONO }}
+                >
+                  {globalCessionCoveragePct(
+                    totalListedCoverageGlobalRef
+                  ).toFixed(1)} %
+                </div>
+              </div>
+
+              <div
+                className="text-[9px] uppercase font-semibold mt-2"
+                style={{ color: C.sub }}
+              >
+                Couverture par ordres de marché
+              </div>
+              <div
+                className="text-lg font-bold mt-1"
+                style={{ ...F_MONO, color: C.navy }}
+              >
+                {fmt(Math.round(totalListedCoverageGlobalRef))} {devise}
+              </div>
+
+              <div
+                className="mt-2 space-y-1 text-[9px]"
+                style={{ color: C.sub }}
+              >
+                <div className="flex justify-between gap-2">
+                  <span>Actions cotées</span>
+                  <b style={F_MONO}>
+                    {fmt(Math.round(totalListedActionCoverageGlobalRef))}{' '}
+                    {devise}
+                  </b>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Obligations cotées</span>
+                  <b style={F_MONO}>
+                    {fmt(Math.round(totalListedBondCoverageGlobalRef))}{' '}
+                    {devise}
+                  </b>
+                </div>
+              </div>
+            </div>
+
+            <div
+              className="p-3 rounded-xl border"
+              style={{ borderColor: '#F0C9C4', background: '#FFF8F7' }}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <Badge tone="coral">Autres recours</Badge>
+                <div
+                  className="text-sm font-bold"
+                  style={{ color: C.coral, ...F_MONO }}
+                >
+                  {globalCessionCoveragePct(
+                    totalAlternativeRecourseRef
+                  ).toFixed(1)} %
+                </div>
+              </div>
+
+              <div
+                className="text-[9px] uppercase font-semibold mt-2"
+                style={{ color: C.sub }}
+              >
+                Montant non échangeable / non couvert
+              </div>
+              <div
+                className="text-lg font-bold mt-1"
+                style={{ ...F_MONO, color: C.coral }}
+              >
+                {fmt(Math.round(totalAlternativeRecourseRef))} {devise}
+              </div>
+              <div
+                className="text-[9px] mt-2 leading-4"
+                style={{ color: C.sub }}
+              >
+                Besoin qui reste sans contrepartie interne ou sans profondeur
+                suffisante sur le marché coté et qui devra faire l'objet d'un
+                autre traitement opérationnel.
+              </div>
+            </div>
+
+            <div
+              className="md:col-span-3 px-3 py-2 rounded-lg flex items-center justify-between gap-3 flex-wrap"
+              style={{
+                background:
+                  totalAlternativeRecourseRef > 1 ? '#FFF8E9' : '#EAF8F3',
+              }}
+            >
+              <div className="min-w-0 flex-1">
+                <div
+                  className="text-[9px] font-bold"
+                  style={{ color: C.ink }}
+                >
+                  Lecture opérationnelle
+                </div>
+                <div
+                  className="text-[8px] mt-0.5 leading-4"
+                  style={{ color: C.sub }}
+                >
+                  {totalAlternativeRecourseRef > 1
+                    ? "Les cessions disponibles ne couvrent pas intégralement le besoin : le reliquat doit être traité par un autre recours avant de rendre le retrait disponible."
+                    : "Le besoin à financer par cessions est intégralement couvert par les canaux interne et coté."}
+                </div>
+              </div>
+
+              <Badge tone={totalAlternativeRecourseRef > 1 ? 'gold' : 'teal'}>
+                {totalAlternativeRecourseRef > 1
+                  ? `${fmt(Math.round(totalAlternativeRecourseRef))} ${devise} à traiter`
+                  : 'Couverture complète'}
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* ---------------- PILOTAGE DE LA CESSION EN COURS ---------------- */}
+      <Card className="p-5" style={{ borderColor: C.navy }}>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Pilotage de la cession en cours</Eyebrow>
+            <div
+              className="text-base font-bold"
+              style={{ color: C.ink }}
+            >
+              Vue de synthèse avant et après lancement des ordres
+            </div>
+            <div
+              className="text-[10px] mt-1 max-w-4xl"
+              style={{ color: C.sub }}
+            >
+              Cette zone concentre les informations utiles au gérant :
+              portefeuilles concernés, nombre d'ordres préparés, niveau de
+              couverture, besoins de recours complémentaires et état du cycle
+              de traitement.
+            </div>
+          </div>
+
+          <Badge tone={cessionStatusTone}>
+            {cessionStatusLabel}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-6 gap-3 mt-4">
+          {[
+            {
+              label: 'Portefeuilles concernés',
+              value: clientsConcernedCount,
+              detail: `${plans.length} demande(s) de retrait`,
+            },
+            {
+              label: 'Ordres internes',
+              value: internalPreparedOrders.length,
+              detail: `${uniqueBuyers} contrepartie(s) distincte(s)`,
+            },
+            {
+              label: 'Ordres marché',
+              value: marketPreparedOrders.length,
+              detail: `${listedOrders.length} ligne(s) cotée(s)`,
+            },
+            {
+              label: 'Couverture par cessions',
+              value: `${totalCessionCoveragePct.toFixed(1)} %`,
+              detail: `${fmt(Math.round(totalCessionCoverageRef))} ${devise}`,
+            },
+            {
+              label: 'Clients totalement couverts',
+              value: `${clientsFullyCoveredCount}/${withdrawalCoverages.length}`,
+              detail: clientsWithRecourse.length
+                ? `${clientsWithRecourse.length} avec recours complémentaire`
+                : 'aucun recours complémentaire',
+            },
+            {
+              label: 'Autres recours',
+              value: `${fmt(Math.round(totalAlternativeRecourseRef))} ${devise}`,
+              detail:
+                totalAlternativeRecourseRef > 1
+                  ? 'à traiter hors cessions préparées'
+                  : 'aucun reliquat',
+            },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="p-3 rounded-xl border"
+              style={{
+                borderColor: C.line,
+                background: '#FAFAFC',
+              }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                {stat.label}
+              </div>
+              <div
+                className="text-base font-bold mt-1"
+                style={{ ...F_MONO, color: C.ink }}
+              >
+                {stat.value}
+              </div>
+              <div
+                className="text-[8px] mt-1"
+                style={{ color: C.sub }}
+              >
+                {stat.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          <div
+            className="p-3 rounded-xl"
+            style={{
+              background:
+                totalInternalUnmatchedRef > 1
+                  ? '#FFF8E9'
+                  : '#EAF8F3',
+            }}
+          >
+            <div
+              className="text-[9px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Non coté restant sans contrepartie
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{
+                ...F_MONO,
+                color:
+                  totalInternalUnmatchedRef > 1
+                    ? '#8A6A16'
+                    : C.teal,
+              }}
+            >
+              {fmt(Math.round(totalInternalUnmatchedRef))} {devise}
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl"
+            style={{
+              background:
+                marketDepthShortfallCount > 0
+                  ? '#FFF8E9'
+                  : '#EAF8F3',
+            }}
+          >
+            <div
+              className="text-[9px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Profondeur marché insuffisante
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{
+                ...F_MONO,
+                color:
+                  marketDepthShortfallCount > 0
+                    ? '#8A6A16'
+                    : C.teal,
+              }}
+            >
+              {marketDepthShortfallCount} ligne(s)
+            </div>
+          </div>
+
+          <div
+            className="p-3 rounded-xl"
+            style={{
+              background:
+                unroutableOrders.length > 0
+                  ? '#FFF8F7'
+                  : '#EAF8F3',
+            }}
+          >
+            <div
+              className="text-[9px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              Titres non routables
+            </div>
+            <div
+              className="text-sm font-bold mt-1"
+              style={{
+                ...F_MONO,
+                color:
+                  unroutableOrders.length > 0
+                    ? C.coral
+                    : C.teal,
+              }}
+            >
+              {unroutableOrders.length} ligne(s)
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* ---------------- CYCLE OPÉRATIONNEL ---------------- */}
+      <Card className="p-5" style={{ borderColor: C.gold }}>
+        <div className="flex items-start justify-between gap-5 flex-wrap">
+          <div>
+            <Eyebrow>Cycle opérationnel</Eyebrow>
+            <div
+              className="text-base font-bold"
+              style={{ color: C.ink }}
+            >
+              Valider, lancer puis suivre les cessions
+            </div>
+            <div
+              className="text-xs mt-1 max-w-4xl"
+              style={{ color: C.sub }}
+            >
+              La validation fige les choix du gérant. Le lancement marque les
+              ordres comme transmis aux canaux d'exécution et déclenche
+              automatiquement l'aperçu A4 récapitulatif.
+            </div>
+          </div>
+
+          <Badge tone={cessionStatusTone}>
+            {cessionStatusLabel}
+          </Badge>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3 mt-4">
+          {[
+            {
+              numero: 1,
+              label: 'Ordres préparés',
+              actif: true,
+              detail: `${totalPreparedOrders} ordre(s)`,
+            },
+            {
+              numero: 2,
+              label: 'Cessions validées',
+              actif: cessionValidee,
+              detail: validationAt
+                ? formatCycleTimestamp(validationAt)
+                : 'En attente du gérant',
+            },
+            {
+              numero: 3,
+              label: 'Cessions lancées',
+              actif: cessionsLancees,
+              detail: lancementAt
+                ? formatCycleTimestamp(lancementAt)
+                : 'Non lancé',
+            },
+            {
+              numero: 4,
+              label: 'Retraits disponibles',
+              actif: availableWithdrawalCount > 0,
+              complete: allWithdrawalsAvailable,
+              partial: someWithdrawalsAvailable,
+              value: withdrawalAvailabilityRatio,
+              detail:
+                requestedWithdrawalCount > 0
+                  ? `${availableWithdrawalCount} retrait(s) disponible(s) sur ${requestedWithdrawalCount} demande(s)`
+                  : 'Aucune demande de retrait dans cette cession',
+            },
+          ].map((step) => (
+            <div
+              key={step.numero}
+              className="p-3 rounded-xl border"
+              style={{
+                borderColor: step.partial
+                  ? '#ECD6A4'
+                  : step.actif
+                  ? '#B9E3D4'
+                  : C.line,
+                background: step.partial
+                  ? '#FFF8E9'
+                  : step.actif
+                  ? '#F1FAF6'
+                  : '#FAFAFC',
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                    style={{
+                      background: step.partial
+                        ? C.gold
+                        : step.actif
+                        ? C.teal
+                        : '#E7E9EF',
+                      color: step.actif ? '#fff' : C.sub,
+                    }}
+                  >
+                    {step.numero}
+                  </div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: C.ink }}
+                  >
+                    {step.label}
+                  </div>
+                </div>
+
+                {step.value && (
+                  <div
+                    className="px-2.5 py-1 rounded-lg text-sm font-bold shrink-0"
+                    style={{
+                      ...F_MONO,
+                      background: step.complete
+                        ? '#DDF3EA'
+                        : step.partial
+                        ? '#FBEDC9'
+                        : '#EEF0F4',
+                      color: step.complete
+                        ? C.teal
+                        : step.partial
+                        ? '#8A6A16'
+                        : C.sub,
+                    }}
+                    title="Retraits disponibles / retraits demandés"
+                  >
+                    {step.value}
+                  </div>
+                )}
+              </div>
+              <div
+                className="text-[9px] mt-2"
+                style={{ color: C.sub }}
+              >
+                {step.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="mt-4 p-4 rounded-xl flex items-center justify-between gap-4 flex-wrap"
+          style={{ background: '#FAFAFC' }}
+        >
+          <div>
+            <div
+              className="text-[10px] font-bold"
+              style={{ color: C.ink }}
+            >
+              Action du gérant
+            </div>
+            <div
+              className="text-[9px] mt-1 max-w-3xl"
+              style={{ color: C.sub }}
+            >
+              {totalAlternativeRecourseRef > 1
+                ? `Attention : ${fmt(
+                    Math.round(totalAlternativeRecourseRef)
+                  )} ${devise} restent à traiter par d'autres recours. Les ordres disponibles peuvent néanmoins être validés et lancés.`
+                : 'Les canaux de cession préparés couvrent le besoin restant après liquidité disponible.'}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {!cessionValidee && (
+              <Btn onClick={validerCession}>
+                Valider les cessions
+              </Btn>
+            )}
+
+            {cessionValidee && !cessionsLancees && (
+              <>
+                <Badge tone="teal">Validation effectuée</Badge>
+                <Btn onClick={lancerCessions}>
+                  Lancer les cessions
+                </Btn>
+              </>
+            )}
+
+            {cessionsLancees && (
+              <>
+                <Badge tone="navy">
+                  Cessions lancées
+                </Badge>
+
+                <Btn
+                  tone="ghost"
+                  onClick={() => setApercuA4Visible(true)}
+                >
+                  Revoir l'aperçu A4
+                </Btn>
+
+                <select
+                  value={modePaiement}
+                  onChange={(event) =>
+                    setModePaiement(event.target.value)
+                  }
+                  className="px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                >
+                  <option>Chèque</option>
+                  <option>Virement bancaire</option>
+                  <option>Espèces / caisse</option>
+                </select>
+
+                <Btn
+                  onClick={rendreRetraitDisponible}
+                  disabled={
+                    allWithdrawalsAvailable || !canCloseCession
+                  }
+                >
+                  {allWithdrawalsAvailable
+                    ? `Retraits disponibles ${withdrawalAvailabilityRatio} ✓`
+                    : !canCloseCession
+                    ? 'Cessions à finaliser'
+                    : someWithdrawalsAvailable
+                    ? `Confirmer les retraits restants (${withdrawalAvailabilityRatio})`
+                    : 'Confirmer fonds disponibles'}
+                </Btn>
+              </>
+            )}
+          </div>
+        </div>
+      </Card>
+
+
+      <Card className="p-4" style={{ borderColor: C.navy }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Ordres de cession</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Consulter les ordres par canal d'exécution
+            </div>
+          </div>
+
+          <div className="inline-flex p-1 rounded-xl" style={{ background: '#F0F1F5' }}>
+            {[
+              {
+                id: 'non-cote',
+                label: `Non coté · Ordres internes (${internalOrders.length})`,
+                disabled: internalOrders.length === 0,
+              },
+              {
+                id: 'cote',
+                label: `Marché coté · Ordres à lancer (${listedOrders.length})`,
+                disabled: listedOrders.length === 0,
+              },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                disabled={tab.disabled}
+                onClick={() => setCessionMode(tab.id)}
+                className="px-4 py-2 rounded-lg text-xs font-semibold"
+                style={{
+                  background: cessionMode === tab.id ? '#fff' : 'transparent',
+                  color: tab.disabled
+                    ? '#A8AFBD'
+                    : cessionMode === tab.id
+                    ? C.navy
+                    : C.sub,
+                  cursor: tab.disabled ? 'not-allowed' : 'pointer',
+                  boxShadow:
+                    cessionMode === tab.id
+                      ? '0 1px 4px rgba(15,27,51,0.10)'
+                      : 'none',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      <CessionA4Modal
+        open={cessionsLancees && apercuA4Visible}
+        onClose={() => setApercuA4Visible(false)}
+        payload={cessionA4Payload}
+        onOpenOrderBook={ouvrirCarnetAvecA4}
+      />
+
+      <Card className="p-3">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Détails avancés</Eyebrow>
+            <div
+              className="text-xs font-semibold"
+              style={{ color: C.ink }}
+            >
+              Titres à échanger, contrôles de routage et contraintes gérant
+            </div>
+          </div>
+          <Btn
+            tone="ghost"
+            onClick={() =>
+              setDetailsAvancesVisible((current) => !current)
+            }
+          >
+            {detailsAvancesVisible
+              ? 'Masquer les détails'
+              : `Afficher les détails (${titleRows.length} lignes)`}
+          </Btn>
+        </div>
+      </Card>
+
+      {detailsAvancesVisible && (
+        <>
       <Card className="p-0 overflow-hidden">
         <div className="p-4 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <Eyebrow>Titres à échanger</Eyebrow>
+            <Eyebrow>Détail des titres à échanger</Eyebrow>
             <div
               className="text-sm font-bold"
               style={{ color: C.ink }}
             >
-              Routage de chaque ligne selon son statut de cotation
+              Lignes qui composent les montants de couverture ci-dessus
             </div>
             <div
               className="text-[10px] mt-1"
@@ -19883,6 +24825,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         </div>
       </Card>
 
+
       {unroutableOrders.length > 0 && (
         <Card className="p-4" style={{ borderColor: C.coral }}>
           <Eyebrow>Contrôle de routage</Eyebrow>
@@ -19912,62 +24855,46 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         </Card>
       )}
 
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
+
+        </>
+      )}
+
+      {/* Zone des ordres : défilement interne pour limiter le scroll de la page */}
+      <div
+        className="rounded-2xl border p-3"
+        style={{
+          borderColor: C.line,
+          background: '#F7F8FA',
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 mb-2">
           <div>
-            <Eyebrow>Canal d'exécution</Eyebrow>
+            <Eyebrow>
+              {cessionMode === 'non-cote'
+                ? 'Ordres internes · non coté'
+                : 'Ordres marché · coté'}
+            </Eyebrow>
             <div
-              className="text-sm font-bold"
-              style={{ color: C.ink }}
+              className="text-[10px]"
+              style={{ color: C.sub }}
             >
-              Consultez uniquement les lignes compatibles avec chaque canal
+              Les détails défilent dans cette zone sans allonger toute la page.
             </div>
           </div>
-
-          <div
-            className="inline-flex p-1 rounded-xl"
-            style={{ background: '#F0F1F5' }}
-          >
-            {[
-              {
-                id: 'non-cote',
-                label: `Non coté · Obligations internes (${internalOrders.length})`,
-                disabled: internalOrders.length === 0,
-              },
-              {
-                id: 'cote',
-                label: `Coté · Actions + Obligations (${listedOrders.length})`,
-                disabled: listedOrders.length === 0,
-              },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                disabled={tab.disabled}
-                onClick={() => setCessionMode(tab.id)}
-                className="px-4 py-2 rounded-lg text-xs font-semibold"
-                style={{
-                  background:
-                    cessionMode === tab.id ? '#fff' : 'transparent',
-                  color: tab.disabled
-                    ? '#A8AFBD'
-                    : cessionMode === tab.id
-                    ? C.navy
-                    : C.sub,
-                  cursor: tab.disabled ? 'not-allowed' : 'pointer',
-                  boxShadow:
-                    cessionMode === tab.id
-                      ? '0 1px 4px rgba(15,27,51,0.10)'
-                      : 'none',
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <Badge tone={cessionMode === 'non-cote' ? 'teal' : 'navy'}>
+            {cessionMode === 'non-cote'
+              ? `${internalOrders.length} ligne(s)`
+              : `${listedOrders.length} ligne(s)`}
+          </Badge>
         </div>
-      </Card>
 
+        <div
+          style={{
+            maxHeight: '62vh',
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+        >
       {cessionMode === 'non-cote' && (
         <>
           {internalOrders.length === 0 ? (
@@ -20124,12 +25051,11 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                     <div className="overflow-x-auto mt-4">
                       <table
                         className="w-full"
-                        style={{ minWidth: 1250 }}
+                        style={{ minWidth: 1120 }}
                       >
                         <thead style={{ background: '#FAFAFC' }}>
                           <tr>
                             <Th>Retenir</Th>
-                            <Th>Gestionnaire</Th>
                             <Th>Client acheteur</Th>
                             <Th>Profil</Th>
                             <Th>Encours</Th>
@@ -20178,9 +25104,6 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                                         )
                                       }
                                     />
-                                  </Td>
-                                  <Td className="font-semibold">
-                                    {candidate.gestionnaire}
                                   </Td>
                                   <Td>{candidate.buyer.nom}</Td>
                                   <Td>
@@ -20299,259 +25222,7 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                     </div>
                   </Card>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card className="p-5">
-                      <Eyebrow>Affectation interne retenue</Eyebrow>
-                      <div className="space-y-3 mt-3">
-                        {selectedInternalMatch.allocations.length ===
-                          0 && (
-                          <div
-                            className="text-xs"
-                            style={{ color: C.sub }}
-                          >
-                            Aucun acheteur interne actuellement
-                            retenu.
-                          </div>
-                        )}
 
-                        {selectedInternalMatch.allocations.map(
-                          (allocation) => (
-                            <div
-                              key={allocation.buyer.id}
-                              className="p-3 rounded-xl border"
-                              style={{ borderColor: C.line }}
-                            >
-                              <div className="flex items-center justify-between gap-3">
-                                <div>
-                                  <div
-                                    className="text-xs font-bold"
-                                    style={{ color: C.ink }}
-                                  >
-                                    {allocation.buyer.nom}
-                                  </div>
-                                  <div
-                                    className="text-[9px] mt-0.5"
-                                    style={{ color: C.sub }}
-                                  >
-                                    {allocation.gestionnaire} ·{' '}
-                                    {
-                                      allocation.buyer
-                                        .profilRisque
-                                    }
-                                  </div>
-                                </div>
-                                <Badge tone="teal">
-                                  Retenu
-                                </Badge>
-                              </div>
-
-                              <div className="grid grid-cols-3 gap-2 mt-3 text-[10px]">
-                                <div>
-                                  <div style={{ color: C.sub }}>
-                                    Quantité
-                                  </div>
-                                  <b
-                                    style={{
-                                      ...F_MONO,
-                                      color: C.ink,
-                                    }}
-                                  >
-                                    {fmt(
-                                      allocation.quantity
-                                    )}
-                                  </b>
-                                </div>
-                                <div>
-                                  <div style={{ color: C.sub }}>
-                                    Montant
-                                  </div>
-                                  <b
-                                    style={{
-                                      ...F_MONO,
-                                      color: C.ink,
-                                    }}
-                                  >
-                                    {fmt(
-                                      Math.round(
-                                        allocation.amount
-                                      )
-                                    )}{' '}
-                                    {
-                                      allocation.buyer
-                                        .devise
-                                    }
-                                  </b>
-                                </div>
-                                <div>
-                                  <div style={{ color: C.sub }}>
-                                    Écart après
-                                  </div>
-                                  <b
-                                    style={{
-                                      ...F_MONO,
-                                      color: C.ink,
-                                    }}
-                                  >
-                                    {allocation.afterDeviation.toFixed(
-                                      1
-                                    )}{' '}
-                                    pts
-                                  </b>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </Card>
-
-                    <Card
-                      className="p-5"
-                      style={{
-                        borderColor:
-                          selectedInternalMatch.remaining > 0
-                            ? C.gold
-                            : C.teal,
-                      }}
-                    >
-                      <Eyebrow>
-                        Couverture obligation non cotée
-                      </Eyebrow>
-                      <div
-                        className="text-3xl font-bold mt-2"
-                        style={{
-                          ...F_MONO,
-                          color: C.ink,
-                        }}
-                      >
-                        {selectedInternalMatch.order.montantBrut >
-                        0
-                          ? (
-                              (selectedInternalMatch.amountMatched /
-                                selectedInternalMatch.order
-                                  .montantBrut) *
-                              100
-                            ).toFixed(1)
-                          : '0.0'}
-                        %
-                      </div>
-
-                      <div
-                        className="text-xs mt-2"
-                        style={{ color: C.sub }}
-                      >
-                        {fmt(
-                          Math.round(
-                            selectedInternalMatch.amountMatched
-                          )
-                        )}{' '}
-                        {selectedInternalMatch.order.devise}{' '}
-                        absorbés par les contreparties internes.
-                      </div>
-
-                      <div
-                        className="mt-4 p-3 rounded-xl"
-                        style={{
-                          background:
-                            selectedInternalMatch.remaining > 0
-                              ? '#FBF7EE'
-                              : '#EAF8F3',
-                        }}
-                      >
-                        <div
-                          className="text-[10px] uppercase font-semibold"
-                          style={{ color: C.sub }}
-                        >
-                          Reliquat non coté
-                        </div>
-                        <div
-                          className="text-lg font-bold mt-1"
-                          style={{
-                            ...F_MONO,
-                            color:
-                              selectedInternalMatch.remaining >
-                              0
-                                ? '#8A6A16'
-                                : C.teal,
-                          }}
-                        >
-                          {fmt(
-                            Math.round(
-                              selectedInternalMatch.remaining
-                            )
-                          )}{' '}
-                          {selectedInternalMatch.order.devise}
-                        </div>
-                        {selectedInternalMatch.remaining > 0 && (
-                          <div
-                            className="text-[9px] mt-1"
-                            style={{ color: '#8A6A16' }}
-                          >
-                            Ce montant reste à rapprocher sur le
-                            marché non coté. Il ne sera pas envoyé
-                            en bourse.
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  </div>
-
-                  {selectedBaseInternalMatch?.excluded?.length >
-                    0 && (
-                    <Card className="p-5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Eyebrow>
-                            Clients non éligibles
-                          </Eyebrow>
-                          <div
-                            className="text-sm font-bold"
-                            style={{ color: C.ink }}
-                          >
-                            Exclusions système / contraintes
-                            gérant
-                          </div>
-                        </div>
-                        <Badge tone="coral">
-                          {
-                            selectedBaseInternalMatch.excluded
-                              .length
-                          }
-                        </Badge>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 mt-3">
-                        {selectedBaseInternalMatch.excluded
-                          .slice(0, 10)
-                          .map((candidate) => (
-                            <div
-                              key={`excluded-${candidate.buyer.id}`}
-                              className="p-3 rounded-xl"
-                              style={{
-                                background: '#FFF8F7',
-                              }}
-                            >
-                              <div
-                                className="text-[10px] font-bold"
-                                style={{ color: C.ink }}
-                              >
-                                {candidate.buyer.nom}
-                              </div>
-                              <div
-                                className="text-[9px] mt-1"
-                                style={{ color: C.coral }}
-                              >
-                                {(
-                                  candidate.exclusionReasons ||
-                                  []
-                                ).join(' · ') ||
-                                  'Non éligible'}
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    </Card>
-                  )}
                 </>
               )}
             </>
@@ -20673,6 +25344,10 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
               {selectedListedOrder &&
                 selectedListedPlan && (
                   <>
+                    {renderWithdrawalCoverageCard(
+                      selectedListedCoverage
+                    )}
+
                     <Card className="p-5">
                       <div className="flex items-center justify-between gap-4 flex-wrap">
                         <div>
@@ -21000,42 +25675,6 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
                         </div>
                       )}
                     </Card>
-
-                    <Card
-                      className="p-5"
-                      style={{ borderColor: C.gold }}
-                    >
-                      <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <div>
-                          <Eyebrow>
-                            Transmission marché coté
-                          </Eyebrow>
-                          <div
-                            className="text-sm font-bold"
-                            style={{ color: C.ink }}
-                          >
-                            Envoyer uniquement les ordres cotés vers
-                            le carnet
-                          </div>
-                          <div
-                            className="text-[10px] mt-1 max-w-3xl"
-                            style={{ color: C.sub }}
-                          >
-                            Les obligations non cotées sont exclues
-                            de cette transmission par le moteur de
-                            routage.
-                          </div>
-                        </div>
-
-                        <Btn
-                          onClick={envoyerCarnetCote}
-                          disabled={!allListedOrders.length}
-                        >
-                          Envoyer {allListedOrders.length}{' '}
-                          ordre(s) au carnet →
-                        </Btn>
-                      </div>
-                    </Card>
                   </>
                 )}
             </>
@@ -21043,6 +25682,11 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
         </>
       )}
 
+        </div>
+      </div>
+
+      {detailsAvancesVisible && (
+        <>
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -21102,77 +25746,10 @@ function Cession({ ctx, go, devise = 'XOF', onCessionStatusChange }) {
           )}
         </div>
       </Card>
+        </>
+      )}
 
-      <Card className="p-5" style={{ borderColor: C.gold }}>
-        <div className="flex items-end justify-between gap-5 flex-wrap">
-          <div>
-            <Eyebrow>Cycle opérationnel</Eyebrow>
-            <div
-              className="text-base font-bold"
-              style={{ color: C.ink }}
-            >
-              Valider la cession puis rendre le retrait disponible
-            </div>
-            <div
-              className="text-xs mt-1 max-w-3xl"
-              style={{ color: C.sub }}
-            >
-              Une obligation non cotée restant sans contrepartie bloque
-              la clôture de la cession. Elle ne peut pas être déplacée
-              automatiquement vers le marché coté.
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {!cessionValidee ? (
-              <Btn onClick={validerCession}>
-                Valider la cession
-              </Btn>
-            ) : (
-              <>
-                <Badge tone="teal">Cession validée</Badge>
-                <select
-                  value={modePaiement}
-                  onChange={(event) =>
-                    setModePaiement(event.target.value)
-                  }
-                  className="px-3 py-2 rounded-xl border text-xs"
-                  style={{ borderColor: C.line }}
-                >
-                  <option>Chèque</option>
-                  <option>Virement bancaire</option>
-                  <option>Espèces / caisse</option>
-                </select>
-                <Btn
-                  onClick={rendreRetraitDisponible}
-                  disabled={
-                    retraitDisponible || !canCloseCession
-                  }
-                >
-                  {retraitDisponible
-                    ? 'Retrait disponible ✓'
-                    : !canCloseCession
-                    ? 'Cessions à finaliser'
-                    : 'Confirmer fonds disponibles'}
-                </Btn>
-              </>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <div
-        className="text-[10px] p-3 rounded-xl"
-        style={{ background: '#FBF7EE', color: C.sub }}
-      >
-        <b style={{ color: C.ink }}>Règle de routage :</b>{' '}
-        Action = marché coté ; Obligation cotée = marché coté ;
-        Obligation non cotée = cession interne. Pour la maquette, le
-        statut de cotation provient de l'univers titre simulé. En
-        production, ce statut devra venir du référentiel instrument
-        officiel du backend et rester non modifiable au niveau de
-        l'interface.
-      </div>
     </div>
   );
 }
@@ -32403,6 +36980,7 @@ export default function App() {
                     ctx={ctx}
                     go={go}
                     devise={siteDevise}
+                    cessionRetraitEtats={cessionRetraitEtats}
                     onCessionStatusChange={updateCessionRetraitStatus}
                   />
                 )}
