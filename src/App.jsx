@@ -8524,7 +8524,7 @@ function Accueil({
                   }
                   stroke={C.indigo}
                   strokeWidth={3}
-                  dot={(props) => <HistoricalEventDot {...props} />}
+                  dot={({ key, ...props }) => <HistoricalEventDot key={key} {...props} />}
                   activeDot={{ r: 7 }}
                   isAnimationActive={false}
                 />
@@ -9078,7 +9078,7 @@ function Accueil({
                   name="Gestion globale (TWR)"
                   stroke={C.navy}
                   strokeWidth={2.8}
-                  dot={(props) => <HistoricalEventDot {...props} />}
+                  dot={({ key, ...props }) => <HistoricalEventDot key={key} {...props} />}
                   activeDot={{ r: 7 }}
                 />
               )}
@@ -14372,6 +14372,16 @@ const cessionNormalizeNonListedPosition = (client, position, index = 0) => {
   };
 };
 
+const cessionAssetClass = (instrument) => {
+  if (!instrument) return 'Autres';
+  if (instrument.assetClass) return instrument.assetClass;
+  if (instrument.type === 'Action') return 'Actions';
+  if (/corporate|priv|non cot/i.test(String(instrument.nom || ''))) {
+    return 'Obl. privées';
+  }
+  return 'Obl. souveraines';
+};
+
 const cessionGenerateNonListedPositions = (client, index = 0) => {
   const privatePct = Math.max(
     0,
@@ -14515,16 +14525,6 @@ const CESSION_INSTRUMENT_UNIVERSE = [
   })),
   ...CESSION_NON_LISTED_BONDS,
 ];
-
-const cessionAssetClass = (instrument) => {
-  if (!instrument) return 'Autres';
-  if (instrument.assetClass) return instrument.assetClass;
-  if (instrument.type === 'Action') return 'Actions';
-  if (/corporate|priv|non cot/i.test(String(instrument.nom || ''))) {
-    return 'Obl. privées';
-  }
-  return 'Obl. souveraines';
-};
 
 const cessionInstrumentListingStatus = (instrumentLike) => {
   if (!instrumentLike) return 'Non renseigné';
