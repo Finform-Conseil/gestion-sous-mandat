@@ -6,6 +6,7 @@ import sqlite3
 import os
 import uuid
 from datetime import datetime
+from typing import Optional
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv('GSM_DB_PATH', str(BASE_DIR / 'gsm_operational.db')))
@@ -416,7 +417,7 @@ async def put_allocations(pid: str, request: Request):
 
 
 @app.get('/api/events')
-def get_events(portfolio_id: str | None = None):
+def get_events(portfolio_id: Optional[str] = None):
     con = db()
     if portfolio_id:
         data = rows(
