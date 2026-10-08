@@ -1,6 +1,6 @@
 'use client';
 
-import { Component, createContext, useContext, useEffect, useState } from 'react';
+import { Component, createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   PieChart,
   Pie,
@@ -33,19 +33,21 @@ import {
   X,
   Landmark,
   Building2,
-  Sun,
-  Moon,
   Activity,
   Droplets,
   BookOpen,
   Download,
-  ExternalLink,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ArrowLeftRight,
+  UserRound,
 } from 'lucide-react';
 import { convertCurrency, fmt, fmtCompactMontant, fmtPrice, FX, toRef } from './shared/lib/finance';
 import { formatIsoLocalDate, parseIsoLocalDate } from './shared/lib/dateUtils';
 import { C, FONTS, F_DISPLAY, F_BODY, F_MONO, PALETTE } from './shared/theme/theme';
 import { Badge, Btn, Card, Eyebrow, Pct, Td, Th } from './shared/ui/UiAtoms';
 import { Breadcrumb, NavigationContext } from './shared/ui/Navigation';
+import { ThemeToggle } from './shared/ui/ThemeToggle';
 import { Donut, Legende, MarketTicker } from './features/home/HomeWidgets';
 import { Accueil as AccueilScreen } from './features/home/Accueil';
 import { Portefeuilles as PortefeuillesScreen } from './features/portfolio/Portefeuilles';
@@ -212,13 +214,6 @@ import {
   IMPACT_COMITE,
   NAV,
 } from './features/trading/TradingDomainData';
-import {
-  getGsmOperationalWriteKey,
-  gsmOperationalRequest,
-  gsmOperationalUrl,
-  loadGsmOperationalSnapshot,
-  setGsmOperationalWriteKey,
-} from './services/gsmOperationalApi';
 
 class ScreenErrorBoundary extends Component {
   constructor(props) {
@@ -246,7 +241,7 @@ class ScreenErrorBoundary extends Component {
         <button
           type="button"
           className="mt-4 px-4 py-2 rounded-lg text-sm font-semibold"
-          style={{ background: C.navy, color: '#fff' }}
+          style={{ background: C.surfaceElevated, color: C.textPrimary }}
           onClick={() => this.props.onReset?.()}
         >
           Retour à l’accueil
@@ -393,19 +388,30 @@ const {
 
 export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocumentation }) {
   const [workspace, setWorkspace] = useState('gestionnaire');
-  const [operationalDbStatus, setOperationalDbStatus] = useState('Connexion');
-  const [operationalDbUpdatedAt, setOperationalDbUpdatedAt] = useState(null);
-  const [operationalDbPortfolioCount, setOperationalDbPortfolioCount] = useState(0);
-  const [operationalDbWriteEnabled, setOperationalDbWriteEnabled] = useState(false);
-  const [operationalDbWriteMessage, setOperationalDbWriteMessage] = useState('');
-  const [, setOperationalDbRevision] = useState(0);
   const [screen, setScreen] = useState('accueil');
   const [clientScreen, setClientScreen] = useState('client-dashboard');
   const [clientCtx, setClientCtx] = useState({});
   const [ctx, setCtx] = useState({});
   const [reportOpen, setReportOpen] = useState({});
   const [siteDevise, setSiteDevise] = useState('XOF');
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [compactSidebarViewport, setCompactSidebarViewport] = useState(false);
+  const sidebarIsCollapsed = sidebarCollapsed || compactSidebarViewport;
+  const [sidebarReady, setSidebarReady] = useState(false);
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const sidebarPeekTimerRef = useRef(null);
+  const sidebarAutoCloseTimerRef = useRef(null);
+  const sidebarHoveredRef = useRef(false);
+  const sidebarNavRef = useRef(null);
+  const sidebarScrollTopRef = useRef(0);
+  const sidebarActiveRouteRef = useRef(null);
+  const [sidebarScrollIndicator, setSidebarScrollIndicator] = useState({
+    top: 0,
+    height: 0,
+  });
+  const [sidebarScrollActive, setSidebarScrollActive] = useState(false);
+  const sidebarScrollHideTimerRef = useRef(null);
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
   const [cessionRetraitEtats, setCessionRetraitEtats] = useState(
     CESSION_RETRAIT_ETATS_DEMO
@@ -436,140 +442,303 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
     }
   });
 
-  const chargerBaseOperationnelle = async ({ silent = false } = {}) => {
-    if (!silent) {
-      setOperationalDbStatus('Connexion');
-    }
 
-    try {
-      const snapshot = await loadGsmOperationalSnapshot();
+  useEffect(() => {
+    const resolveParentTheme = () => {
+      const domTheme = document.documentElement.getAttribute('data-theme');
+      const storedTheme = window.localStorage.getItem('theme');
+      window.localStorage.removeItem('gsm-theme');
+      const theme =
+        storedTheme === 'light' || storedTheme === 'dark'
+          ? storedTheme
+          : domTheme === 'light' || domTheme === 'dark'
+            ? domTheme
+            : 'dark';
 
-      if (Array.isArray(snapshot?.clients) && snapshot.clients.length > 0) {
-        replaceClients(
-          snapshot.clients.map((client, index) =>
-            cessionAttachNonListedPositions(client, index)
-          )
-        );
-        setOperationalDbPortfolioCount(snapshot.clients.length);
+      if (document.documentElement.getAttribute('data-theme') !== theme) {
+        document.documentElement.setAttribute('data-theme', theme);
       }
 
-      if (Array.isArray(snapshot?.withdrawalRequests)) {
-        setCessionRetraitEtats(snapshot.withdrawalRequests);
+      setDark(theme === 'dark');
+    };
+
+    resolveParentTheme();
+
+    const observer = new MutationObserver((mutations) => {
+      if (
+        mutations.some(
+          (mutation) =>
+            mutation.type === 'attributes' &&
+            mutation.attributeName === 'data-theme'
+        )
+      ) {
+        resolveParentTheme();
       }
-
-      setOperationalDbUpdatedAt(
-        snapshot?.generatedAt || new Date().toISOString()
-      );
-      setOperationalDbStatus('Connectée');
-      setOperationalDbRevision((revision) => revision + 1);
-      return snapshot;
-    } catch (error) {
-      console.warn('[GSM DB] Fallback sur les données locales :', error);
-      setOperationalDbStatus('Mode local');
-      if (!silent) {
-        setOperationalDbWriteMessage(
-          "API opérationnelle indisponible : l'interface utilise temporairement les données locales."
-        );
-      }
-      return null;
-    }
-  };
-
-  const verifierCleEcritureOperationnelle = async (candidateKey) => {
-    if (!candidateKey) return false;
-
-    await gsmOperationalRequest('/api/admin/check', {
-      adminKey: candidateKey,
     });
 
-    return true;
-  };
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
 
-  const activerEcritureOperationnelle = async () => {
-    if (typeof window === 'undefined') return;
+    const handleStorage = (event) => {
+      if (event.key === 'theme') resolveParentTheme();
+    };
 
-    const cleActuelle = getGsmOperationalWriteKey();
-    const candidate = window.prompt(
-      "Clé d'écriture de la base opérationnelle GSM",
-      cleActuelle
-    );
+    window.addEventListener('storage', handleStorage);
 
-    if (!candidate) return;
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
-    try {
-      await verifierCleEcritureOperationnelle(candidate);
-      setGsmOperationalWriteKey(candidate);
-      setOperationalDbWriteEnabled(true);
-      setOperationalDbWriteMessage(
-        'Écriture FastAPI activée pour cette session.'
-      );
-    } catch (error) {
-      setGsmOperationalWriteKey('');
-      setOperationalDbWriteEnabled(false);
-      setOperationalDbWriteMessage(
-        `Écriture refusée : ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  };
-
-  const desactiverEcritureOperationnelle = () => {
-    setGsmOperationalWriteKey('');
-    setOperationalDbWriteEnabled(false);
-    setOperationalDbWriteMessage(
-      'Écriture désactivée. La base reste connectée en lecture.'
-    );
+  const toggleParentTheme = () => {
+    const nextTheme = dark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    window.localStorage.setItem('theme', nextTheme);
+    setDark(nextTheme === 'dark');
   };
 
   useEffect(() => {
-    let cancelled = false;
+    const storedSidebarState = window.localStorage.getItem(
+      'gsm-sidebar-collapsed'
+    );
+    setSidebarCollapsed(storedSidebarState === 'true');
+    setSidebarReady(true);
+  }, []);
 
-    const initialiser = async () => {
-      const key = getGsmOperationalWriteKey();
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1024px)');
+    const syncCompactViewport = () => setCompactSidebarViewport(media.matches);
 
-      if (key) {
-        try {
-          await verifierCleEcritureOperationnelle(key);
-          if (!cancelled) {
-            setOperationalDbWriteEnabled(true);
-          }
-        } catch {
-          setGsmOperationalWriteKey('');
-          if (!cancelled) {
-            setOperationalDbWriteEnabled(false);
-          }
-        }
-      }
+    syncCompactViewport();
+    media.addEventListener('change', syncCompactViewport);
 
-      if (!cancelled) {
-        await chargerBaseOperationnelle();
-      }
+    return () => media.removeEventListener('change', syncCompactViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarReady) return;
+    window.localStorage.setItem(
+      'gsm-sidebar-collapsed',
+      String(sidebarCollapsed)
+    );
+  }, [sidebarCollapsed, sidebarReady]);
+
+  const clearSidebarPeekTimer = () => {
+    if (sidebarPeekTimerRef.current) {
+      window.clearTimeout(sidebarPeekTimerRef.current);
+      sidebarPeekTimerRef.current = null;
+    }
+  };
+
+  const clearSidebarAutoCloseTimer = () => {
+    if (sidebarAutoCloseTimerRef.current) {
+      window.clearTimeout(sidebarAutoCloseTimerRef.current);
+      sidebarAutoCloseTimerRef.current = null;
+    }
+  };
+
+  const scheduleSidebarAutoClose = () => {
+    clearSidebarAutoCloseTimer();
+    if (!sidebarReady || sidebarIsCollapsed) return;
+    sidebarAutoCloseTimerRef.current = window.setTimeout(() => {
+      setSidebarCollapsed(true);
+      sidebarAutoCloseTimerRef.current = null;
+    }, 5000);
+  };
+
+  useEffect(() => {
+    if (sidebarReady && !sidebarIsCollapsed && !sidebarHoveredRef.current) {
+      scheduleSidebarAutoClose();
+    } else {
+      clearSidebarAutoCloseTimer();
+    }
+    return clearSidebarAutoCloseTimer;
+  }, [sidebarReady, sidebarIsCollapsed]);
+
+  const closeSidebarPeek = () => {
+    clearSidebarPeekTimer();
+    setSidebarPeek(false);
+  };
+
+  const scheduleSidebarPeekClose = () => {
+    if (!sidebarIsCollapsed) return;
+    clearSidebarPeekTimer();
+    sidebarPeekTimerRef.current = window.setTimeout(() => {
+      setSidebarPeek(false);
+      sidebarPeekTimerRef.current = null;
+    }, 5000);
+  };
+
+  const openSidebarPeek = () => {
+    if (!sidebarIsCollapsed) return;
+    setSidebarPeek(true);
+
+    if (sidebarHoveredRef.current) {
+      clearSidebarPeekTimer();
+      return;
+    }
+
+    scheduleSidebarPeekClose();
+  };
+
+  useEffect(() => {
+    if (!sidebarIsCollapsed) {
+      closeSidebarPeek();
+    }
+  }, [sidebarIsCollapsed]);
+
+  useEffect(() => {
+    const activeRouteKey = `${workspace}:${screen}:${clientScreen}`;
+    const routeChanged = sidebarActiveRouteRef.current !== activeRouteKey;
+    sidebarActiveRouteRef.current = activeRouteKey;
+
+    if (
+      !sidebarIsCollapsed ||
+      !routeChanged ||
+      !sidebarNavRef.current
+    ) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const activeItem = sidebarNavRef.current?.querySelector(
+        '.gsm-sidebar__item[data-active="true"]'
+      );
+
+      activeItem?.scrollIntoView({
+        block: 'center',
+        inline: 'nearest',
+        behavior: 'auto',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [sidebarIsCollapsed, workspace, screen, clientScreen]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const nav = sidebarNavRef.current;
+      if (!nav) return;
+
+      const maxScrollTop = Math.max(0, nav.scrollHeight - nav.clientHeight);
+      nav.scrollTop = Math.min(sidebarScrollTopRef.current, maxScrollTop);
+      syncSidebarScrollIndicator(nav);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [sidebarIsCollapsed]);
+
+  const syncSidebarScrollIndicator = (nav) => {
+    const aside = nav?.closest('.gsm-sidebar');
+    if (!nav || !aside) return false;
+
+    const navRect = nav.getBoundingClientRect();
+    const asideRect = aside.getBoundingClientRect();
+    const scrollRange = nav.scrollHeight - nav.clientHeight;
+    const trackInset = sidebarIsCollapsed && !sidebarPeek ? 20 : 12;
+    const trackHeight = Math.max(0, nav.clientHeight - trackInset * 2);
+    const available = scrollRange > 1;
+
+    if (!available || trackHeight <= 0) {
+      setSidebarScrollActive(false);
+      setSidebarScrollIndicator((current) =>
+        current.height ? { top: 0, height: 0 } : current
+      );
+      return false;
+    }
+
+    const proportionalHeight =
+      (nav.clientHeight / nav.scrollHeight) * trackHeight;
+    const minIndicatorHeight =
+      sidebarIsCollapsed && !sidebarPeek ? 26 : 44;
+    const maxIndicatorHeight =
+      sidebarIsCollapsed && !sidebarPeek ? 32 : 72;
+    const height = Math.min(
+      maxIndicatorHeight,
+      Math.max(minIndicatorHeight, proportionalHeight)
+    );
+    const travel = Math.max(0, trackHeight - height);
+    const progress = scrollRange > 0 ? nav.scrollTop / scrollRange : 0;
+    const top =
+      navRect.top -
+      asideRect.top +
+      trackInset +
+      Math.max(0, Math.min(1, progress)) * travel;
+
+    setSidebarScrollIndicator({ top, height });
+    return true;
+  };
+
+  useEffect(() => {
+    const nav = sidebarNavRef.current;
+    if (!nav) return undefined;
+
+    const getCurrentNav = () => sidebarNavRef.current;
+
+    const getIndicator = () => {
+      const currentNav = getCurrentNav();
+      if (!currentNav) return null;
+
+      const sibling = currentNav.nextElementSibling;
+      return sibling?.classList?.contains('gsm-sidebar__scroll-indicator')
+        ? sibling
+        : currentNav.parentElement?.querySelector(
+            '.gsm-sidebar__scroll-indicator'
+          );
     };
 
-    void initialiser();
+    const handleScroll = (event) => {
+      const currentNav = getCurrentNav();
+      if (!currentNav || event.target !== currentNav) return;
+      sidebarScrollTopRef.current = currentNav.scrollTop;
+      if (!syncSidebarScrollIndicator(currentNav)) return;
 
-    const intervalId = window.setInterval(() => {
-      void chargerBaseOperationnelle({ silent: true });
-    }, 10_000);
+      getIndicator()?.setAttribute('data-scrolling', 'true');
+      setSidebarScrollActive(true);
 
-    const refreshOnFocus = () => {
-      void chargerBaseOperationnelle({ silent: true });
-    };
-
-    const refreshOnVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        void chargerBaseOperationnelle({ silent: true });
+      if (sidebarScrollHideTimerRef.current) {
+        window.clearTimeout(sidebarScrollHideTimerRef.current);
       }
+
+      sidebarScrollHideTimerRef.current = window.setTimeout(() => {
+        getIndicator()?.removeAttribute('data-scrolling');
+        setSidebarScrollActive(false);
+        sidebarScrollHideTimerRef.current = null;
+      }, 900);
     };
 
-    window.addEventListener('focus', refreshOnFocus);
-    document.addEventListener('visibilitychange', refreshOnVisibility);
+    getIndicator()?.removeAttribute('data-scrolling');
+    setSidebarScrollActive(false);
+    syncSidebarScrollIndicator(nav);
+    document.addEventListener('scroll', handleScroll, true);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => syncSidebarScrollIndicator(nav))
+        : null;
+    resizeObserver?.observe(nav);
+
+    const frame = window.requestAnimationFrame(() =>
+      syncSidebarScrollIndicator(nav)
+    );
 
     return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', refreshOnFocus);
-      document.removeEventListener('visibilitychange', refreshOnVisibility);
+      window.cancelAnimationFrame(frame);
+      if (sidebarScrollHideTimerRef.current) {
+        window.clearTimeout(sidebarScrollHideTimerRef.current);
+        sidebarScrollHideTimerRef.current = null;
+      }
+      getIndicator()?.removeAttribute('data-scrolling');
+      document.removeEventListener('scroll', handleScroll, true);
+      resizeObserver?.disconnect();
     };
+  }, [sidebarIsCollapsed, sidebarPeek, workspace, screen, clientScreen]);
+
+  useEffect(() => {
+    return () => clearSidebarPeekTimer();
   }, []);
 
   const persistWatchlist = (next) => {
@@ -627,8 +796,18 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
   };
 
   const go = (id, params = {}) => {
+    const currentCtx = ctx ?? {};
+    const nextCtx = params ?? {};
+    const sameContext =
+      Object.keys(currentCtx).length === Object.keys(nextCtx).length &&
+      Object.entries(nextCtx).every(([key, value]) =>
+        Object.is(currentCtx[key], value)
+      );
+
+    if (id === screen && sameContext) return;
+
     setScreen(id);
-    setCtx(params);
+    setCtx(nextCtx);
     remonterEnHaut();
   };
 
@@ -673,64 +852,6 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
           )
         : [nextItem, ...current];
     });
-
-    const adminKey = getGsmOperationalWriteKey();
-
-    if (!adminKey) {
-      setOperationalDbWriteMessage(
-        "Modification visible localement mais non enregistrée : activez l'écriture FastAPI."
-      );
-      return nextItem;
-    }
-
-    const payload = {
-      portfolio_id: clientId,
-      amount: nextItem.montant,
-      currency: nextItem.devise,
-      status: nextItem.statut,
-      requested_date: nextItem.dateDemande,
-      desired_date: nextItem.dateSouhaitee,
-      relationship_manager: nextItem.chargeeClientele,
-      observation: nextItem.observationChargeeClientele,
-      payment_method: nextItem.modePaiement,
-    };
-
-    try {
-      if (nextItem.id) {
-        await gsmOperationalRequest(`/api/withdrawals/${nextItem.id}`, {
-          method: 'PUT',
-          adminKey,
-          body: payload,
-        });
-      } else {
-        const result = await gsmOperationalRequest('/api/withdrawals', {
-          method: 'POST',
-          adminKey,
-          body: payload,
-        });
-
-        if (result?.id) {
-          nextItem.id = result.id;
-          setCessionRetraitEtats((current) =>
-            current.map((item) =>
-              item.clientId === clientId
-                ? { ...item, id: result.id }
-                : item
-            )
-          );
-        }
-      }
-
-      setOperationalDbWriteMessage(
-        'Modification enregistrée dans la base opérationnelle.'
-      );
-      await chargerBaseOperationnelle({ silent: true });
-    } catch (error) {
-      setOperationalDbWriteMessage(
-        `Échec de l'enregistrement : ${error instanceof Error ? error.message : String(error)}`
-      );
-      await chargerBaseOperationnelle({ silent: true });
-    }
 
     return nextItem;
   };
@@ -780,267 +901,398 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
     ? CLIENTS.find((c) => c.id === ctx.clientId)
     : null;
 
+  const sidebarGroups =
+    workspace === 'gestionnaire'
+      ? [
+          {
+            label: 'Pilotage',
+            ids: ['accueil', 'portefeuilles', 'money-management', 'cession-retrait'],
+          },
+          {
+            label: 'Opérations',
+            ids: ['carnet', 'avis'],
+          },
+          {
+            label: 'Marchés',
+            ids: ['vue-boursiere', 'marches', 'watchlist'],
+          },
+          {
+            label: 'Conseil & allocation',
+            ids: ['recos-actions', 'reco-alloc', 'alloc-criteres', 'alertes', 'reequilibrage'],
+          },
+          {
+            label: 'Analyse & gouvernance',
+            ids: ['analyse', 'comite', 'documentation'],
+          },
+        ]
+      : [
+          {
+            label: 'Patrimoine',
+            ids: ['client-dashboard', 'client-portfolios'],
+          },
+          {
+            label: 'Marchés',
+            ids: ['client-exchanges', 'client-markets', 'client-watchlist'],
+          },
+          {
+            label: 'Opérations',
+            ids: ['client-orders', 'client-avis', 'client-cashflows'],
+          },
+          {
+            label: 'Analyse',
+            ids: ['client-analysis', 'client-documentation'],
+          },
+        ];
+
+  const sidebarNavigation = workspace === 'gestionnaire' ? NAV : CLIENT_NAV;
+
   return (
     <NavigationContext.Provider value={{ go }}>
       <div
+        className="gsm-app-root"
+        data-theme={dark ? 'dark' : 'light'}
         style={{
           background: C.bg,
           minHeight: '100vh',
           overflowX: 'clip',
           ...F_BODY,
-          filter: dark ? 'invert(1) hue-rotate(180deg)' : 'none',
         }}
       >
         <style>{FONTS}</style>
-        <div className="flex">
+        <div className="gsm-layout flex">
           <aside
-            className="w-64 shrink-0 h-screen p-5 sticky top-0 overflow-y-auto"
+            className="gsm-sidebar shrink-0 h-screen sticky top-0 flex flex-col"
+            data-collapsed={sidebarIsCollapsed || undefined}
+            data-peek={sidebarPeek || undefined}
+            onMouseEnter={() => {
+              sidebarHoveredRef.current = true;
+              clearSidebarPeekTimer();
+              clearSidebarAutoCloseTimer();
+            }}
+            onMouseLeave={() => {
+              sidebarHoveredRef.current = false;
+              if (sidebarPeek) scheduleSidebarPeekClose();
+              else scheduleSidebarAutoClose();
+            }}
+            onFocusCapture={() => {
+              clearSidebarPeekTimer();
+              clearSidebarAutoCloseTimer();
+            }}
+            onBlurCapture={(event) => {
+              if (
+                sidebarPeek &&
+                !event.currentTarget.contains(event.relatedTarget) &&
+                !sidebarHoveredRef.current
+              ) {
+                scheduleSidebarPeekClose();
+              } else if (!event.currentTarget.contains(event.relatedTarget) && !sidebarHoveredRef.current) {
+                scheduleSidebarAutoClose();
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && sidebarPeek) {
+                event.stopPropagation();
+                closeSidebarPeek();
+              }
+            }}
             style={{
-              background: C.navy,
+              background: C.sidebarBackground,
               alignSelf: 'flex-start',
-              overscrollBehavior: 'contain',
-              scrollbarGutter: 'stable',
             }}
           >
-            <div className="flex items-center gap-2 mb-8">
-              <div
-                className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: C.gold }}
-              >
-                <Landmark size={18} color="#fff" />
-              </div>
-              <div>
+            <div className="gsm-sidebar__top">
+              <div className="gsm-sidebar__brand flex items-center gap-2.5">
                 <div
-                  className="text-white font-bold text-sm leading-tight"
-                  style={F_DISPLAY}
+                  className="gsm-sidebar__brand-main"
+                  role={sidebarIsCollapsed ? 'button' : undefined}
+                  tabIndex={sidebarIsCollapsed ? 0 : -1}
+                  aria-label={
+                    sidebarIsCollapsed ? 'Ouvrir la barre latérale' : undefined
+                  }
+                  title={
+                    sidebarIsCollapsed ? 'Ouvrir la barre latérale' : undefined
+                  }
+                  onClick={() => {
+                    if (compactSidebarViewport) {
+                      openSidebarPeek();
+                      return;
+                    }
+                    if (sidebarCollapsed) {
+                      sidebarScrollTopRef.current =
+                        sidebarNavRef.current?.scrollTop ?? sidebarScrollTopRef.current;
+                      closeSidebarPeek();
+                      setSidebarCollapsed(false);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      sidebarIsCollapsed &&
+                      (event.key === 'Enter' || event.key === ' ')
+                    ) {
+                      event.preventDefault();
+                      if (compactSidebarViewport) {
+                        openSidebarPeek();
+                        return;
+                      }
+                      sidebarScrollTopRef.current =
+                        sidebarNavRef.current?.scrollTop ?? sidebarScrollTopRef.current;
+                      setSidebarCollapsed(false);
+                    }
+                  }}
                 >
-                  AfriMarket
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ background: C.gold }}
+                  >
+                    <Landmark size={18} color={C.sidebarBackground} />
+                  </div>
+                  <div className="gsm-sidebar__brand-copy">
+                    <div
+                      className="text-white font-bold text-sm leading-tight"
+                      style={F_DISPLAY}
+                    >
+                      AfriMarket
+                    </div>
+                    <div
+                      className="text-[11px] tracking-widest uppercase"
+                      style={{ color: C.sidebarMuted }}
+                    >
+                      {workspace === 'gestionnaire'
+                        ? 'Management'
+                        : 'Gestion libre'}
+                    </div>
+                  </div>
                 </div>
-                <div
-                  className="text-[11px] tracking-widest uppercase"
-                  style={{ color: '#9AA5C4' }}
+
+                <button
+                  type="button"
+                  className="gsm-sidebar__collapse"
+                  onClick={() => {
+                    if (sidebarIsCollapsed && sidebarPeek) {
+                      closeSidebarPeek();
+                      return;
+                    }
+
+                    sidebarScrollTopRef.current =
+                      sidebarNavRef.current?.scrollTop ?? sidebarScrollTopRef.current;
+                    closeSidebarPeek();
+                    setSidebarCollapsed((value) => !value);
+                  }}
+                  aria-label={
+                    !sidebarIsCollapsed || sidebarPeek
+                      ? 'Réduire la barre latérale'
+                      : 'Ouvrir la barre latérale'
+                  }
+                  aria-expanded={!sidebarIsCollapsed || sidebarPeek}
+                  title={
+                    !sidebarIsCollapsed || sidebarPeek
+                      ? 'Réduire la barre latérale'
+                      : 'Ouvrir la barre latérale'
+                  }
                 >
-                  {workspace === 'gestionnaire'
-                    ? 'Management'
-                    : 'Gestion libre'}
-                </div>
+                  {!sidebarIsCollapsed || sidebarPeek ? (
+                    <PanelLeftClose size={16} strokeWidth={1.8} />
+                  ) : (
+                    <PanelLeftOpen size={16} strokeWidth={1.8} />
+                  )}
+                </button>
               </div>
-            </div>
 
             <button
               type="button"
-              onClick={switchWorkspace}
-              className="w-full mb-5 p-3 rounded-2xl text-left transition-transform active:scale-[0.98]"
+              onClick={(event) => {
+                switchWorkspace();
+                if (sidebarIsCollapsed) openSidebarPeek();
+                if (event.detail > 0) event.currentTarget.blur();
+              }}
+              className="gsm-sidebar__workspace"
+              aria-label={
+                workspace === 'gestionnaire'
+                  ? "Passer à l'espace Client"
+                  : "Revenir à l'espace Gestionnaire"
+              }
+              title={
+                workspace === 'gestionnaire'
+                  ? "Passer à l'espace Client"
+                  : "Revenir à l'espace Gestionnaire"
+              }
               style={{
                 background:
                   workspace === 'gestionnaire'
-                    ? 'rgba(201,150,47,0.16)'
-                    : 'rgba(30,156,119,0.18)',
+                    ? C.sidebarManagerBackground
+                    : C.sidebarClientBackground,
                 border: `1px solid ${
                   workspace === 'gestionnaire'
-                    ? 'rgba(201,150,47,0.42)'
-                    : 'rgba(30,156,119,0.45)'
+                    ? C.sidebarManagerBorder
+                    : C.sidebarClientBorder
                 }`,
               }}
             >
-              <div
-                className="text-[10px] uppercase tracking-widest font-semibold"
-                style={{ color: '#9AA5C4' }}
-              >
-                Espace actuel
-              </div>
-              <div className="flex items-center justify-between gap-2 mt-1">
-                <span                  className="text-sm font-bold"
-                  style={{
-                    color: workspace === 'gestionnaire' ? C.gold : '#7FE0C2',
-                    ...F_DISPLAY,
-                  }}
+              <span className="gsm-sidebar__workspace-icon" aria-hidden="true">
+                <ArrowLeftRight size={17} strokeWidth={1.8} />
+              </span>
+              <div className="gsm-sidebar__workspace-content">
+                <div
+                  className="text-[10px] uppercase tracking-widest font-semibold"
+                  style={{ color: C.sidebarMuted }}
+                >
+                  Espace actuel
+                </div>
+
+                <div className="gsm-sidebar__workspace-row">
+                  <span
+                    className="gsm-sidebar__workspace-name text-sm font-bold"
+                    style={{
+                      color:
+                        workspace === 'gestionnaire' ? C.gold : C.sidebarPositive,
+                      ...F_DISPLAY,
+                    }}
+                  >
+                    {workspace === 'gestionnaire'
+                      ? 'Gestionnaire'
+                      : 'Client · Gestion libre'}
+                  </span>
+
+                  <span
+                    className="gsm-sidebar__workspace-action text-[10px] font-semibold"
+                    style={{ color: C.sidebarTextSoft }}
+                  >
+                    Basculer ↔
+                  </span>
+                </div>
+
+                <div
+                  className="gsm-sidebar__workspace-hint text-[10px]"
+                  style={{ color: C.sidebarMuted }}
                 >
                   {workspace === 'gestionnaire'
-                    ? 'Gestionnaire'
-                    : 'Client · Gestion libre'}
-                </span>
-                <span
-                  className="text-[10px] font-semibold"
-                  style={{ color: '#C7CEE3' }}
-                >
-                  Basculer ↔
-                </span>
-              </div>
-              <div className="text-[10px] mt-1" style={{ color: '#9AA5C4' }}>
-                {workspace === 'gestionnaire'
-                  ? "Passer à l'espace Client"
-                  : "Revenir à l'espace Gestionnaire"}
+                    ? "Passer à l'espace Client"
+                    : "Revenir à l'espace Gestionnaire"}
+                </div>
               </div>
             </button>
+            </div>
 
-            <nav className="space-y-1">
-              {(workspace === 'gestionnaire' ? NAV : CLIENT_NAV).map((n) => {
-                const active =
-                  workspace === 'gestionnaire'
-                    ? screen === n.id ||
-                      (n.id === 'cession-retrait' &&
-                        screen === 'cession-interne') ||
-                      (n.id === 'portefeuilles' && screen === 'client') ||
-                      (n.id === 'vue-boursiere' &&
-                        ['profondeur', 'instrument-analysis'].includes(
-                          screen
-                        ) &&
-                        ctx.source === 'vue-boursiere') ||
-                      (n.id === 'marches' &&
-                        screen === 'profondeur' &&
-                        ctx.source !== 'vue-boursiere') ||
-                      (n.id === 'comite' && screen === 'decisions-comite')
-                    : clientScreen === n.id ||
-                      (n.id === 'client-exchanges' &&
-                        [
-                          'client-market-depth',
-                          'client-ticket',
-                          'client-instrument-analysis',
-                        ].includes(clientScreen) &&
-                        clientCtx.source === 'vue-boursiere') ||
-                      (n.id === 'client-markets' &&
-                        ['client-market-depth', 'client-ticket'].includes(
-                          clientScreen
-                        ) &&
-                        clientCtx.source !== 'vue-boursiere');
-                return (
-                  <button
-                    key={n.id}
-                    onClick={() =>
-                      workspace === 'gestionnaire' ? go(n.id) : goClient(n.id)
-                    }
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
-                    style={{
-                      background: active
-                        ? 'rgba(201,150,47,0.16)'
-                        : 'transparent',
-                      color: active ? C.gold : '#C7CEE3',
-                    }}
-                  >
-                    <n.icon size={16} />
-                    {n.label}
-                  </button>
-                );
-              })}
+            <nav
+              ref={sidebarNavRef}
+              className="gsm-sidebar__nav"
+              aria-label={
+                workspace === 'gestionnaire'
+                  ? 'Navigation Gestionnaire'
+                  : 'Navigation Client'
+              }
+            >
+              {sidebarGroups.map((group) => (
+                <div className="gsm-sidebar__group" key={group.label}>
+                  <div className="gsm-sidebar__group-label">{group.label}</div>
+                  <div className="gsm-sidebar__group-items">
+                    {group.ids
+                      .map((id) => sidebarNavigation.find((item) => item.id === id))
+                      .filter(Boolean)
+                      .map((n) => {
+                        const active =
+                          workspace === 'gestionnaire'
+                            ? screen === n.id ||
+                              (n.id === 'cession-retrait' &&
+                                screen === 'cession-interne') ||
+                              (n.id === 'portefeuilles' && screen === 'client') ||
+                              (n.id === 'vue-boursiere' &&
+                                ['profondeur', 'instrument-analysis'].includes(
+                                  screen
+                                ) &&
+                                ctx.source === 'vue-boursiere') ||
+                              (n.id === 'marches' &&
+                                screen === 'profondeur' &&
+                                ctx.source !== 'vue-boursiere') ||
+                              (n.id === 'comite' &&
+                                screen === 'decisions-comite')
+                            : clientScreen === n.id ||
+                              (n.id === 'client-exchanges' &&
+                                [
+                                  'client-market-depth',
+                                  'client-ticket',
+                                  'client-instrument-analysis',
+                                ].includes(clientScreen) &&
+                                clientCtx.source === 'vue-boursiere') ||
+                              (n.id === 'client-markets' &&
+                                ['client-market-depth', 'client-ticket'].includes(
+                                  clientScreen
+                                ) &&
+                                clientCtx.source !== 'vue-boursiere');
+
+                        return (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={(event) => {
+                              if (workspace === 'gestionnaire') {
+                                go(n.id);
+                              } else {
+                                goClient(n.id);
+                              }
+
+                              if (sidebarIsCollapsed) openSidebarPeek();
+                              if (event.detail > 0) event.currentTarget.blur();
+                            }}
+                            className="gsm-sidebar__item"
+                            data-active={active || undefined}
+                            aria-current={active ? 'page' : undefined}
+                            title={n.label}
+                          >
+                            <span className="gsm-sidebar__item-icon">
+                              <n.icon size={17} strokeWidth={1.8} />
+                            </span>
+                            <span className="gsm-sidebar__item-label">
+                              {n.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              ))}
             </nav>
-            {workspace === 'gestionnaire' && (
-              <div
-                className="mt-6 p-3 rounded-2xl"
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.10)',
-                }}
+
+            <span
+              className="gsm-sidebar__scroll-indicator"
+              data-visible={sidebarScrollActive || undefined}
+              data-scrollable={sidebarScrollIndicator.height > 0 || undefined}
+              aria-hidden="true"
+              style={{
+                height: `${sidebarScrollIndicator.height}px`,
+                transform: `translateY(${sidebarScrollIndicator.top}px)`,
+              }}
+            />
+
+            <span
+              className="gsm-sidebar__profile-separator"
+              aria-hidden="true"
+            />
+
+            <div className="gsm-sidebar__profile">
+              <button
+                type="button"
+                className="gsm-sidebar__profile-button"
+                aria-label="Profil utilisateur"
+                title="Profil utilisateur"
               >
-                <div
-                  className="text-[9px] uppercase tracking-widest font-semibold"
-                  style={{ color: '#9AA5C4' }}
-                >
-                  Base opérationnelle
-                </div>
-
-                <div className="flex items-center justify-between gap-2 mt-1">
-                  <span
-                    className="text-[11px] font-semibold"
-                    style={{
-                      color:
-                        operationalDbStatus === 'Connectée'
-                          ? '#7FE0C2'
-                          : operationalDbStatus === 'Mode local'
-                            ? '#F7D48A'
-                            : '#C7CEE3',
-                    }}
-                  >
-                    {operationalDbStatus}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void chargerBaseOperationnelle()}
-                    className="text-[10px] font-semibold"
-                    style={{ color: C.gold }}
-                    title="Recharger immédiatement les données métier"
-                  >
-                    ↻ Synchroniser
-                  </button>
-                </div>
-
-                <div className="text-[9px] mt-1" style={{ color: '#9AA5C4' }}>
-                  {operationalDbPortfolioCount > 0
-                    ? `${operationalDbPortfolioCount} portefeuille(s) · synchronisation auto 10 s`
-                    : 'Synchronisation automatique toutes les 10 s'}
-                </div>
-
-                {operationalDbUpdatedAt && (
-                  <div className="text-[9px] mt-1" style={{ color: '#9AA5C4' }}>
-                    MAJ{' '}
-                    {new Date(operationalDbUpdatedAt).toLocaleTimeString('fr-FR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={
-                    operationalDbWriteEnabled
-                      ? desactiverEcritureOperationnelle
-                      : () => void activerEcritureOperationnelle()
-                  }
-                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
-                  style={{
-                    background: operationalDbWriteEnabled
-                      ? 'rgba(30,156,119,0.20)'
-                      : 'rgba(255,255,255,0.08)',
-                    color: operationalDbWriteEnabled ? '#7FE0C2' : '#C7CEE3',
-                  }}
-                >
-                  {operationalDbWriteEnabled
-                    ? '✓ Écriture DB activée'
-                    : 'Activer écriture DB'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.open(
-                      gsmOperationalUrl('/admin'),
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
-                  }
-                  className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
-                  style={{
-                    background: 'rgba(201,150,47,0.16)',
-                    color: C.gold,
-                  }}
-                >
-                  <ExternalLink size={12} />
-                  Administrer les données
-                </button>
-
-                {operationalDbWriteMessage && (
-                  <div
-                    className="text-[9px] mt-2 leading-relaxed"
-                    style={{
-                      color:
-                        operationalDbWriteMessage.startsWith('Échec') ||
-                        operationalDbWriteMessage.startsWith('Écriture refusée')
-                          ? '#FFB4AC'
-                          : '#9AA5C4',
-                    }}
-                  >
-                    {operationalDbWriteMessage}
-                  </div>
-                )}
-              </div>
-            )}
+                <span className="gsm-sidebar__profile-avatar" aria-hidden="true">
+                  <UserRound size={17} strokeWidth={1.8} />
+                </span>
+                <span className="gsm-sidebar__profile-copy">
+                  <strong>Profil</strong>
+                  <small>
+                    {workspace === 'gestionnaire' ? 'Gestionnaire' : 'Client'}
+                  </small>
+                </span>
+              </button>
+            </div>
 
             <div
-              className="mt-8 pt-5 text-[11px]"
+              className="gsm-sidebar__meta"
               style={{
-                borderTop: '1px solid rgba(255,255,255,0.1)',
-                color: '#7C87A8',
+                borderTop: `1px solid ${C.sidebarCardBorder}`,
+                color: C.sidebarMeta,
               }}
             >
               {workspace === 'gestionnaire' ? (
@@ -1070,7 +1322,24 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
             </div>
           </aside>
 
-          <main className="flex-1 p-8 min-w-0 overflow-x-hidden">
+          <main
+            className="gsm-main relative flex-1 p-8 min-w-0 overflow-x-hidden"
+            onPointerDown={() => {
+              if (sidebarIsCollapsed && sidebarPeek) {
+                closeSidebarPeek();
+              } else if (!sidebarIsCollapsed) {
+                clearSidebarAutoCloseTimer();
+                setSidebarCollapsed(true);
+              }
+            }}
+          >
+            <div
+              className="gsm-theme-toggle-anchor absolute right-8 z-30"
+              style={{ top: workspace === 'client' ? '23.7px' : '32px' }}
+            >
+              <ThemeToggle dark={dark} onToggle={toggleParentTheme} />
+            </div>
+
             <ScreenErrorBoundary
               key={`${workspace}:${workspace === 'gestionnaire' ? screen : clientScreen}`}
               onReset={() =>
@@ -1087,8 +1356,6 @@ export function GsmAppShell({ documentation, onOpenDocumentation, onDownloadDocu
                     openClient={openClient}
                     devise={siteDevise}
                     onDeviseChange={setSiteDevise}
-                    dark={dark}
-                    onToggleDark={() => setDark(!dark)}
                     cessionRetraitEtats={cessionRetraitEtats}
                     dependencies={{
                       clients: CLIENTS,

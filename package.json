@@ -12,7 +12,9 @@
     "dev": "next dev -H 0.0.0.0 -p 5173",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 5173",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "design-tokens:check": "node scripts/check-finform-theme-contract.mjs",
+    "tables:check": "node scripts/check-table-contract.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.8.0",

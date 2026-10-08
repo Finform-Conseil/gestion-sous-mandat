@@ -136,7 +136,7 @@ export function CurrencyExposureModal({
               className="px-4 py-2 rounded-xl border text-right"
               style={{
                 borderColor: C.line,
-                background: '#FAFAFC',
+                background: C.surfaceElevated,
               }}
             >
               <div
@@ -160,7 +160,7 @@ export function CurrencyExposureModal({
               style={{
                 borderColor: C.line,
                 color: C.sub,
-                background: '#fff',
+                background: C.surfaceCard,
               }}
               aria-label="Fermer l'exposition par devise"
             >
@@ -177,7 +177,7 @@ export function CurrencyExposureModal({
             className="grid grid-cols-5 gap-3 mt-5 p-4 rounded-2xl border"
             style={{
               borderColor: C.line,
-              background: '#FAFAFC',
+              background: C.surfaceElevated,
             }}
           >
             <div>
@@ -195,7 +195,7 @@ export function CurrencyExposureModal({
                 className="w-full px-3 py-2 rounded-xl border text-sm font-semibold"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                   ...F_BODY,
                 }}
@@ -241,7 +241,7 @@ export function CurrencyExposureModal({
                 className="w-full px-3 py-2 rounded-xl border text-sm"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                   ...F_MONO,
                 }}
@@ -263,7 +263,7 @@ export function CurrencyExposureModal({
                 className="w-full px-3 py-2 rounded-xl border text-sm"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                   ...F_BODY,
                 }}
@@ -292,7 +292,7 @@ export function CurrencyExposureModal({
                 className="w-full px-3 py-2 rounded-xl border text-sm"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                   ...F_BODY,
                 }}
@@ -321,7 +321,7 @@ export function CurrencyExposureModal({
                 className="w-full px-3 py-2 rounded-xl border text-sm"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                   ...F_BODY,
                 }}
@@ -457,7 +457,7 @@ export function CurrencyExposureModal({
                         <div
                           className="rounded-xl border p-3 text-xs shadow-sm"
                           style={{
-                            background: '#fff',
+                            background: C.surfaceCard,
                             borderColor: C.line,
                             minWidth: 280,
                             ...F_BODY,
@@ -517,7 +517,7 @@ export function CurrencyExposureModal({
                 className="h-72 rounded-2xl border flex items-center justify-center text-sm"
                 style={{
                   borderColor: C.line,
-                  background: '#FAFAFC',
+                  background: C.surfaceElevated,
                   color: C.sub,
                 }}
               >
@@ -539,7 +539,7 @@ export function CurrencyExposureModal({
                     className="w-2.5 h-2.5 rounded-full border-2"
                     style={{
                       borderColor: eventColor(type),
-                      background: '#fff',
+                      background: C.surfaceCard,
                     }}
                   />
                   {type}

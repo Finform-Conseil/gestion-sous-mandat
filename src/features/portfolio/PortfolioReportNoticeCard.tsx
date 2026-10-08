@@ -28,7 +28,7 @@ export function PortfolioReportNoticeCard({
   );
 
   return (
-    <Card className="p-4" style={{ borderColor: C.gold }}>
+    <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
       <Eyebrow>
         Rapport d'analyse — {client.nom} · {period}
       </Eyebrow>
@@ -64,20 +64,21 @@ export function PortfolioReportNoticeCard({
       </div>
 
       <div
-        className="text-xs mt-3 p-3 rounded-xl"
-        style={{ background: '#FBF7EE', color: C.ink }}
+        className="text-xs mt-3 pt-3"
+        style={{
+          borderTop: `1px solid ${C.borderSubtle}`,
+          color: C.sub,
+        }}
       >
-        Commentaire de Gestion: la performance de la période reflète
+        <b style={{ color: C.ink }}>Commentaire de Gestion :</b> la performance de la période reflète
         principalement le renforcement de la ligne Télécoms et
         l'encaissement d'un coupon obligataire ; l'écart d'allocation
         Actions reste au-dessus de la cible et justifie un arbitrage.
       </div>
 
-      <div
-        className="text-xs mt-2 p-3 rounded-xl"
-        style={{ background: '#EFF3FB', color: C.ink }}
-      >
-        <b>Commentaire (rentabilité) :</b> {profitabilityComment}
+      <div className="text-xs mt-2" style={{ color: C.sub }}>
+        <b style={{ color: C.ink }}>Commentaire (rentabilité) :</b>{' '}
+        {profitabilityComment}
       </div>
     </Card>
   );

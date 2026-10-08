@@ -183,7 +183,7 @@ export function createClientCashflowsScreen(dependencies) {
                 </label>
                 <div
                   className="flex items-center rounded-xl border overflow-hidden"
-                  style={{ borderColor: C.line, background: '#fff' }}
+                  style={{ borderColor: C.line, background: C.surfaceCard }}
                 >
                   <input name="gsm-clientcashflows-188" aria-label="Aucun minimum"
                     type="number"
@@ -200,7 +200,7 @@ export function createClientCashflowsScreen(dependencies) {
                     style={{
                       color: C.sub,
                       borderColor: C.line,
-                      background: '#FAFAFC',
+                      background: C.surfaceElevated,
                       ...F_MONO,
                     }}
                   >
@@ -314,7 +314,7 @@ export function createClientCashflowsScreen(dependencies) {
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <div
               className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-              style={{ borderColor: C.line, background: '#fff' }}
+              style={{ borderColor: C.line, background: C.surfaceCard }}
             >
               <label
                 htmlFor="client-liquidity-situation-date"
@@ -359,7 +359,7 @@ export function createClientCashflowsScreen(dependencies) {
               className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
               style={{
                 borderColor: C.line,
-                background: '#fff',
+                background: C.surfaceCard,
                 color: C.navy,
                 opacity: payloadExportAnatomieClient ? 1 : 0.45,
                 cursor: payloadExportAnatomieClient ? 'pointer' : 'not-allowed',
@@ -375,7 +375,7 @@ export function createClientCashflowsScreen(dependencies) {
               className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
               style={{
                 borderColor: C.line,
-                background: '#E4F5EF',
+                background: C.positiveBackground,
                 color: C.teal,
                 opacity: payloadExportAnatomieClient ? 1 : 0.45,
                 cursor: payloadExportAnatomieClient ? 'pointer' : 'not-allowed',
@@ -392,7 +392,7 @@ export function createClientCashflowsScreen(dependencies) {
 
         <div className="grid grid-cols-12 gap-4 items-start">
           <Card className="col-span-4 p-4">
-            <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="gsm-responsive-header flex items-center justify-between gap-2 mb-3">
               <div>
                 <div
                   className="text-sm font-bold"
@@ -431,10 +431,10 @@ export function createClientCashflowsScreen(dependencies) {
                     className="w-full p-3 rounded-xl border text-left transition-colors"
                     style={{
                       borderColor: actif ? C.navy : C.line,
-                      background: actif ? '#EFF3FB' : '#fff',
+                      background: actif ? C.infoBackground : C.surfaceCard,
                     }}
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="gsm-responsive-inline-row flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div
                           className="text-xs font-bold truncate"
@@ -555,9 +555,8 @@ export function createClientCashflowsScreen(dependencies) {
                       onClick={() => setVueLiquiditeDetail(id)}
                       className="px-3 py-1.5 rounded-full text-xs font-semibold"
                       style={{
-                        background:
-                          vueLiquiditeDetail === id ? C.navy : '#F0F1F5',
-                        color: vueLiquiditeDetail === id ? '#fff' : C.sub,
+                        background: vueLiquiditeDetail === id ? C.activeBackground : C.surfaceInset,
+                        color: vueLiquiditeDetail === id ? C.textPrimary : C.sub,
                       }}
                     >
                       {label}
@@ -570,7 +569,7 @@ export function createClientCashflowsScreen(dependencies) {
                     <div className="col-span-2">
                       <div
                         className="p-3 rounded-xl border mb-3"
-                        style={{ borderColor: C.line, background: '#FAFAFC' }}
+                        style={{ borderColor: C.line, background: C.surfaceElevated }}
                       >
                         <div className="text-[10px]" style={{ color: C.sub }}>
                           Dernier dépôt estimé
@@ -638,8 +637,8 @@ export function createClientCashflowsScreen(dependencies) {
                       <div
                         className="p-3 rounded-xl border"
                         style={{
-                          borderColor: '#F3C4BF',
-                          background: '#FFF7F6',
+                          borderColor: C.negativeBorder,
+                          background: C.negativeBackground,
                         }}
                       >
                         <div className="text-[10px]" style={{ color: C.sub }}>
@@ -656,8 +655,8 @@ export function createClientCashflowsScreen(dependencies) {
                       <div
                         className="p-3 rounded-xl border"
                         style={{
-                          borderColor: '#E6D4AC',
-                          background: '#FFFBF2',
+                          borderColor: C.warningBorder,
+                          background: C.warningBackground,
                         }}
                       >
                         <div className="text-[10px]" style={{ color: C.sub }}>
@@ -678,8 +677,8 @@ export function createClientCashflowsScreen(dependencies) {
                       <div
                         className="p-3 rounded-xl border"
                         style={{
-                          borderColor: '#B9E2D5',
-                          background: '#F5FCF9',
+                          borderColor: C.positiveBorder,
+                          background: C.positiveBackground,
                         }}
                       >
                         <div className="text-[10px]" style={{ color: C.sub }}>
@@ -761,7 +760,7 @@ export function createClientCashflowsScreen(dependencies) {
                             </div>
                             <div
                               className="h-1.5 rounded-full mt-2"
-                              style={{ background: '#EEF0F4' }}
+                              style={{ background: C.surfaceInset }}
                             >
                               <div
                                 className="h-1.5 rounded-full"
@@ -777,7 +776,7 @@ export function createClientCashflowsScreen(dependencies) {
                     </div>
                     <div
                       className="text-[10px] mt-3 p-3 rounded-xl"
-                      style={{ background: '#EFF3FB', color: C.sub }}
+                      style={{ background: C.infoBackground, color: C.sub }}
                     >
                       Les réservations liées aux ordres d’achat ouverts sont
                       calculées à partir de vos ordres. Les autres
@@ -791,7 +790,7 @@ export function createClientCashflowsScreen(dependencies) {
                   <div className="mt-4 space-y-4">
                     <div
                       className="p-3 rounded-xl"
-                      style={{ background: '#FBF7EE' }}
+                      style={{ background: C.warningBackground }}
                     >
                       <div
                         className="text-xs font-semibold"
@@ -960,9 +959,9 @@ export function createClientCashflowsScreen(dependencies) {
           </div>
           <Badge tone="gold">{lignesFiltrees.length} compte(s)</Badge>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1250 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1250 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>SGI</Th>
                 <Th>Pays / marché</Th>
@@ -1039,9 +1038,9 @@ export function createClientCashflowsScreen(dependencies) {
             {fmt(Math.round(totalRevenus))} {devise}
           </Badge>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1050 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1050 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Date</Th>
                 <Th>SGI</Th>
@@ -1102,7 +1101,7 @@ export function createClientCashflowsScreen(dependencies) {
         </div>
       </Card>
 
-      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
         <div className="text-xs font-semibold" style={{ color: C.ink }}>
           Lecture du prévisionnel à 30 jours
         </div>

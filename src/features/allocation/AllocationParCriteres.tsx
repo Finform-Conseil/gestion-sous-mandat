@@ -146,7 +146,7 @@ export function AllocationParCriteresScreen({
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Client</Th><Th>Marché</Th><Th>Type</Th><Th>Liquidité pour investir</Th><Th>Écart actuel {type}</Th>
               {instrument !== 'Aucun' && <Th>Exposition {instrument}</Th>}<Th>Écart après ordre</Th>
@@ -156,7 +156,7 @@ export function AllocationParCriteresScreen({
             {results.length === 0 && <tr><td colSpan={instrument !== 'Aucun' ? 7 : 6} className="text-center py-6 text-sm" style={{ color: C.sub }}>Aucun portefeuille ne correspond à ces critères.</td></tr>}
             {results.map((client, index) => {
               const projected = projection(client);
-              return <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+              return <tr key={client.id} style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? C.rowAlternate : C.surfaceCard }}>
                 <Td className="font-semibold">{client.nom}</Td><Td><Badge tone="navy">{client.marche}</Badge></Td>
                 <Td><Badge tone="slate">{profileTypeLabel[client.type] || client.type}</Badge></Td>
                 <Td mono className="whitespace-nowrap">{fmt(Math.round(liquiditePourInvestir(client)))} {client.devise}</Td>

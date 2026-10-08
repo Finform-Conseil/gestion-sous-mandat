@@ -25,9 +25,10 @@ export function Card({
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-2xl border ${className}`}
+      className={`gsm-card rounded-2xl border ${className}`}
       style={{
-        borderColor: C.line,
+        background: C.surfaceCard,
+        borderColor: C.borderSubtle,
         cursor: onClick ? 'pointer' : 'default',
         ...style,
       }}
@@ -72,18 +73,33 @@ export function Badge({
   tone?: BadgeTone;
 }) {
   const tones: Record<BadgeTone, { bg: string; fg: string }> = {
-    slate: { bg: '#EEF0F4', fg: C.sub },
-    gold: { bg: '#FBF1DD', fg: '#8A6A16' },
-    teal: { bg: '#E4F5EF', fg: C.teal },
-    coral: { bg: '#FBE9E7', fg: C.coral },
-    navy: { bg: '#E9ECF5', fg: C.navy },
+    slate: {
+      bg: 'color-mix(in srgb, var(--text-secondary) 14%, transparent)',
+      fg: C.sub,
+    },
+    gold: {
+      bg: 'color-mix(in srgb, var(--accent-gold) 16%, transparent)',
+      fg: C.gold,
+    },
+    teal: {
+      bg: 'color-mix(in srgb, var(--positive-color) 16%, transparent)',
+      fg: C.teal,
+    },
+    coral: {
+      bg: 'color-mix(in srgb, var(--negative-color) 16%, transparent)',
+      fg: C.coral,
+    },
+    navy: {
+      bg: 'color-mix(in srgb, var(--primary-color) 14%, transparent)',
+      fg: C.indigo,
+    },
   };
 
   const selectedTone = tones[tone];
 
   return (
     <span
-      className="px-2 py-0.5 rounded-full text-[11px] font-semibold"
+      className="gsm-badge inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-[11px] font-semibold"
       style={{
         background: selectedTone.bg,
         color: selectedTone.fg,
@@ -95,10 +111,16 @@ export function Badge({
   );
 }
 
-export function Th({ children }: { children: ReactNode }) {
+export function Th({
+  children,
+  className = '',
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <th
-      className="text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
+      className={`gsm-table__head text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3 ${className}`}
       style={{ color: C.sub, ...F_BODY }}
     >
       {children}
@@ -117,7 +139,7 @@ export function Td({
 }) {
   return (
     <td
-      className={`py-2.5 px-3 text-sm ${className}`}
+      className={`gsm-table__cell py-2.5 px-3 text-sm ${mono ? 'gsm-table__cell--numeric' : ''} ${className}`}
       style={{ color: C.ink, ...(mono ? F_MONO : F_BODY) }}
     >
       {children}
@@ -137,9 +159,9 @@ export function Btn({
   tone?: ButtonTone;
 }) {
   const tones: Record<ButtonTone, { bg: string; fg: string }> = {
-    navy: { bg: C.navy, fg: '#fff' },
-    gold: { bg: C.gold, fg: '#fff' },
-    ghost: { bg: '#fff', fg: C.navy },
+    navy: { bg: C.surfaceElevated, fg: C.textPrimary },
+    gold: { bg: C.gold, fg: C.sidebarBackground },
+    ghost: { bg: C.surfaceCard, fg: C.textPrimary },
   };
 
   const selectedTone = tones[tone];
@@ -152,7 +174,7 @@ export function Btn({
       style={{
         background: selectedTone.bg,
         color: selectedTone.fg,
-        border: tone === 'ghost' ? `1px solid ${C.line}` : 'none',
+        border: tone === 'ghost' ? `1px solid ${C.borderSubtle}` : 'none',
         ...F_BODY,
       }}
     >

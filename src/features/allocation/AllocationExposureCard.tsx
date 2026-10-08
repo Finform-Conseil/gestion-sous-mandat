@@ -48,7 +48,7 @@ export function AllocationExposureCard({
 
   return (
     <Card className="p-5">
-      <div className="flex items-center justify-between mb-3">
+      <div className="gsm-responsive-header flex items-center justify-between mb-3">
         <Eyebrow>Répartition de l'encours</Eyebrow>
         <div className="flex gap-1.5 flex-wrap justify-end">
           {dimensions.map((dimension) => (
@@ -60,11 +60,11 @@ export function AllocationExposureCard({
               style={{
                 background:
                   activeDimension === dimension
-                    ? C.navy
-                    : '#F0F1F5',
+                    ? C.activeBackground
+                    : C.surfaceInset,
                 color:
                   activeDimension === dimension
-                    ? '#fff'
+                    ? C.textPrimary
                     : C.sub,
                 ...F_BODY,
               }}
@@ -111,7 +111,7 @@ export function AllocationExposureCard({
                     className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium text-left transition-transform active:scale-[0.98]"
                     style={{
                       borderColor: C.line,
-                      background: '#fff',
+                      background: C.surfaceCard,
                       cursor: 'pointer',
                       ...F_BODY,
                     }}
@@ -145,7 +145,7 @@ export function AllocationExposureCard({
             </>
           ) : (
             <div>
-              <div className="flex items-center justify-between gap-3 mb-2">
+              <div className="gsm-responsive-header flex items-center justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge tone="gold">
                     {selection.dimension} : {selection.value}
@@ -225,7 +225,7 @@ export function AllocationExposureCard({
               <div className="max-h-56 overflow-y-auto pr-1">
                 {selection.dimension === 'Profil de risque' ? (
                   <table className="w-full">
-                    <thead style={{ background: '#FAFAFC' }}>
+                    <thead style={{ background: C.surfaceElevated }}>
                       <tr>
                         <Th>Client</Th>
                         <Th>Exposition Actions</Th>
@@ -271,7 +271,7 @@ export function AllocationExposureCard({
                   </table>
                 ) : (
                   <table className="w-full">
-                    <thead style={{ background: '#FAFAFC' }}>
+                    <thead style={{ background: C.surfaceElevated }}>
                       <tr>
                         <Th>Client</Th>
                         <Th>Exposition</Th>

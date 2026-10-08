@@ -76,11 +76,11 @@ export function DocumentationScreen({
 
         <div className="space-y-3">
           {documents.map((document) => (
-            <div key={document.id} className="p-4 rounded-2xl border flex items-start justify-between gap-5 flex-wrap"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}>
-              <div className="flex items-start gap-3 min-w-0 flex-1">
+            <div key={document.id} className="gsm-responsive-header gsm-document-card p-4 rounded-2xl border flex items-start justify-between gap-5 flex-wrap"
+              style={{ borderColor: C.line, background: C.surfaceElevated }}>
+              <div className="gsm-document-card__content flex items-start gap-3 min-w-0 flex-1">
                 <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
-                  style={{ background: '#EEF1FF', color: C.indigo }}>
+                  style={{ background: C.infoBackground, color: C.indigo }}>
                   <BookOpen size={20} />
                 </div>
 
@@ -100,16 +100,16 @@ export function DocumentationScreen({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="gsm-responsive-actions gsm-document-card__actions flex items-center gap-2 shrink-0">
                 <button type="button" onClick={() => onOpenDocument(document)}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold"
-                  style={{ borderColor: C.line, color: C.indigo, background: '#fff', cursor: 'pointer' }}>
+                  style={{ borderColor: C.line, color: C.indigo, background: C.surfaceCard, cursor: 'pointer' }}>
                   <ExternalLink size={14} />
                   Ouvrir le PDF
                 </button>
                 <button type="button" onClick={() => onDownloadDocument(document)}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold"
-                  style={{ background: C.navy, color: '#fff', cursor: 'pointer' }}>
+                  style={{ background: C.surfaceElevated, color: C.textPrimary, cursor: 'pointer' }}>
                   <Download size={14} />
                   Télécharger
                 </button>
@@ -129,7 +129,7 @@ export function DocumentationScreen({
           l'interface : les boutons Ouvrir le PDF et Télécharger fonctionnent
           sans fichier externe. Les autres documents techniques conservent leur
           chemin dans
-          <code className="mx-1 px-2 py-1 rounded-lg" style={{ background: '#F0F1F5', color: C.navy, ...F_MONO }}>
+          <code className="mx-1 px-2 py-1 rounded-lg" style={{ background: C.surfaceInset, color: C.navy, ...F_MONO }}>
             public/documentation/
           </code>
           et pourront ensuite être servis par la table documents et une API sécurisée.

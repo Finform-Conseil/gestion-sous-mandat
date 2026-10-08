@@ -964,8 +964,8 @@ function PortfolioStateCompactTh({
         letterSpacing: '0.025em',
         padding: '7px 5px',
         textAlign: align,
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
+        whiteSpace: 'nowrap',
+        overflowWrap: 'normal',
       }}
     >
       {children}
@@ -989,8 +989,8 @@ function PortfolioStateCompactTd({
         lineHeight: 1.2,
         padding: '6px 5px',
         textAlign: align,
-        whiteSpace: 'normal',
-        overflowWrap: 'anywhere',
+        whiteSpace: mono ? 'nowrap' : 'normal',
+        overflowWrap: mono ? 'normal' : 'break-word',
       }}
     >
       {children}
@@ -1215,7 +1215,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
 
         <div
           className="flex items-center gap-1 p-1 rounded-xl"
-          style={{ background: '#EEF0F4' }}
+          style={{ background: C.navySoft }}
         >
           {[
             {
@@ -1235,7 +1235,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
               style={{
                 background:
                   vuePortefeuillesMode === tab.id
-                    ? '#FFFFFF'
+                    ? C.card
                     : 'transparent',
                 color:
                   vuePortefeuillesMode === tab.id
@@ -1284,7 +1284,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 <thead
                   className="sticky top-0"
                   style={{
-                    background: '#FAFAFC',
+                    background: C.navySoft,
                     zIndex: 2,
                     boxShadow: `0 1px 0 ${C.line}`,
                   }}
@@ -1322,7 +1322,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                         style={{
                           borderTop: `1px solid ${C.line}`,
                           background:
-                            idx % 2 ? '#FCFCFD' : '#fff',
+                            idx % 2 ? C.navySoft : C.card,
                         }}
                       >
                         <Td>
@@ -1415,7 +1415,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
 
           <div
             className="grid grid-cols-4 gap-3 mt-4 p-3 rounded-xl"
-            style={{ background: '#FAFAFC' }}
+            style={{ background: C.surfaceElevated }}
           >
             <label className="text-[10px] font-semibold">
               <span
@@ -1434,7 +1434,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 className="w-full px-3 py-2 rounded-xl border text-xs"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                 }}
               >
@@ -1464,7 +1464,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 className="w-full px-3 py-2 rounded-xl border text-xs"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                 }}
               />
@@ -1487,7 +1487,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 className="w-full px-3 py-2 rounded-xl border text-xs"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   color: C.ink,
                 }}
               >
@@ -1512,7 +1512,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 className="w-full px-3 py-2 rounded-xl border text-xs font-bold"
                 style={{
                   borderColor: C.line,
-                  background: '#F1F3F7',
+                  background: C.surfaceInset,
                   color: C.navy,
                   ...F_MONO,
                 }}
@@ -1525,7 +1525,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
           <div className="flex items-center justify-between gap-4 mt-3 flex-wrap">
             <div
               className="flex items-center gap-1 p-1 rounded-xl"
-              style={{ background: '#EEF0F4' }}
+              style={{ background: C.surfaceInset }}
             >
               {[
                 {
@@ -1551,7 +1551,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                   style={{
                     background:
                       evolutionDisplayMode === mode.id
-                        ? '#FFFFFF'
+                        ? C.surfaceCard
                         : 'transparent',
                     color:
                       evolutionDisplayMode === mode.id
@@ -1658,10 +1658,10 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 borderColor: C.line,
                 background:
                   Math.abs(evolutionFxImpact) < 0.05
-                    ? '#F7F8FA'
+                    ? C.surfaceElevated
                     : evolutionFxImpact > 0
-                    ? '#F1FAF6'
-                    : '#FFF8F7',
+                    ? C.positiveBackground
+                    : C.negativeBackground,
               }}
             >
               <div
@@ -1910,8 +1910,8 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                             ? C.indigo
                             : C.line,
                           background: active
-                            ? '#F4F6FF'
-                            : '#FFFFFF',
+                            ? C.infoBackground
+                            : C.surfaceCard,
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
@@ -1934,7 +1934,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                         </div>
                         <div
                           className="h-1.5 rounded-full mt-2 overflow-hidden"
-                          style={{ background: '#ECEEF3' }}
+                          style={{ background: C.surfaceInset }}
                         >
                           <div
                             className="h-full rounded-full"
@@ -1961,7 +1961,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
               <div
                 className="mt-4 p-3 rounded-xl text-[9px]"
                 style={{
-                  background: '#FBF7EE',
+                  background: C.warningBackground,
                   color: C.sub,
                 }}
               >
@@ -1985,7 +1985,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
           >
             <div
               className="p-4 flex items-start justify-between gap-4 flex-wrap"
-              style={{ background: '#F7F8FA' }}
+              style={{ background: C.surfaceElevated }}
             >
               <div>
                 <Eyebrow>
@@ -2028,7 +2028,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
               style={{
                 borderTop: `1px solid ${C.line}`,
                 borderBottom: `1px solid ${C.line}`,
-                background: '#FFFFFF',
+                background: C.surfaceCard,
               }}
             >
               <div className="flex items-center gap-2 flex-wrap">
@@ -2056,8 +2056,8 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                     background:
                       portfolioStateCurrencyFilter ===
                       'Toutes'
-                        ? '#F4F6FF'
-                        : '#fff',
+                        ? C.infoBackground
+                        : C.surfaceCard,
                     color:
                       portfolioStateCurrencyFilter ===
                       'Toutes'
@@ -2088,8 +2088,8 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                         background:
                           portfolioStateCurrencyFilter ===
                           currency
-                            ? '#F4F6FF'
-                            : '#fff',
+                            ? C.infoBackground
+                            : C.surfaceCard,
                         color:
                           portfolioStateCurrencyFilter ===
                           currency
@@ -2179,7 +2179,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
               </div>
             ) : (
               <div
-                className="overflow-y-auto overflow-x-hidden"
+                className="gsm-table-scroll overflow-y-auto"
                 style={{
                   maxHeight: 440,
                   scrollbarGutter: 'stable',
@@ -2187,30 +2187,31 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                 }}
               >
                 <table
-                  className="w-full"
+                  className="w-full gsm-table--banking"
                   style={{
                     width: '100%',
+                    minWidth: 1180,
                     tableLayout: 'fixed',
                     borderCollapse: 'collapse',
                   }}
                 >
                   <colgroup>
-                    <col style={{ width: '9%' }} />
-                    <col style={{ width: '17%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '11%' }} />
-                    <col style={{ width: '9%' }} />
-                    <col style={{ width: '9%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '10%' }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 190 }} />
+                    <col style={{ width: 105 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 130 }} />
+                    <col style={{ width: 130 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 120 }} />
+                    <col style={{ width: 110 }} />
+                    <col style={{ width: 125 }} />
                   </colgroup>
 
                   <thead
                     className="sticky top-0"
                     style={{
-                      background: '#FAFAFC',
+                      background: C.surfaceElevated,
                       zIndex: 3,
                       boxShadow: `0 1px 0 ${C.line}`,
                     }}
@@ -2282,8 +2283,8 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                               borderTop: `1px solid ${C.line}`,
                               background:
                                 index % 2
-                                  ? '#FCFCFD'
-                                  : '#fff',
+                                  ? C.rowAlternate
+                                  : C.surfaceCard,
                             }}
                           >
                             <PortfolioStateCompactTd>
@@ -2296,8 +2297,8 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                                     lineHeight: 1.1,
                                     background:
                                       row.quotation === 'Coté'
-                                        ? '#E9ECF5'
-                                        : '#E4F5EF',
+                                        ? C.infoBackground
+                                        : C.positiveBackground,
                                     color:
                                       row.quotation === 'Coté'
                                         ? C.navy
@@ -2543,7 +2544,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
             <div
               className="px-4 py-3 text-[9px]"
               style={{
-                background: '#FBF7EE',
+                background: C.warningBackground,
                 color: C.sub,
                 borderTop: `1px solid ${C.line}`,
               }}
@@ -2563,7 +2564,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
           <div
             className="mt-3 p-3 rounded-xl text-[9px]"
             style={{
-              background: '#F7F8FA',
+              background: C.surfaceElevated,
               color: C.sub,
             }}
           >
@@ -2588,7 +2589,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
           >
             <div
               className="p-4 flex items-start justify-between gap-4 flex-wrap"
-              style={{ background: '#F1FAF6' }}
+              style={{ background: C.positiveBackground }}
             >
               <div>
                 <Eyebrow>
@@ -2641,12 +2642,12 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                   style={{
                     borderTop: `1px solid ${C.line}`,
                     borderBottom: `1px solid ${C.line}`,
-                    background: '#fff',
+                    background: C.surfaceCard,
                   }}
                 >
                   <div
                     className="p-3 rounded-xl"
-                    style={{ background: '#EAF8F3' }}
+                    style={{ background: C.positiveBackground }}
                   >
                     <div
                       className="text-[9px] uppercase font-semibold"
@@ -2674,7 +2675,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
 
                   <div
                     className="p-3 rounded-xl"
-                    style={{ background: '#FFF8E9' }}
+                    style={{ background: C.warningBackground }}
                   >
                     <div
                       className="text-[9px] uppercase font-semibold"
@@ -2702,7 +2703,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
 
                   <div
                     className="p-3 rounded-xl"
-                    style={{ background: '#F4F6FF' }}
+                    style={{ background: C.infoBackground }}
                   >
                     <div
                       className="text-[9px] uppercase font-semibold"
@@ -2758,13 +2759,13 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                             className="rounded-xl border overflow-hidden"
                             style={{
                               borderColor: C.line,
-                              background: '#fff',
+                              background: C.surfaceCard,
                             }}
                           >
                             <div
                               className="px-3 py-2 flex items-center justify-between gap-2"
                               style={{
-                                background: '#FAFAFC',
+                                background: C.surfaceElevated,
                                 borderBottom: `1px solid ${C.line}`,
                               }}
                             >
@@ -2886,7 +2887,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
                               <div
                                 className="h-1.5 rounded-full overflow-hidden flex"
                                 style={{
-                                  background: '#ECEEF3',
+                                  background: C.surfaceInset,
                                 }}
                               >
                                 <div
@@ -2983,7 +2984,7 @@ function Portefeuilles({ go, openClient, initialFilter }) {
             <div
               className="px-4 py-3 text-[9px]"
               style={{
-                background: '#F7F8FA',
+                background: C.surfaceElevated,
                 color: C.sub,
                 borderTop: `1px solid ${C.line}`,
               }}

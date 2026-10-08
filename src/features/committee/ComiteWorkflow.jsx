@@ -142,7 +142,7 @@ function PortefeuillesConcernesDropdown({ portefeuilles = [] }) {
         className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl border text-left transition-colors"
         style={{
           borderColor: ouvert ? C.indigo : C.line,
-          background: ouvert ? '#F4F6FF' : '#fff',
+          background: ouvert ? C.infoBackground : C.surfaceCard,
           color: ouvert ? C.indigo : C.ink,
         }}
         aria-expanded={ouvert}
@@ -165,14 +165,14 @@ function PortefeuillesConcernesDropdown({ portefeuilles = [] }) {
           className="mt-2 rounded-xl border overflow-hidden"
           style={{
             borderColor: C.line,
-            background: '#fff',
+            background: C.surfaceCard,
             boxShadow: '0 8px 24px rgba(15, 27, 51, 0.08)',
           }}
         >
           <div
             className="px-3 py-2 flex items-center justify-between gap-3"
             style={{
-              background: '#FAFAFC',
+              background: C.surfaceElevated,
               borderBottom: `1px solid ${C.line}`,
             }}
           >
@@ -199,7 +199,7 @@ function PortefeuillesConcernesDropdown({ portefeuilles = [] }) {
                   style={{
                     borderTop:
                       index === 0 ? 'none' : `1px solid ${C.line}`,
-                    background: index % 2 ? '#FCFCFD' : '#fff',
+                    background: index % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <div
@@ -461,10 +461,10 @@ function PriseDecisions({ go }) {
             borderColor: message.tone === 'coral' ? C.coral : C.gold,
             background:
               message.tone === 'coral'
-                ? '#FBE9E7'
+                ? C.negativeBackground
                 : message.tone === 'teal'
-                ? '#E4F5EF'
-                : '#FBF1DD',
+                ? C.positiveBackground
+                : C.warningBackground,
           }}
         >
           <div
@@ -474,7 +474,7 @@ function PriseDecisions({ go }) {
                   ? C.coral
                   : message.tone === 'teal'
                   ? C.teal
-                  : '#8A6A16',
+                  : C.warningText,
             }}
           >
             {message.texte}
@@ -753,7 +753,7 @@ function PriseDecisions({ go }) {
           </div>
         </div>
 
-        <div className="mt-4 p-3 rounded-xl" style={{ background: '#EFF3FB' }}>
+        <div className="mt-4 p-3 rounded-xl" style={{ background: C.infoBackground }}>
           <div className="text-xs font-semibold" style={{ color: C.ink }}>
             Portefeuilles actuellement concernés
           </div>
@@ -776,7 +776,7 @@ function PriseDecisions({ go }) {
       <Card className="p-0 overflow-hidden">
         <div
           className="p-4 flex items-center justify-between gap-3"
-          style={{ background: '#FBF7EE' }}
+          style={{ background: C.warningBackground }}
         >
           <div>
             <Eyebrow>Tableau de préparation des décisions</Eyebrow>
@@ -789,15 +789,15 @@ function PriseDecisions({ go }) {
             type="button"
             onClick={enregistrerDecisions}
             className="px-4 py-2.5 rounded-xl text-sm font-semibold"
-            style={{ background: C.gold, color: '#fff', ...F_BODY }}
+            style={{ background: C.gold, color: C.surfaceCard, ...F_BODY }}
           >
             Enregistrer Décisions
           </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 2650 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 2650 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>#</Th>
                 <Th>Type d'instrument</Th>
@@ -834,7 +834,7 @@ function PriseDecisions({ go }) {
                   key={allocation.id}
                   style={{
                     borderTop: `1px solid ${C.line}`,
-                    background: index % 2 ? '#FCFCFD' : '#fff',
+                    background: index % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <Td mono>{index + 1}</Td>
@@ -886,7 +886,7 @@ function PriseDecisions({ go }) {
                       type="button"
                       onClick={() => supprimerAllocation(allocation.id)}
                       className="px-2.5 py-1.5 rounded-xl text-xs font-semibold"
-                      style={{ background: '#FBE9E7', color: C.coral }}
+                      style={{ background: C.negativeBackground, color: C.coral }}
                     >
                       Retirer
                     </button>
@@ -926,7 +926,7 @@ function PriseDecisions({ go }) {
         >
           <div
             className="p-4 flex items-center justify-between gap-4 flex-wrap"
-            style={{ background: '#FBF7EE' }}
+            style={{ background: C.warningBackground }}
           >
             <div>
               <div
@@ -955,16 +955,16 @@ function PriseDecisions({ go }) {
                 type="button"
                 onClick={() => supprimerDecision(decision.id)}
                 className="px-3 py-2 rounded-xl text-xs font-semibold"
-                style={{ background: '#FBE9E7', color: C.coral }}
+                style={{ background: C.negativeBackground, color: C.coral }}
               >
                 Supprimer
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full" style={{ minWidth: 2400 }}>
-              <thead style={{ background: '#FAFAFC' }}>
+          <div className="gsm-table-scroll">
+            <table className="w-full gsm-table--banking" style={{ minWidth: 2400 }}>
+              <thead style={{ background: C.surfaceElevated }}>
                 <tr>
                   <Th>Type d'instrument</Th>
                   <Th>Sens</Th>
@@ -987,7 +987,7 @@ function PriseDecisions({ go }) {
                     key={`${decision.id}-${allocation.id || index}`}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: index % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td className="whitespace-nowrap">
@@ -1076,14 +1076,14 @@ function Comite({ devise = 'XOF', go }) {
   return (
     <div className="space-y-6">
       <Breadcrumb items={['Accueil', 'Rapport de comité de gestion']} />
-      <div className="flex items-center justify-between">
+      <div className="gsm-committee-report-header flex items-center justify-between gap-3">
         <h2
           className="text-xl font-bold"
           style={{ ...F_DISPLAY, color: C.ink }}
         >
           Rapport de comité de gestion — Juillet 2026
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="gsm-committee-report-actions flex items-center gap-2">
           <Btn onClick={() => go('decisions-comite')}>Prise de décisions</Btn>
           <Btn tone="gold">Editer</Btn>
         </div>
@@ -1091,9 +1091,9 @@ function Comite({ devise = 'XOF', go }) {
 
       <Card
         className="p-0 overflow-hidden"
-        style={{ borderColor: C.gold, background: '#FBF7EE' }}
+        style={{ borderColor: C.gold, background: C.warningBackground }}
       >
-        <div className="p-4 flex items-center justify-between">
+        <div className="gsm-committee-kpi-row p-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <Briefcase size={16} color={C.navy} />
             <span
@@ -1104,14 +1104,14 @@ function Comite({ devise = 'XOF', go }) {
             </span>
           </div>
           <span
-            className="text-xl font-bold"
+            className="gsm-committee-kpi-value text-xl font-bold"
             style={{ ...F_DISPLAY, color: C.navy }}
           >
             {fmt(Math.round(totalRef))} {devise}
           </span>
         </div>
         <div
-          className="p-4 flex items-center justify-between"
+          className="gsm-committee-kpi-row p-4 flex items-center justify-between gap-4"
           style={{ borderTop: `1px solid ${C.gold}` }}
         >
           <div className="flex items-center gap-2">
@@ -1124,9 +1124,10 @@ function Comite({ devise = 'XOF', go }) {
               le mois
             </span>
           </div>
-          <span className="text-lg font-bold" style={F_DISPLAY}>
+          <span className="gsm-committee-kpi-value text-lg font-bold" style={F_DISPLAY}>
             {fmt(Math.round(previsionTresorerie30j))} {devise}
-          </span>        </div>
+          </span>
+        </div>
       </Card>
 
       <div className="grid grid-cols-2 gap-4">
@@ -1157,15 +1158,15 @@ function Comite({ devise = 'XOF', go }) {
         <Card className="p-5">
           <Eyebrow>Écarts sur les autres types d'actifs</Eyebrow>
           <div className="space-y-2 mt-2 text-sm" style={F_BODY}>
-            <div className="flex justify-between">
+            <div className="gsm-committee-delta-row flex justify-between gap-3">
               <span>Obl. souveraines</span>
               <Badge tone="teal">-1 pt vs cible (conforme)</Badge>
             </div>
-            <div className="flex justify-between">
+            <div className="gsm-committee-delta-row flex justify-between gap-3">
               <span>Obl. privées</span>
               <Badge tone="gold">+3 pts vs cible</Badge>
             </div>
-            <div className="flex justify-between">
+            <div className="gsm-committee-delta-row flex justify-between gap-3">
               <span>Liquidité</span>
               <Badge tone="teal">Conforme</Badge>
             </div>
@@ -1226,11 +1227,11 @@ function Comite({ devise = 'XOF', go }) {
         </div>
 
         <div
-          className="overflow-x-auto rounded-xl border"
+          className="gsm-table-scroll rounded-xl border"
           style={{ borderColor: C.line }}
         >
-          <table className="w-full" style={{ minWidth: 1740 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1740 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <th
                   rowSpan={2}
@@ -1263,14 +1264,14 @@ function Comite({ devise = 'XOF', go }) {
                 <th
                   colSpan={5}
                   className="text-center text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.navy, background: '#EFF3FB', ...F_BODY }}
+                  style={{ color: C.navy, background: C.infoBackground, ...F_BODY }}
                 >
                   Analyse technique
                 </th>
                 <th
                   colSpan={5}
                   className="text-center text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: '#8A6A16', background: '#FBF7EE', ...F_BODY }}
+                  style={{ color: C.warningText, background: C.warningBackground, ...F_BODY }}
                 >
                   Analyse fondamentale
                 </th>
@@ -1306,7 +1307,7 @@ function Comite({ devise = 'XOF', go }) {
                   key={r.titre}
                   style={{
                     borderTop: `1px solid ${C.line}`,
-                    background: i % 2 ? '#FCFCFD' : '#fff',
+                    background: i % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <Td className="font-semibold whitespace-nowrap">{r.titre}</Td>

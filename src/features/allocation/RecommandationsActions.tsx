@@ -26,7 +26,7 @@ export function RecommandationsActionsScreen({
         <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
           Recommandations — marché actions
         </h2>
-        <div className="flex gap-1.5" role="group" aria-label="Filtrer les recommandations par sens">
+        <div className="gsm-chip-scroll" role="group" aria-label="Filtrer les recommandations par sens">
           {['Tous', 'Achat', 'Vente', 'Conserver'].map((sens) => (
             <button
               key={sens}
@@ -35,8 +35,8 @@ export function RecommandationsActionsScreen({
               aria-pressed={filtreSens === sens}
               className="px-3 py-1 rounded-full text-xs font-semibold"
               style={{
-                background: filtreSens === sens ? C.navy : '#F0F1F5',
-                color: filtreSens === sens ? '#fff' : C.sub,
+                background: filtreSens === sens ? C.activeBackground : C.surfaceInset,
+                color: filtreSens === sens ? C.textPrimary : C.sub,
               }}
             >
               {sens}

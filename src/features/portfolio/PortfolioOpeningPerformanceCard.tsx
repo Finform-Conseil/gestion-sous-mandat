@@ -40,8 +40,8 @@ export function PortfolioOpeningPerformanceCard({
     <Card
       className="p-5"
       style={{
-        borderColor: positive ? '#CDE9DF' : '#F1CFCB',
-        background: positive ? '#FBFEFC' : '#FFFCFC',
+        borderColor: C.borderSubtle,
+        background: C.surfaceCard,
       }}
     >
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -61,8 +61,8 @@ export function PortfolioOpeningPerformanceCard({
           onClick={() => setCashflowsOpen((open) => !open)}
           className="px-3.5 py-2 rounded-xl text-xs font-semibold"
           style={{
-            background: cashflowsOpen ? '#EEF0F4' : C.navy,
-            color: cashflowsOpen ? C.navy : '#fff',
+            background: cashflowsOpen ? C.surfaceInset : C.activeBackground,
+            color: C.textPrimary,
             ...F_BODY,
           }}
           aria-expanded={cashflowsOpen}
@@ -80,8 +80,8 @@ export function PortfolioOpeningPerformanceCard({
         <div
           className="p-3 rounded-xl border"
           style={{
-            borderColor: positive ? '#B8DFD2' : '#ECC2BD',
-            background: positive ? '#EAF7F2' : '#FDECEA',
+            borderColor: C.borderSubtle,
+            background: C.surfaceCard,
           }}
         >
           <div className="text-[10px] uppercase font-semibold" style={{ color: positive ? C.teal : C.coral }}>
@@ -99,7 +99,14 @@ export function PortfolioOpeningPerformanceCard({
         </div>
       </div>
 
-      <div className="mt-3 p-3 rounded-xl text-[10px]" style={{ background: '#F7F8FA', color: C.sub, ...F_BODY }}>
+      <div
+        className="mt-3 pt-3 text-[10px]"
+        style={{
+          borderTop: `1px solid ${C.borderSubtle}`,
+          color: C.sub,
+          ...F_BODY,
+        }}
+      >
         <b style={{ color: C.ink }}>Méthode :</b> plus / moins-value = encours actuel +
         retraits cumulés − dépôts cumulés. Le pourcentage affiché rapporte cette plus /
         moins-value à la somme de tous les dépôts effectués depuis l'ouverture. Il s'agit
@@ -120,9 +127,9 @@ export function PortfolioOpeningPerformanceCard({
             <Badge tone="navy">{situation.flux.length} mouvement(s)</Badge>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line }}>
-            <table className="w-full">
-              <thead style={{ background: '#FAFAFC' }}>
+          <div className="gsm-table-scroll rounded-xl border" style={{ borderColor: C.line }}>
+            <table className="w-full gsm-table--banking">
+              <thead style={{ background: C.surfaceElevated }}>
                 <tr><Th>Date</Th><Th>Nature</Th><Th>Libellé</Th><Th>Montant</Th><Th>Impact capital</Th></tr>
               </thead>
               <tbody>
@@ -161,7 +168,7 @@ export function PortfolioOpeningPerformanceCard({
 
 function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <div className="p-3 rounded-xl border" style={{ borderColor: C.line, background: '#fff' }}>
+    <div className="p-3 rounded-xl border" style={{ borderColor: C.line, background: C.surfaceCard }}>
       <div className="text-[10px] uppercase font-semibold" style={{ color: C.sub }}>{label}</div>
       <div className="text-sm font-bold mt-1" style={{ color: C.ink, ...F_MONO }}>{value}</div>
       {note && <div className="text-[9px] mt-1" style={{ color: C.sub }}>{note}</div>}

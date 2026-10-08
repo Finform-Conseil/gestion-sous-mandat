@@ -1,17 +1,77 @@
 import type { CSSProperties } from 'react';
 
 export const C = {
-  navy: '#0F1B33',
-  navySoft: '#16264A',
-  ink: '#101827',
-  sub: '#5B6474',
-  bg: '#F5F6F9',
-  card: '#FFFFFF',
-  line: '#E7E9EF',
-  gold: '#C9962F',
-  teal: '#1E9C77',
-  coral: '#D6564A',
-  indigo: '#3E5CC7',
+  // FINFORM semantic runtime contract.
+  // Root source: src/styles/finform/_runtime.scss, synchronized from
+  // algowebsite/styles/abstracts/_variables.scss.
+  surfacePage: 'var(--surface-page)',
+  surfaceCard: 'var(--surface-card)',
+  surfaceToolbar: 'var(--surface-toolbar)',
+  surfaceInset: 'var(--surface-inset)',
+  surfaceElevated: 'var(--surface-elevated)',
+  rowAlternate: 'var(--row-alternate-background)',
+  textPrimary: 'var(--text-primary)',
+  textSecondary: 'var(--text-secondary)',
+  textTertiary: 'var(--text-tertiary)',
+  textMuted: 'var(--text-muted)',
+  border: 'var(--border-color)',
+  borderSubtle: 'var(--border-subtle)',
+  activeBackground: 'var(--active-background)',
+  focusRing: 'var(--focus-ring-color)',
+  positiveBackground: 'var(--status-positive-bg)',
+  positiveBorder: 'var(--status-positive-border)',
+  negativeBackground: 'var(--status-negative-bg)',
+  negativeBorder: 'var(--status-negative-border)',
+  warningBackground: 'var(--status-warning-bg)',
+  warningBorder: 'var(--status-warning-border)',
+  warningText: 'var(--status-warning-text)',
+  infoBackground: 'var(--status-info-bg)',
+  infoBorder: 'var(--status-info-border)',
+  onPrimary: 'var(--text-on-primary)',
+  onAccent: 'var(--text-on-accent)',
+  onPositive: 'var(--text-on-positive)',
+  onNegative: 'var(--text-on-negative)',
+  sidebarBackground: 'var(--gsm-sidebar-background)',
+  sidebarText: 'var(--gsm-sidebar-text)',
+  sidebarTextStrong: 'var(--gsm-sidebar-text-strong)',
+  sidebarTextSoft: 'var(--gsm-sidebar-text-soft)',
+  sidebarMuted: 'var(--gsm-sidebar-muted)',
+  sidebarMeta: 'var(--gsm-sidebar-meta)',
+  sidebarBorder: 'var(--gsm-sidebar-border)',
+  sidebarSurfaceHover: 'var(--gsm-sidebar-surface-hover)',
+  sidebarSurfaceActive: 'var(--gsm-sidebar-surface-active)',
+  sidebarCardBackground: 'var(--gsm-sidebar-card-bg)',
+  sidebarCardBorder: 'var(--gsm-sidebar-card-border)',
+  sidebarControlBackground: 'var(--gsm-sidebar-control-bg)',
+  sidebarFocusRing: 'var(--gsm-sidebar-focus-ring)',
+  sidebarManagerBackground: 'var(--gsm-sidebar-manager-bg)',
+  sidebarManagerBorder: 'var(--gsm-sidebar-manager-border)',
+  sidebarClientBackground: 'var(--gsm-sidebar-client-bg)',
+  sidebarClientBorder: 'var(--gsm-sidebar-client-border)',
+  sidebarPositive: 'var(--gsm-sidebar-positive)',
+  sidebarPositiveSoft: 'var(--gsm-sidebar-positive-soft)',
+  sidebarWarningSoft: 'var(--gsm-sidebar-warning-soft)',
+  sidebarNegativeSoft: 'var(--gsm-sidebar-negative-soft)',
+  sidebarWriteBackground: 'var(--gsm-sidebar-write-bg)',
+  sidebarAdminBackground: 'var(--gsm-sidebar-admin-bg)',
+  chartSeriesMuted: 'var(--chart-series-muted)',
+  chartSeriesViolet: 'var(--chart-series-violet)',
+  chartSeriesBlue: 'var(--chart-series-blue)',
+  chartSeriesBronze: 'var(--chart-series-bronze)',
+
+  // Compatibility aliases kept while feature modules are migrated.
+  navy: 'var(--text-primary)',
+  navySurface: 'var(--surface-page)',
+  navySoft: 'var(--surface-elevated)',
+  ink: 'var(--text-primary)',
+  sub: 'var(--text-secondary)',
+  bg: 'var(--surface-page)',
+  card: 'var(--surface-card)',
+  line: 'var(--border-color)',
+  gold: 'var(--accent-gold)',
+  teal: 'var(--positive-color)',
+  coral: 'var(--negative-color)',
+  indigo: 'var(--primary-color)',
 } as const;
 
 export const FONTS = `
@@ -23,15 +83,15 @@ export const FONTS = `
 `;
 
 export const F_DISPLAY: CSSProperties = {
-  fontFamily: "'Space Grotesk', sans-serif",
+  fontFamily: 'var(--font-fraunces)',
 };
 
 export const F_BODY: CSSProperties = {
-  fontFamily: "'Inter', sans-serif",
+  fontFamily: 'var(--font-family-ui)',
 };
 
 export const F_MONO: CSSProperties = {
-  fontFamily: "'IBM Plex Mono', monospace",
+  fontFamily: 'var(--font-dm-mono)',
 };
 
 export const PALETTE = [
@@ -40,5 +100,5 @@ export const PALETTE = [
   C.teal,
   C.indigo,
   C.coral,
-  '#8B93A7',
+  C.textMuted,
 ] as const;

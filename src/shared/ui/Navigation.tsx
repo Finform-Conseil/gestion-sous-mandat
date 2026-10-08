@@ -59,7 +59,7 @@ export function Breadcrumb({
   return (
     <nav
       aria-label="Fil d’Ariane"
-      className="flex items-center gap-1.5 text-sm mb-4 flex-wrap"
+      className="gsm-breadcrumb flex items-center gap-1.5 text-sm mb-4 flex-wrap"
       style={{ color: C.sub, ...F_BODY }}
     >
       {items.map((item, index) => {
@@ -78,7 +78,7 @@ export function Breadcrumb({
         return (
           <span
             key={`${label}-${index}`}
-            className="flex items-center gap-1.5"
+            className="gsm-breadcrumb__item flex items-center gap-1.5"
           >
             {index > 0 && (
               <ChevronRight size={13} aria-hidden="true" />
@@ -104,7 +104,7 @@ export function Breadcrumb({
             ) : (
               <span
                 aria-current={isCurrent ? 'page' : undefined}
-                className="px-1.5 py-1"
+                className="gsm-breadcrumb__current px-1.5 py-1"
                 style={{
                   color: isCurrent ? C.ink : C.sub,
                   fontWeight: isCurrent ? 600 : 500,

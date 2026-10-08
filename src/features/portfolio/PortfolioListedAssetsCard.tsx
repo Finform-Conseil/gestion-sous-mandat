@@ -51,7 +51,7 @@ export function PortfolioListedAssetsCard({
 
       <div
         className="text-[10px] mt-3 p-3 rounded-xl"
-        style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}
+        style={{ background: C.surfaceElevated, color: C.sub, ...F_BODY }}
       >
         <b style={{ color: C.ink }}>Calcul :</b> +/- Value = valeur de
         marché de la ligne − coût historique de la position. Le coût
@@ -78,8 +78,8 @@ function ListedAssetTable({
       <div className="text-xs font-semibold mb-1" style={{ color: C.sub }}>
         {label}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full" style={{ minWidth: 700 }}>
+      <div className="gsm-table-scroll">
+        <table className="w-full gsm-table--banking" style={{ minWidth: 700 }}>
           <thead>
             <tr>
               <Th>Titre</Th>

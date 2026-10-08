@@ -149,7 +149,7 @@ export function MoneyManagementFiltersHeader({
               <FilterField key={filter.key} label={filter.label}>
                 <div
                   className="flex items-center rounded-xl border overflow-hidden"
-                  style={{ borderColor: C.line, background: '#fff' }}
+                  style={{ borderColor: C.line, background: C.surfaceCard }}
                 >
                   <input name="gsm-moneymanagementfiltersheader-154" aria-label="Aucun minimum"
                     type="number"
@@ -166,7 +166,7 @@ export function MoneyManagementFiltersHeader({
                     style={{
                       color: C.sub,
                       borderColor: C.line,
-                      background: '#FAFAFC',
+                      background: C.surfaceElevated,
                       ...F_MONO,
                     }}
                   >

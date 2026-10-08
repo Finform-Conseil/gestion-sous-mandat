@@ -105,11 +105,11 @@ export function MarchesObligataires({
       </div>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex gap-1.5">
+        <div className="gsm-chip-scroll">
           {MARKET_CODES.map((code) => (
             <button key={code} type="button" onClick={() => setMarche(code)}
               className="px-3 py-1.5 rounded-full text-xs font-semibold"
-              style={{ background: marche === code ? C.navy : '#F0F1F5', color: marche === code ? '#fff' : C.sub }}>
+              style={{ background: marche === code ? C.activeBackground : C.surfaceInset, color: marche === code ? C.textPrimary : C.sub }}>
               {code}
             </button>
           ))}
@@ -117,8 +117,8 @@ export function MarchesObligataires({
       </div>
 
       <Card className="p-0 overflow-hidden" style={{ borderColor: C.navy }}>
-        <div className="p-4" style={{ background: '#EFF3FB' }}>
-          <div className="flex items-center justify-between gap-3">
+        <div className="p-4" style={{ background: C.infoBackground }}>
+          <div className="gsm-responsive-panel-header flex items-center justify-between gap-3">
             <div>
               <div className="text-xs font-semibold" style={{ color: C.ink }}>
                 Filtres obligataires — application instantanée
@@ -127,18 +127,18 @@ export function MarchesObligataires({
                 Filtrez par instrument, volume, variation, niveau de cours et statut dans la watchlist.
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="gsm-responsive-panel-actions flex items-center gap-2">
               <Badge tone={filtresActifs > 0 ? 'teal' : 'slate'}>{filtresActifs} filtre(s)</Badge>
               {filtresActifs > 0 && (
                 <button type="button" onClick={() => setFilters(EMPTY_FILTERS)}
                   className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
-                  style={{ borderColor: C.line, color: C.navy, background: '#fff' }}>
+                  style={{ borderColor: C.line, color: C.navy, background: C.surfaceCard }}>
                   Réinitialiser
                 </button>
               )}
               <button type="button" onClick={() => setShowMarketFilters((visible) => !visible)}
                 className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
-                style={{ borderColor: C.line, color: C.navy, background: '#fff' }}>
+                style={{ borderColor: C.line, color: C.navy, background: C.surfaceCard }}>
                 {showMarketFilters ? 'Masquer les filtres ↑' : 'Afficher les filtres ↓'}
               </button>
             </div>
@@ -146,7 +146,7 @@ export function MarchesObligataires({
 
           {showMarketFilters && (
             <div className="mt-4 grid grid-cols-4 gap-3 p-4 rounded-xl border"
-              style={{ borderColor: '#D8DFEF', background: '#fff' }}>
+              style={{ borderColor: C.borderSubtle, background: C.surfaceCard }}>
               {[
                 ['market-bond-search', 'Instrument', 'recherche', 'text', 'Rechercher une obligation…', undefined],
                 ['market-volume-min', 'Volume minimum', 'volumeMin', 'number', 'Sans limite', '1'],
@@ -194,9 +194,9 @@ export function MarchesObligataires({
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1550 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1550 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Instrument</Th><Th>Émetteur</Th><Th>Marché</Th><Th>Cours</Th>
                 <Th>Coupon</Th><Th>Rendement indicatif</Th><Th>Échéance</Th>
@@ -215,7 +215,7 @@ export function MarchesObligataires({
                 const suivi = watchlistTitles.includes(item.nom);
                 return (
                   <tr key={item.nom}
-                    style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? '#FCFCFD' : '#fff' }}>
+                    style={{ borderTop: `1px solid ${C.line}`, background: index % 2 ? C.rowAlternate : C.surfaceCard }}>
                     <Td className="font-semibold whitespace-nowrap">{item.nom}</Td>
                     <Td>{meta.emetteur || '—'}</Td>
                     <Td><Badge tone="navy">{item.marche}</Badge></Td>
@@ -231,7 +231,7 @@ export function MarchesObligataires({
                     <Td>
                       <button type="button" disabled={suivi} onClick={() => !suivi && onAddWatch(item.nom)}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
-                        style={{ background: suivi ? '#E4F5EF' : '#FBF1DD', color: suivi ? C.teal : '#8A6A16', cursor: suivi ? 'default' : 'pointer' }}>
+                        style={{ background: suivi ? C.positiveBackground : C.warningBackground, color: suivi ? C.teal : C.warningText, cursor: suivi ? 'default' : 'pointer' }}>
                         <Star size={13} fill={suivi ? 'currentColor' : 'none'} />
                         {suivi ? 'Ajouté' : 'Add Watch'}
                       </button>

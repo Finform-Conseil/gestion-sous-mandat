@@ -81,7 +81,7 @@ export function MoneyManagementCashflowSection({
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Date</Th>
               <Th>Client</Th>
@@ -106,7 +106,7 @@ export function MoneyManagementCashflowSection({
                 key={cashflow.id}
                 style={{
                   borderTop: `1px solid ${C.line}`,
-                  background: index % 2 ? '#FCFCFD' : '#fff',
+                  background: index % 2 ? C.rowAlternate : C.surfaceCard,
                 }}
               >
                 <Td mono>{cashflow.date}</Td>
@@ -181,7 +181,7 @@ export function MoneyManagementCashflowSection({
                     return (
                       <div
                         style={{
-                          background: '#fff',
+                          background: C.surfaceCard,
                           border: `1px solid ${C.line}`,
                           borderRadius: 10,
                           padding: 8,
@@ -230,8 +230,8 @@ export function MoneyManagementCashflowSection({
                 onClick={() => onSortDirectionChange(direction)}
                 className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
                 style={{
-                  background: sortDirection === direction ? C.navy : '#fff',
-                  color: sortDirection === direction ? '#fff' : C.ink,
+                  background: sortDirection === direction ? C.activeBackground : C.surfaceCard,
+                  color: sortDirection === direction ? C.textPrimary : C.ink,
                   borderColor: C.line,
                 }}
               >
@@ -242,7 +242,7 @@ export function MoneyManagementCashflowSection({
 
           <div className="max-h-[280px] overflow-auto">
             <table className="w-full">
-              <thead style={{ background: '#FAFAFC' }}>
+              <thead style={{ background: C.surfaceElevated }}>
                 <tr>
                   <Th>Portefeuille</Th>
                   <Th>Coupons + dividendes à 30 j</Th>

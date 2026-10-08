@@ -255,7 +255,7 @@ export function createReequilibrageScreen(dependencies) {
 
         <Card className="p-4" style={{ borderColor: C.navy }}>
           <div className="flex items-end justify-between gap-4 flex-wrap">
-            <div className="grid grid-cols-2 gap-3 flex-1 min-w-[520px]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 flex-1 min-w-0">
               <div>
                 <label
                   className="text-xs font-semibold block mb-1"
@@ -265,7 +265,7 @@ export function createReequilibrageScreen(dependencies) {
                 </label>
                 <div
                   className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-                  style={{ borderColor: C.line, background: '#fff' }}
+                  style={{ borderColor: C.line, background: C.surfaceCard }}
                 >
                   <Search size={14} color={C.sub} />
                   <input name="gsm-reequilibrage-271" aria-label="Rechercher un client…"
@@ -290,7 +290,7 @@ export function createReequilibrageScreen(dependencies) {
                   value={filtreTypePortefeuille}
                   onChange={(e) => setFiltreTypePortefeuille(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border text-sm"
-                  style={{ borderColor: C.line, background: '#fff', ...F_BODY }}
+                  style={{ borderColor: C.line, background: C.surfaceCard, ...F_BODY }}
                 >
                   {typesPortefeuilleDisponibles.map((type) => (
                     <option key={type} value={type}>
@@ -317,7 +317,7 @@ export function createReequilibrageScreen(dependencies) {
                   style={{
                     borderColor: C.line,
                     color: C.navy,
-                    background: '#fff',
+                    background: C.surfaceCard,
                   }}
                 >
                   Réinitialiser
@@ -400,7 +400,7 @@ export function createReequilibrageScreen(dependencies) {
           >
             <div
               className="p-4 flex items-center justify-between gap-4"
-              style={{ background: '#FBF7EE' }}
+              style={{ background: C.warningBackground }}
             >
               <div>
                 <div
@@ -424,15 +424,15 @@ export function createReequilibrageScreen(dependencies) {
                 type="button"
                 onClick={() => ouvrirPortefeuille(client, besoins[0]?.actif)}
                 className="px-3 py-2 rounded-xl text-xs font-semibold"
-                style={{ background: C.navy, color: '#fff', ...F_BODY }}
+                style={{ background: C.navy, color: C.surfaceCard, ...F_BODY }}
               >
                 Ouvrir le détail →
               </button>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1180 }}>
-                <thead style={{ background: '#FAFAFC' }}>
+            <div className="gsm-table-scroll">
+              <table className="w-full gsm-table--banking" style={{ minWidth: 1180 }}>
+                <thead style={{ background: C.surfaceElevated }}>
                   <tr>
                     <Th>Classe d'actifs</Th>
                     <Th>Répartition par classe d'actifs</Th>
@@ -450,7 +450,7 @@ export function createReequilibrageScreen(dependencies) {
                       key={besoin.actif}
                       style={{
                         borderTop: `1px solid ${C.line}`,
-                        background: index % 2 ? '#FCFCFD' : '#fff',
+                        background: index % 2 ? C.rowAlternate : C.surfaceCard,
                       }}
                     >
                       <Td className="font-semibold whitespace-nowrap">
@@ -683,9 +683,9 @@ export function createReequilibrageScreen(dependencies) {
                   </div>
 
                   {ordres && ordres.length > 0 && (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full" style={{ minWidth: 850 }}>
-                        <thead style={{ background: '#FAFAFC' }}>
+                    <div className="mt-4 gsm-table-scroll">
+                      <table className="w-full gsm-table--banking" style={{ minWidth: 850 }}>
+                        <thead style={{ background: C.surfaceElevated }}>
                           <tr>
                             <Th>Instrument / support</Th>
                             <Th>Opération</Th>
@@ -701,7 +701,7 @@ export function createReequilibrageScreen(dependencies) {
                               key={`${besoin.actif}-${ordre.titre}-${index}`}
                               style={{
                                 borderTop: `1px solid ${C.line}`,
-                                background: index % 2 ? '#FCFCFD' : '#fff',
+                                background: index % 2 ? C.rowAlternate : C.surfaceCard,
                               }}
                             >
                               <Td className="font-semibold whitespace-nowrap">

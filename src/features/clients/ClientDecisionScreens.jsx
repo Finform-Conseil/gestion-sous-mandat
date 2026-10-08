@@ -209,7 +209,7 @@ export function createClientDecisionScreens(dependencies) {
       <Card className="p-0 overflow-hidden" style={{ borderColor: C.gold }}>
         <div
           className="p-5 flex items-start justify-between gap-4"
-          style={{ background: '#FBF7EE' }}
+          style={{ background: C.warningBackground }}
         >
           <div>
             <Eyebrow>Watchlist statique — conviction fondamentale</Eyebrow>
@@ -224,9 +224,9 @@ export function createClientDecisionScreens(dependencies) {
           <Badge tone="gold">{staticRows.length} valeur(s)</Badge>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1780 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1780 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Instrument</Th>
                 <Th>Marché</Th>
@@ -260,7 +260,7 @@ export function createClientDecisionScreens(dependencies) {
                   key={r.titre}
                   style={{
                     borderTop: `1px solid ${C.line}`,
-                    background: i % 2 ? '#FCFCFD' : '#fff',
+                    background: i % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <Td className="font-semibold whitespace-nowrap">{r.titre}</Td>
@@ -345,16 +345,16 @@ export function createClientDecisionScreens(dependencies) {
       </Card>
 
       <Card
-        className="p-0 overflow-hidden flex flex-col"
+        className="gsm-client-daily-watchlist p-0 overflow-hidden flex flex-col"
         style={{
           borderColor: C.navy,
           height: 'clamp(650px, calc(100vh - 100px), 830px)',
         }}
       >
         <div
-          className="p-5 shrink-0"
+          className="gsm-client-daily-watchlist__filters p-5 shrink-0"
           style={{
-            background: '#EFF3FB',
+            background: C.infoBackground,
             maxHeight: showDailyFilters ? '52%' : 'auto',
             overflowY: showDailyFilters ? 'auto' : 'visible',
             overscrollBehavior: 'contain',
@@ -386,7 +386,7 @@ export function createClientDecisionScreens(dependencies) {
                 style={{
                   borderColor: C.line,
                   color: C.navy,
-                  background: '#fff',
+                  background: C.surfaceCard,
                 }}
               >
                 {showDailyFilters
@@ -399,7 +399,7 @@ export function createClientDecisionScreens(dependencies) {
           {showDailyFilters && (
             <div
               className="mt-4 p-4 rounded-xl border"
-              style={{ borderColor: '#D8DFEF', background: '#fff' }}
+              style={{ borderColor: C.borderSubtle, background: C.surfaceCard }}
             >
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
@@ -419,7 +419,7 @@ export function createClientDecisionScreens(dependencies) {
                   style={{
                     borderColor: C.line,
                     color: C.navy,
-                    background: '#fff',
+                    background: C.surfaceCard,
                   }}
                 >
                   Réinitialiser les filtres
@@ -683,16 +683,16 @@ export function createClientDecisionScreens(dependencies) {
         </div>
 
         <div
-          className="flex-1 min-h-0 overflow-auto"
+          className="gsm-client-daily-watchlist__table gsm-table-scroll flex-1 min-h-0 overflow-auto"
           style={{
             overscrollBehavior: 'contain',
             scrollbarGutter: 'stable',
           }}
         >
-          <table className="w-full" style={{ minWidth: 2450 }}>
+          <table className="w-full gsm-table--banking" style={{ minWidth: 2450 }}>
             <thead
               style={{
-                background: '#FAFAFC',
+                background: C.surfaceElevated,
                 position: 'sticky',
                 top: 0,
                 zIndex: 2,
@@ -709,7 +709,8 @@ export function createClientDecisionScreens(dependencies) {
                 <Th>MACD</Th>
                 <Th>RSI</Th>
                 <Th>BOL</Th>
-                <Th>Score technique</Th>                <Th>PER</Th>
+                <Th>Score technique</Th>
+                <Th>PER</Th>
                 <Th>Rentabilité</Th>
                 <Th>EVOL</Th>
                 <Th>VALO</Th>
@@ -742,7 +743,7 @@ export function createClientDecisionScreens(dependencies) {
                     key={r.titre}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: i % 2 ? '#FCFCFD' : '#fff',
+                      background: i % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td mono>
@@ -822,8 +823,8 @@ export function createClientDecisionScreens(dependencies) {
                         }
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
                         style={{
-                          background: dejaAjoute ? '#EEF0F4' : '#FBF1DD',
-                          color: dejaAjoute ? C.sub : '#8A6A16',
+                          background: dejaAjoute ? C.surfaceInset : C.warningBackground,
+                          color: dejaAjoute ? C.sub : C.warningText,
                         }}
                       >
                         <Star
@@ -1046,8 +1047,8 @@ export function createClientDecisionScreens(dependencies) {
                   onClick={() => setFiltreSens(value)}
                   className="flex-1 px-2 py-2 rounded-xl text-xs font-semibold"
                   style={{
-                    background: filtreSens === value ? C.navy : '#F0F1F5',
-                    color: filtreSens === value ? '#fff' : C.sub,
+                    background: filtreSens === value ? C.activeBackground : C.surfaceInset,
+                    color: filtreSens === value ? C.textPrimary : C.sub,
                   }}
                 >
                   {value}
@@ -1109,9 +1110,9 @@ export function createClientDecisionScreens(dependencies) {
       </div>
 
       <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 2050 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 2050 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Réf.</Th>
                 <Th>Date</Th>
@@ -1148,7 +1149,7 @@ export function createClientDecisionScreens(dependencies) {
                   key={item.id}
                   style={{
                     borderTop: `1px solid ${C.line}`,
-                    background: index % 2 ? '#FCFCFD' : '#fff',
+                    background: index % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <Td mono>{item.id}</Td>
@@ -1234,7 +1235,7 @@ export function createClientDecisionScreens(dependencies) {
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Mes ordres']} />
-      <div className="flex items-end justify-between">
+      <div className="gsm-responsive-header flex items-end justify-between gap-3">
         <div>
           <h2
             className="text-xl font-bold"
@@ -1251,7 +1252,7 @@ export function createClientDecisionScreens(dependencies) {
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Référence</Th>
               <Th>Date</Th>

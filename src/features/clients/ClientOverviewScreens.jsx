@@ -258,7 +258,7 @@ export function createClientOverviewScreens(dependencies) {
             value={devise}
             onChange={(e) => onDeviseChange(e.target.value)}
             className="px-3 py-2 rounded-xl border text-sm"
-            style={{ borderColor: C.line, background: '#fff' }}
+            style={{ borderColor: C.line, background: C.surfaceCard }}
           >
             {Object.keys(FX).map((code) => (
               <option key={code}>{code}</option>
@@ -310,7 +310,7 @@ export function createClientOverviewScreens(dependencies) {
           <div className="text-xs" style={{ color: C.sub }}>
             Revenus & ordres à suivre
           </div>
-          <div className="flex items-end justify-between gap-2 mt-1">
+          <div className="gsm-responsive-inline-row flex items-end justify-between gap-2 mt-1">
             <div className="text-lg font-bold" style={F_DISPLAY}>
               {fmt(Math.round(revenus30j))} {devise}
             </div>
@@ -325,7 +325,7 @@ export function createClientOverviewScreens(dependencies) {
       </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <Card className="col-span-2 p-0 overflow-hidden">          <div className="p-4 flex items-center justify-between">
+        <Card className="col-span-2 p-0 overflow-hidden">          <div className="gsm-responsive-header p-4 flex items-center justify-between">
             <div>
               <Eyebrow>Mes portefeuilles par SGI</Eyebrow>
               <div className="text-xs" style={{ color: C.sub }}>
@@ -341,7 +341,7 @@ export function createClientOverviewScreens(dependencies) {
             </button>
           </div>
           <table className="w-full">
-            <thead style={{ background: '#FAFAFC' }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>SGI / pays</Th>
                 <Th>Marché</Th>
@@ -387,7 +387,7 @@ export function createClientOverviewScreens(dependencies) {
         </Card>
 
         <Card className="p-5">
-          <div className="flex items-start justify-between gap-3">
+          <div className="gsm-responsive-header flex items-start justify-between gap-3">
             <div>
               <Eyebrow>Allocation consolidée</Eyebrow>
               <div className="text-xs font-semibold" style={{ color: C.ink }}>
@@ -408,7 +408,7 @@ export function createClientOverviewScreens(dependencies) {
                 style={{
                   color: C.navy,
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                 }}
               >
                 ← Retour
@@ -417,8 +417,8 @@ export function createClientOverviewScreens(dependencies) {
           </div>
 
           <div
-            className="mt-3 px-3 py-2.5 rounded-xl border flex items-end justify-between gap-3"
-            style={{ borderColor: C.line, background: '#FAFAFC' }}
+            className="gsm-responsive-kpi-row mt-3 px-3 py-2.5 rounded-xl border flex items-end justify-between gap-3"
+            style={{ borderColor: C.line, background: C.surfaceElevated }}
           >
             <div>
               <div
@@ -520,7 +520,7 @@ export function createClientOverviewScreens(dependencies) {
         </div>
       </div>
 
-      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div className="min-w-[240px]">
             <label
@@ -533,7 +533,7 @@ export function createClientOverviewScreens(dependencies) {
               value={paysFiltre}
               onChange={(e) => setPaysFiltre(e.target.value)}
               className="w-full px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', ...F_BODY }}
+              style={{ borderColor: C.line, background: C.surfaceCard, ...F_BODY }}
             >
               {paysDisponibles.map((pays) => (
                 <option key={pays} value={pays}>
@@ -561,7 +561,7 @@ export function createClientOverviewScreens(dependencies) {
                 style={{
                   borderColor: C.line,
                   color: C.navy,
-                  background: '#fff',
+                  background: C.surfaceCard,
                   ...F_BODY,
                 }}
               >
@@ -614,7 +614,7 @@ export function createClientOverviewScreens(dependencies) {
           >
             <div
               className="p-4 flex items-start justify-between gap-4"
-              style={{ background: '#FBF7EE' }}
+              style={{ background: C.warningBackground }}
             >
               <div>
                 <div className="text-base font-bold" style={F_DISPLAY}>
@@ -647,9 +647,9 @@ export function createClientOverviewScreens(dependencies) {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1060 }}>
-                <thead style={{ background: '#FAFAFC' }}>
+            <div className="gsm-table-scroll">
+              <table className="w-full gsm-table--banking" style={{ minWidth: 1060 }}>
+                <thead style={{ background: C.surfaceElevated }}>
                   <tr>
                     <Th>Instrument</Th>
                     <Th>Classe</Th>
@@ -727,7 +727,7 @@ export function createClientOverviewScreens(dependencies) {
               className="p-4"
               style={{
                 borderTop: `1px solid ${C.line}`,
-                background: '#FCFCFD',
+                background: C.rowAlternate,
               }}
             >
               <div className="flex items-center justify-between gap-3 mb-3">
@@ -750,7 +750,7 @@ export function createClientOverviewScreens(dependencies) {
               <div className="grid grid-cols-3 gap-3">
                 <div
                   className="p-3 rounded-xl border"
-                  style={{ borderColor: '#CFE9DF', background: '#F3FBF8' }}
+                  style={{ borderColor: C.positiveBorder, background: C.positiveBackground }}
                 >
                   <div
                     className="text-[11px] font-semibold"
@@ -771,11 +771,11 @@ export function createClientOverviewScreens(dependencies) {
 
                 <div
                   className="p-3 rounded-xl border"
-                  style={{ borderColor: '#EAD9AD', background: '#FFFBF1' }}
+                  style={{ borderColor: C.warningBorder, background: C.warningBackground }}
                 >
                   <div
                     className="text-[11px] font-semibold"
-                    style={{ color: '#8A6A16' }}
+                    style={{ color: C.warningText }}
                   >
                     Liquidité réservée
                   </div>
@@ -791,7 +791,7 @@ export function createClientOverviewScreens(dependencies) {
 
                 <div
                   className="p-3 rounded-xl border"
-                  style={{ borderColor: C.line, background: '#fff' }}
+                  style={{ borderColor: C.line, background: C.surfaceCard }}
                 >
                   <div
                     className="text-[11px] font-semibold"
@@ -814,7 +814,7 @@ export function createClientOverviewScreens(dependencies) {
               {ordresVenteOuverts > 0 && (
                 <div
                   className="text-[10px] mt-3 p-2.5 rounded-xl"
-                  style={{ background: '#EFF3FB', color: C.sub }}
+                  style={{ background: C.infoBackground, color: C.sub }}
                 >
                   {ordresVenteOuverts} ordre(s) de vente ouvert(s) : les titres
                   concernés sont réservés, mais ils ne diminuent pas le compte

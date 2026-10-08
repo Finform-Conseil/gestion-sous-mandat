@@ -6,7 +6,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Moon, Sun } from 'lucide-react';
 import type {
   PortfolioHistoryPoint,
   ProfileStatistic,
@@ -18,15 +17,11 @@ import { C, F_BODY, F_DISPLAY, F_MONO } from '../../shared/theme/theme';
 export function HomeToolbar({
   currency,
   currencies,
-  dark,
   onCurrencyChange,
-  onToggleDark,
 }: {
   currency: string;
   currencies: string[];
-  dark: boolean;
   onCurrencyChange: (currency: string) => void;
-  onToggleDark: () => void;
 }) {
   return (
     <div className="flex items-center justify-end gap-3 flex-wrap">
@@ -51,15 +46,6 @@ export function HomeToolbar({
         </select>
       </div>
 
-      <button
-        type="button"
-        onClick={onToggleDark}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold"
-        style={{ borderColor: C.line, color: C.ink }}
-      >
-        {dark ? <Sun size={14} /> : <Moon size={14} />}{' '}
-        {dark ? 'Mode lumineux' : 'Mode sombre'}
-      </button>
     </div>
   );
 }

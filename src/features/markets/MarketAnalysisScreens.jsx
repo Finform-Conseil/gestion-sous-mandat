@@ -146,8 +146,8 @@ function VueBourses({
               onClick={() => setBourse(code)}
               className="px-4 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.98]"
               style={{
-                background: bourse === code ? C.navy : '#EEF0F4',
-                color: bourse === code ? '#fff' : C.sub,
+                background: bourse === code ? C.activeBackground : C.surfaceInset,
+                color: bourse === code ? C.textPrimary : C.sub,
                 ...F_BODY,
               }}
             >
@@ -367,7 +367,7 @@ function VueBourses({
           </div>
           <div
             className="mt-4 p-3 rounded-xl text-[10px]"
-            style={{ background: '#FAFAFC', color: C.sub }}
+            style={{ background: C.surfaceElevated, color: C.sub }}
           >
             Ratio hausse / baisse :{' '}
             <b style={{ color: C.ink }}>
@@ -461,9 +461,9 @@ function VueBourses({
           </Badge>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1500 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1500 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Instrument</Th>
                 <Th>Secteur</Th>
@@ -488,7 +488,7 @@ function VueBourses({
                     key={instrument.nom}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: index % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td className="font-semibold whitespace-nowrap">
@@ -527,11 +527,11 @@ function VueBourses({
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
                         style={{
                           background: watchlistTitles.includes(instrument.nom)
-                            ? '#E4F5EF'
-                            : '#FBF1DD',
+                            ? C.positiveBackground
+                            : C.warningBackground,
                           color: watchlistTitles.includes(instrument.nom)
                             ? C.teal
-                            : '#8A6A16',
+                            : C.warningText,
                           cursor: watchlistTitles.includes(instrument.nom)
                             ? 'default'
                             : 'pointer',
@@ -587,7 +587,7 @@ function VueBourses({
 
       <div
         className="text-[10px] p-3 rounded-xl"
-        style={{ background: '#FBF7EE', color: C.sub, ...F_BODY }}
+        style={{ background: C.warningBackground, color: C.sub, ...F_BODY }}
       >
         <b style={{ color: C.ink }}>Important :</b> cette vue est une simulation
         destinée à rendre la maquette active. Les cours, indices, volumes,
@@ -974,8 +974,8 @@ function TechnicalPriceChart({ rows, devise }) {
               onClick={() => setMode(item)}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold"
               style={{
-                background: mode === item ? C.navy : '#F0F1F5',
-                color: mode === item ? '#fff' : C.sub,
+                background: mode === item ? C.activeBackground : C.surfaceInset,
+                color: mode === item ? C.textPrimary : C.sub,
               }}
             >
               {item}
@@ -990,7 +990,7 @@ function TechnicalPriceChart({ rows, devise }) {
             style={{
               borderColor: tool === 'trend' ? C.indigo : C.line,
               color: tool === 'trend' ? C.indigo : C.sub,
-              background: tool === 'trend' ? '#EEF1FF' : '#fff',
+              background: tool === 'trend' ? C.infoBackground : C.surfaceCard,
             }}
           >
             Trait de tendance
@@ -1003,8 +1003,8 @@ function TechnicalPriceChart({ rows, devise }) {
             className="px-3 py-1.5 rounded-xl border text-xs font-semibold"
             style={{
               borderColor: tool === 'horizontal' ? C.gold : C.line,
-              color: tool === 'horizontal' ? '#8A6A16' : C.sub,
-              background: tool === 'horizontal' ? '#FBF1DD' : '#fff',
+              color: tool === 'horizontal' ? C.warningText : C.sub,
+              background: tool === 'horizontal' ? C.warningBackground : C.surfaceCard,
             }}
           >
             Ligne horizontale
@@ -1062,7 +1062,7 @@ function TechnicalPriceChart({ rows, devise }) {
           </span>
         )}
         {tool === 'horizontal' && (
-          <span style={{ color: '#8A6A16' }}>
+          <span style={{ color: C.warningText }}>
             Cliquez au niveau de prix souhaité.
           </span>
         )}
@@ -1070,7 +1070,7 @@ function TechnicalPriceChart({ rows, devise }) {
 
       <div
         className="relative rounded-2xl overflow-hidden border"
-        style={{ borderColor: C.line, background: '#fff' }}
+        style={{ borderColor: C.line, background: C.surfaceCard }}
       >
         <svg
           viewBox={`0 0 ${width} ${height}`}
@@ -1083,7 +1083,7 @@ function TechnicalPriceChart({ rows, devise }) {
           onMouseLeave={() => setHover(null)}
           onClick={handleChartClick}
         >
-          <rect x="0" y="0" width={width} height={height} fill="#FFFFFF" />
+          <rect x="0" y="0" width={width} height={height} fill={C.surfaceCard} />
           {Array.from({ length: 6 }).map((_, index) => {
             const y = margin.top + (index / 5) * plotHeight;
             const price = maxPrice - (index / 5) * (maxPrice - minPrice);
@@ -1122,7 +1122,7 @@ function TechnicalPriceChart({ rows, devise }) {
                   x2={x}
                   y1={margin.top}
                   y2={height - margin.bottom}
-                  stroke="#F1F2F5"
+                  stroke={C.borderSubtle}
                   strokeWidth="1"
                 />
                 <text
@@ -1249,7 +1249,7 @@ function TechnicalPriceChart({ rows, devise }) {
                 x2={hover.x}
                 y1={margin.top}
                 y2={height - margin.bottom}
-                stroke="#8B93A7"
+                stroke={C.textMuted}
                 strokeWidth="1"
                 strokeDasharray="4 4"
               />
@@ -1258,7 +1258,7 @@ function TechnicalPriceChart({ rows, devise }) {
                 x2={width - margin.right}
                 y1={hover.y}
                 y2={hover.y}
-                stroke="#8B93A7"
+                stroke={C.textMuted}
                 strokeWidth="1"
                 strokeDasharray="4 4"
               />
@@ -1440,8 +1440,8 @@ function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
               onClick={() => setHorizon(item)}
               className="px-3 py-1.5 rounded-xl text-xs font-semibold"
               style={{
-                background: horizon === item ? C.navy : '#F0F1F5',
-                color: horizon === item ? '#fff' : C.sub,
+                background: horizon === item ? C.activeBackground : C.surfaceInset,
+                color: horizon === item ? C.textPrimary : C.sub,
               }}
             >
               {item}
@@ -1557,7 +1557,7 @@ function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
             <div
               key={item.label}
               className="p-3 rounded-2xl border"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}
+              style={{ borderColor: C.line, background: C.surfaceElevated }}
             >
               <div
                 className="text-[10px] uppercase font-semibold"
@@ -1606,7 +1606,7 @@ function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
               <div
                 key={ratio.key}
                 className="p-4 rounded-2xl border"
-                style={{ borderColor: C.line, background: '#fff' }}
+                style={{ borderColor: C.line, background: C.surfaceCard }}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>

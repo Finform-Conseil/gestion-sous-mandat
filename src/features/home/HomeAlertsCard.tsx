@@ -142,7 +142,7 @@ export function HomeAlertsCard({
                 style={{
                   background:
                     stat.nombre > 0
-                      ? '#EAF8F3'
+                      ? C.positiveBackground
                       : 'transparent',
                   cursor:
                     stat.nombre > 0

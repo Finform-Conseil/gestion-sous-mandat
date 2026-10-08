@@ -89,7 +89,7 @@ export function PortfolioAllocationAnalysis({
                     <span>{key}</span>
                     <span>{current}% (cible {target}%)</span>
                   </div>
-                  <div className="h-2 rounded-full" style={{ background: '#EEF0F4' }}>
+                  <div className="h-2 rounded-full" style={{ background: C.surfaceInset }}>
                     <div
                       className="h-2 rounded-full"
                       style={{
@@ -105,7 +105,7 @@ export function PortfolioAllocationAnalysis({
         </Card>
       </div>
 
-      <Card className="p-5" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-5" style={{ borderColor: C.borderSubtle }}>
         <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
           <div>
             <Eyebrow>Évolution de la valorisation par classe d'actifs</Eyebrow>
@@ -146,7 +146,14 @@ export function PortfolioAllocationAnalysis({
             </div>
           ))}
         </div>
-        <div className="mt-3 p-3 rounded-xl text-[11px]" style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}>
+        <div
+          className="mt-3 pt-3 text-[11px]"
+          style={{
+            borderTop: `1px solid ${C.borderSubtle}`,
+            color: C.sub,
+            ...F_BODY,
+          }}
+        >
           Dans cette maquette, le détail historique mensuel par classe d'actifs est
           une série de démonstration reconstruite à partir de la valorisation et de
           l'allocation actuelles. Il pourra être remplacé directement par les
@@ -169,8 +176,15 @@ export function PortfolioAllocationAnalysis({
           <Badge tone="navy">{client.marche}</Badge>
         </div>
         <div className="grid grid-cols-3 gap-4 items-start">
-          {geographicBlocks.map((block) => (
-            <div key={block.title} className="rounded-2xl border p-4" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+          {geographicBlocks.map((block, blockIndex) => (
+            <div
+              key={block.title}
+              className="p-4"
+              style={{
+                borderLeft:
+                  blockIndex === 0 ? 'none' : `1px solid ${C.borderSubtle}`,
+              }}
+            >
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: C.sub, ...F_BODY }}>{block.title}</div>

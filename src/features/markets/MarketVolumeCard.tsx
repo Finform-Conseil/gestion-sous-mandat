@@ -24,7 +24,7 @@ export function MarketVolumeCard({
 }) {
   return (
     <Card className="p-5">
-      <div className="flex items-center justify-between mb-3">
+      <div className="gsm-responsive-header flex items-center justify-between mb-3">
         <Eyebrow>Volume d'échange du jour — marchés</Eyebrow>
         <span className="text-xs" style={{ color: C.sub }}>
           Devise d'affichage réglable par bourse
@@ -54,7 +54,7 @@ export function MarketVolumeCard({
               className="p-3 rounded-xl border"
               style={{ borderColor: C.line }}
             >
-              <div className="flex items-center justify-between mb-2">
+              <div className="gsm-responsive-inline-row flex items-center justify-between mb-2">
                 <Badge tone="navy">{exchange}</Badge>
                 <select name="gsm-marketvolumecard-59" aria-label="Sélection marketvolumecard"
                   value={targetCurrency}

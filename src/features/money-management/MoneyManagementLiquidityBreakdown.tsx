@@ -30,7 +30,7 @@ export function MoneyManagementLiquidityBreakdown({
             déjà utilisées dans la plateforme.
           </div>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="gsm-chip-scroll">
           {DIMENSIONS.map((item) => (
             <button
               key={item}
@@ -38,8 +38,8 @@ export function MoneyManagementLiquidityBreakdown({
               onClick={() => onDimensionChange(item)}
               className="px-3 py-1 rounded-full text-xs font-semibold"
               style={{
-                background: dimension === item ? C.navy : '#F0F1F5',
-                color: dimension === item ? '#fff' : C.sub,
+                background: dimension === item ? C.activeBackground : C.surfaceInset,
+                color: dimension === item ? C.textPrimary : C.sub,
               }}
             >
               {item}

@@ -183,7 +183,7 @@ export function createClientTradingScreens(dependencies) {
             className="mt-4 pt-4 space-y-3"
             style={{ borderTop: `1px solid ${C.line}` }}
           >
-            <div className="flex items-center justify-between gap-3">
+            <div className="gsm-responsive-inline-row flex items-center justify-between gap-3">
               <span className="text-xs" style={{ color: C.sub }}>
                 Dernier cours
               </span>
@@ -191,13 +191,13 @@ export function createClientTradingScreens(dependencies) {
                 {fmtPrice(marche.cours)} {marche.devise}
               </b>
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="gsm-responsive-inline-row flex items-center justify-between gap-3">
               <span className="text-xs" style={{ color: C.sub }}>
                 Variation
               </span>
               <Pct v={Number(marche.variation || 0)} />
             </div>
-            <div className="flex items-start justify-between gap-3">
+            <div className="gsm-responsive-inline-row flex items-start justify-between gap-3">
               <span className="text-xs" style={{ color: C.sub }}>
                 SGI compatibles
               </span>
@@ -214,14 +214,14 @@ export function createClientTradingScreens(dependencies) {
 
           <div
             className="mt-4 p-3 rounded-xl text-[10px]"
-            style={{ background: '#FAFAFC', color: C.sub }}          >
+            style={{ background: C.surfaceElevated, color: C.sub }}          >
             Vous pouvez changer d'instrument uniquement à l'intérieur du même
             univers de marché ({typeSource || 'Actions / Obligations'}).
           </div>
         </Card>
 
         <Card className="col-span-2 p-5" style={{ borderColor: C.gold }}>
-          <div className="flex items-center justify-between gap-3 mb-4">
+          <div className="gsm-responsive-header flex items-center justify-between gap-3 mb-4">
             <Eyebrow>Ticket d'ordre</Eyebrow>
             <Badge tone="gold">
               {marche.type === 'Obligation' ? 'Fixed Income' : 'Equity'}
@@ -288,8 +288,8 @@ export function createClientTradingScreens(dependencies) {
                       ? value === 'Achat'
                         ? C.teal
                         : C.coral
-                      : '#EEF0F4',
-                  color: sens === value ? '#fff' : C.sub,
+                      : C.surfaceInset,
+                  color: sens === value ? C.textPrimary : C.sub,
                 }}
               >
                 {value}
@@ -357,7 +357,7 @@ export function createClientTradingScreens(dependencies) {
 
           <div
             className="grid grid-cols-2 gap-x-8 gap-y-2 p-4 rounded-xl text-xs mb-4"
-            style={{ background: '#EFF3FB', color: C.ink }}
+            style={{ background: C.infoBackground, color: C.ink }}
           >
             <div className="flex justify-between gap-3">
               <span>Montant estimé</span>
@@ -397,7 +397,7 @@ export function createClientTradingScreens(dependencies) {
           {message && (
             <div
               className="text-xs p-2.5 rounded-xl mb-3"
-              style={{ background: '#FBE9E7', color: C.coral }}
+              style={{ background: C.negativeBackground, color: C.coral }}
             >
               {message}
             </div>
@@ -452,7 +452,7 @@ export function createClientTradingScreens(dependencies) {
         <Badge tone="gold">{rows.length} obligation(s)</Badge>
       </div>
 
-      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
             <div
@@ -461,7 +461,7 @@ export function createClientTradingScreens(dependencies) {
             >
               Marché
             </div>
-            <div className="flex gap-1.5">
+            <div className="gsm-chip-scroll">
               {['Tous', 'BRVM', 'NGX', 'GSE'].map((code) => (
                 <button
                   key={code}
@@ -469,8 +469,8 @@ export function createClientTradingScreens(dependencies) {
                   onClick={() => setMarche(code)}
                   className="px-3 py-1.5 rounded-full text-xs font-semibold"
                   style={{
-                    background: marche === code ? C.navy : '#F0F1F5',
-                    color: marche === code ? '#fff' : C.sub,
+                    background: marche === code ? C.activeBackground : C.surfaceInset,
+                    color: marche === code ? C.textPrimary : C.sub,
                   }}
                 >
                   {code}
@@ -503,9 +503,9 @@ export function createClientTradingScreens(dependencies) {
       </Card>
 
       <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1650 }}>
-            <thead style={{ background: '#FAFAFC' }}>
+        <div className="gsm-table-scroll">
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1650 }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Instrument</Th>
                 <Th>Émetteur</Th>
@@ -518,7 +518,8 @@ export function createClientTradingScreens(dependencies) {
                 <Th>Volume jour</Th>
                 <Th>Var %</Th>
                 <Th>SGI accessibles</Th>
-                <Th>Watchlist</Th>                <Th>Actions</Th>
+                <Th>Watchlist</Th>
+                <Th>Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -545,7 +546,7 @@ export function createClientTradingScreens(dependencies) {
                     key={item.nom}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: index % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td className="font-semibold whitespace-nowrap">
@@ -595,8 +596,8 @@ export function createClientTradingScreens(dependencies) {
                         }
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap"
                         style={{
-                          background: suivi ? '#E4F5EF' : '#FBF1DD',
-                          color: suivi ? C.teal : '#8A6A16',
+                          background: suivi ? C.positiveBackground : C.warningBackground,
+                          color: suivi ? C.teal : C.warningText,
                         }}
                       >
                         <Star

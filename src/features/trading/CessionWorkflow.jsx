@@ -2964,7 +2964,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
       <Card className="p-4" style={{ borderColor: C.navy }}>
         <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div className="grid grid-cols-4 gap-3 flex-1 min-w-[900px]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 flex-1 min-w-0">
             <div>
               <label
                 className="text-xs font-semibold block mb-1"
@@ -2974,7 +2974,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
               </label>
               <div
                 className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-                style={{ borderColor: C.line, background: '#fff' }}
+                style={{ borderColor: C.line, background: C.surfaceCard }}
               >
                 <Search size={14} color={C.sub} />
                 <input name="gsm-cessionworkflow-2980" aria-label="Nom du client"
@@ -2997,7 +2997,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 value={filtreMarche}
                 onChange={(e) => setFiltreMarche(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border text-sm"
-                style={{ borderColor: C.line, background: '#fff' }}
+                style={{ borderColor: C.line, background: C.surfaceCard }}
               >
                 {['Tous', 'BRVM', 'NGX', 'GSE'].map((marche) => (
                   <option key={marche}>{marche}</option>
@@ -3037,10 +3037,10 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
             scrollbarGutter: 'stable',
           }}
         >
-          <table className="w-full" style={{ minWidth: 1400 }}>
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1400 }}>
             <thead
               style={{
-                background: '#FAFAFC',
+                background: C.surfaceElevated,
                 position: 'sticky',
                 top: 0,
                 zIndex: 10,
@@ -3081,7 +3081,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     key={client.id}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: index % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td>
@@ -3208,9 +3208,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 cash disponible avant cession.
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1300 }}>
-                <thead style={{ background: '#FAFAFC' }}>
+            <div className="gsm-table-scroll">
+              <table className="w-full gsm-table--banking" style={{ minWidth: 1300 }}>
+                <thead style={{ background: C.surfaceElevated }}>
                   <tr>
                     <Th>Client</Th>
                     <Th>Cash actuel</Th>
@@ -3229,7 +3229,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                       key={plan.client.id}
                       style={{
                         borderTop: `1px solid ${C.line}`,
-                        background: index % 2 ? '#FCFCFD' : '#fff',
+                        background: index % 2 ? C.rowAlternate : C.surfaceCard,
                       }}
                     >
                       <Td className="font-semibold">{plan.client.nom}</Td>
@@ -3270,7 +3270,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
           <Card className="p-0 overflow-hidden" style={{ borderColor: C.gold }}>
             <div
               className="p-4 flex items-start justify-between gap-4 flex-wrap"
-              style={{ background: '#FFFCF6' }}
+              style={{ background: C.warningBackground }}
             >
               <div>
                 <Eyebrow>3 · Plans optimisés de cession</Eyebrow>
@@ -3302,8 +3302,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                   onClick={() => setEditionPlans((value) => !value)}
                   className="px-3.5 py-2 rounded-xl text-sm font-semibold"
                   style={{
-                    background: editionPlans ? C.gold : '#fff',
-                    color: editionPlans ? '#fff' : C.navy,
+                    background: editionPlans ? C.gold : C.surfaceCard,
+                    color: editionPlans ? C.onAccent : C.textPrimary,
                     border: `1px solid ${editionPlans ? C.gold : C.line}`,
                     ...F_BODY,
                   }}
@@ -3318,7 +3318,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     onClick={resetAllPlanEdits}
                     className="px-3.5 py-2 rounded-xl text-sm font-semibold"
                     style={{
-                      background: '#fff',
+                      background: C.surfaceCard,
                       color: C.coral,
                       border: `1px solid ${C.line}`,
                       ...F_BODY,
@@ -3349,7 +3349,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     style={{
                       borderTop:
                         planIndex === 0 ? 'none' : `1px solid ${C.line}`,
-                      background: open ? '#fff' : '#FCFCFD',
+                      background: open ? C.surfaceCard : C.rowAlternate,
                     }}
                   >
                     <button
@@ -3440,7 +3440,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     {open && (
                       <div
                         className="px-5 pb-5 space-y-4"
-                        style={{ background: '#fff' }}
+                        style={{ background: C.surfaceCard }}
                       >
                         <div className="grid grid-cols-5 gap-3">
                           {[
@@ -3480,7 +3480,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                               className="p-3 rounded-2xl border"
                               style={{
                                 borderColor: C.line,
-                                background: '#FAFAFC',
+                                background: C.surfaceElevated,
                               }}
                             >
                               <div
@@ -3509,9 +3509,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                 className="p-3 rounded-2xl border"
                                 style={{
                                   borderColor: compliant
-                                    ? '#CFE9DF'
-                                    : '#F1D6D2',
-                                  background: compliant ? '#F6FBF9' : '#FFF8F7',
+                                    ? C.positiveBorder
+                                    : C.negativeBorder,
+                                  background: compliant ? C.positiveBackground : C.negativeBackground,
                                 }}
                               >
                                 <div
@@ -3578,9 +3578,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         <div
                           className="p-3 rounded-2xl flex items-center justify-between gap-3 flex-wrap"
                           style={{
-                            background: editionPlans ? '#FFF8E9' : '#F7F8FA',
+                            background: editionPlans ? C.warningBackground : C.surfaceElevated,
                             border: `1px solid ${
-                              editionPlans ? '#E9CF91' : C.line
+                              editionPlans ? C.warningBorder : C.line
                             }`,
                           }}
                         >
@@ -3607,7 +3607,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                               onClick={() => resetPlanEdits(plan.client.id)}
                               className="px-3 py-1.5 rounded-xl text-xs font-semibold"
                               style={{
-                                background: '#fff',
+                                background: C.surfaceCard,
                                 color: C.coral,
                                 border: `1px solid ${C.line}`,
                               }}
@@ -3618,12 +3618,12 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         </div>
 
                         {proposalLines.length > 0 && (
-                          <div className="overflow-x-auto">
+                          <div className="gsm-table-scroll">
                             <table
-                              className="w-full"
+                              className="w-full gsm-table--banking"
                               style={{ minWidth: editionPlans ? 1580 : 1450 }}
                             >
-                              <thead style={{ background: '#FAFAFC' }}>
+                              <thead style={{ background: C.surfaceElevated }}>
                                 <tr>
                                   <Th>Priorité</Th>
                                   <Th>Titre</Th>
@@ -3659,12 +3659,12 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                       style={{
                                         borderTop: `1px solid ${C.line}`,
                                         background: inactive
-                                          ? '#F7F7F8'
+                                          ? C.surfaceInset
                                           : order.managerEdited
-                                          ? '#FFFCF4'
+                                          ? C.warningBackground
                                           : index % 2
-                                          ? '#FCFCFD'
-                                          : '#fff',
+                                          ? C.rowAlternate
+                                          : C.surfaceCard,
                                         opacity: inactive ? 0.62 : 1,
                                       }}
                                     >
@@ -3690,7 +3690,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                                   order.titreSysteme
                                                     ? C.gold
                                                     : C.line,
-                                                background: '#fff',
+                                                background: C.surfaceCard,
                                                 color: C.ink,
                                               }}
                                             >
@@ -3718,7 +3718,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                         {order.managerEdited && (
                                           <div
                                             className="text-[9px] mt-1"
-                                            style={{ color: '#8A6A16' }}
+                                            style={{ color: C.warningText }}
                                           >
                                             Ajusté par le gérant
                                           </div>
@@ -3750,7 +3750,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                                 borderColor: order.managerEdited
                                                   ? C.gold
                                                   : C.line,
-                                                background: '#fff',
+                                                background: C.surfaceCard,
                                                 color: C.ink,
                                                 ...F_MONO,
                                               }}
@@ -3837,7 +3837,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           <div
                             className="p-4 rounded-2xl text-xs"
                             style={{
-                              background: '#FFF4F2',
+                              background: C.negativeBackground,
                               color: C.coral,
                             }}
                           >
@@ -3864,8 +3864,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           <div
                             className="p-4 rounded-2xl text-xs"
                             style={{
-                              background: '#FFF8E9',
-                              color: '#8A6A16',
+                              background: C.warningBackground,
+                              color: C.warningText,
                             }}
                           >
                             <b>Plan modifié insuffisant · non bloquant :</b> la
@@ -3884,8 +3884,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           <div
                             className="p-4 rounded-2xl text-xs"
                             style={{
-                              background: '#FFF8E9',
-                              color: '#8A6A16',
+                              background: C.warningBackground,
+                              color: C.warningText,
                             }}
                           >
                             <b>Allocation à surveiller :</b> le besoin de
@@ -3935,7 +3935,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 {cessionInterneReady && warningPlans.length > 0 && (
                   <div
                     className="text-[10px] mt-2 font-semibold"
-                    style={{ color: '#8A6A16' }}
+                    style={{ color: C.warningText }}
                   >
                     {warningPlans.length} plan(s) restent partiellement
                     couverts, mais cela n'empêche plus la recherche de
@@ -3964,7 +3964,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
             <div
               className="mt-5 p-4 rounded-2xl border"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}
+              style={{ borderColor: C.line, background: C.surfaceElevated }}
             >
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
@@ -3996,9 +3996,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     key={rule}
                     className="px-2.5 py-1.5 rounded-xl text-[10px] font-semibold"
                     style={{
-                      background: '#EAF8F3',
-                      color: '#13795B',
-                      border: '1px solid #CBEADF',
+                      background: C.positiveBackground,
+                      color: C.teal,
+                      border: `1px solid ${C.positiveBorder}`,
                     }}
                   >
                     ✓ {rule}
@@ -4073,17 +4073,23 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
                 return (
                   <div
-                    className="mt-4 p-4 rounded-2xl border"
+                    className="mt-4 rounded-2xl border overflow-hidden"
                     style={{
-                      borderColor: C.gold,
-                      background: '#FFFCF4',
+                      borderColor: C.line,
+                      background: C.surfaceCard,
                     }}
                   >
-                    <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                    <div
+                      className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap"
+                      style={{
+                        background: C.surfaceElevated,
+                        borderBottom: `1px solid ${C.borderSubtle}`,
+                      }}
+                    >
                       <div>
                         <div
-                          className="text-[10px] uppercase font-bold"
-                          style={{ color: '#8A6A16' }}
+                          className="text-[10px] uppercase font-bold tracking-[0.08em]"
+                          style={{ color: C.gold }}
                         >
                           Nouvelle contrainte
                         </div>
@@ -4091,9 +4097,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           className="text-[10px] mt-0.5"
                           style={{ color: C.sub }}
                         >
-                          Une seule ligne de sélection. Configurez-la puis
-                          cliquez sur « + Ajouter une contrainte » pour
-                          l'enregistrer dans le tableau.
+                          Définissez la règle, son niveau et sa valeur. L’aperçu
+                          se met à jour avant l’ajout au tableau.
                         </div>
                       </div>
 
@@ -4108,8 +4113,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                       </Badge>
                     </div>
 
-                    <div className="grid grid-cols-12 gap-3 items-end">
-                      <div className="col-span-4">
+                    <div className="p-4">
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-x-3 gap-y-3 items-start">
+                      <div className="lg:col-span-5">
                         <label
                           className="text-[9px] uppercase font-semibold block mb-1"
                           style={{ color: C.sub }}
@@ -4126,7 +4132,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           className="w-full px-3 py-2 rounded-xl border text-xs"
                           style={{
                             borderColor: C.line,
-                            background: '#fff',
+                            background: C.surfaceCard,
                           }}
                         >
                           {CESSION_INTERNE_CONSTRAINT_CATALOG.map(
@@ -4142,7 +4148,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         </select>
                       </div>
 
-                      <div className="col-span-2">
+                      <div className="lg:col-span-2">
                         <label
                           className="text-[9px] uppercase font-semibold block mb-1"
                           style={{ color: C.sub }}
@@ -4159,7 +4165,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           className="w-full px-3 py-2 rounded-xl border text-xs"
                           style={{
                             borderColor: C.line,
-                            background: '#fff',
+                            background: C.surfaceCard,
                           }}
                         >
                           {CESSION_INTERNE_CONSTRAINT_MODES.map(
@@ -4172,7 +4178,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         </select>
                       </div>
 
-                      <div className="col-span-2">
+                      <div className="lg:col-span-2">
                         <label
                           className="text-[9px] uppercase font-semibold block mb-1"
                           style={{ color: C.sub }}
@@ -4189,7 +4195,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           className="w-full px-3 py-2 rounded-xl border text-xs"
                           style={{
                             borderColor: C.line,
-                            background: '#fff',
+                            background: C.surfaceCard,
                           }}
                         >
                           {(definition?.operators || ['=']).map(
@@ -4205,7 +4211,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         </select>
                       </div>
 
-                      <div className="col-span-3">
+                      <div className="lg:col-span-3">
                         <label
                           className="text-[9px] uppercase font-semibold block mb-1"
                           style={{ color: C.sub }}
@@ -4215,33 +4221,52 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
                         {definition?.kind === 'enum' &&
                           definition.multiple && (
-                            <select name="gsm-cessionworkflow-4218" aria-label="Sélection cessionworkflow"
-                              multiple
-                              value={selectedValues}
-                              onChange={(event) =>
-                                updateContrepartieBrouillon({
-                                  value: Array.from(
-                                    event.target.selectedOptions
-                                  ).map((option) => option.value),
-                                })
-                              }
-                              className="w-full px-2 py-1.5 rounded-xl border text-[10px]"
+                            <div
+                              className="w-full p-1.5 rounded-xl border flex flex-wrap gap-1.5 overflow-auto"
                               style={{
                                 borderColor: C.line,
-                                background: '#fff',
+                                background: C.surfaceInset,
                                 minHeight: 40,
-                                maxHeight: 72,
+                                maxHeight: 88,
                               }}
+                              role="group"
+                              aria-label="Valeurs sélectionnées"
                             >
-                              {options.map((option) => (
-                                <option
-                                  key={option.value}
-                                  value={option.value}
-                                >
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                              {options.map((option) => {
+                                const selected = selectedValues.includes(
+                                  option.value
+                                );
+
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() =>
+                                      updateContrepartieBrouillon({
+                                        value: selected
+                                          ? selectedValues.filter(
+                                              (value) => value !== option.value
+                                            )
+                                          : [...selectedValues, option.value],
+                                      })
+                                    }
+                                    className="px-2.5 py-1 rounded-lg text-[10px] font-semibold"
+                                    style={{
+                                      background: selected
+                                        ? C.activeBackground
+                                        : C.surfaceCard,
+                                      color: selected ? C.textPrimary : C.sub,
+                                      border: `1px solid ${
+                                        selected ? C.infoBorder : C.borderSubtle
+                                      }`,
+                                    }}
+                                  >
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           )}
 
                         {definition?.kind === 'enum' &&
@@ -4256,7 +4281,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                               className="w-full px-3 py-2 rounded-xl border text-xs"
                               style={{
                                 borderColor: C.line,
-                                background: '#fff',
+                                background: C.surfaceCard,
                               }}
                             >
                               {options.map((option) => (
@@ -4289,7 +4314,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                             className="w-full px-3 py-2 rounded-xl border text-xs"
                             style={{
                               borderColor: C.line,
-                              background: '#fff',
+                              background: C.surfaceCard,
                             }}
                           >
                             <option value="true">Oui</option>
@@ -4312,7 +4337,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                               className="w-full px-3 py-2 rounded-xl border text-xs"
                               style={{
                                 borderColor: C.line,
-                                background: '#fff',
+                                background: C.surfaceCard,
                                 ...F_MONO,
                               }}
                             />
@@ -4328,35 +4353,45 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                         )}
                       </div>
 
-                      <div className="col-span-1">
-                        <button
-                          type="button"
-                          onClick={ajouterContrepartieContrainte}
-                          className="w-full px-3 py-2 rounded-xl text-xs font-semibold transition-transform active:scale-[0.97]"
-                          style={{
-                            background: C.navy,
-                            color: '#fff',
-                            border: 'none',
-                            minHeight: 38,
-                            ...F_BODY,
-                          }}
-                          title="Ajouter cette contrainte au tableau"
-                        >
-                          + Ajouter
-                        </button>
-                      </div>
                     </div>
 
                     <div
-                      className="text-[9px] mt-2"
-                      style={{ color: C.sub }}
+                      className="mt-3 pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      style={{
+                        borderTop: `1px solid ${C.borderSubtle}`,
+                      }}
                     >
-                      Aperçu :{' '}
-                      <b style={{ color: C.ink }}>
-                        {cessionInterneConstraintLabel(
-                          contrepartieBrouillon
-                        )}
-                      </b>
+                      <div className="flex items-start gap-2 text-[9px] min-w-0">
+                        <span
+                          className="uppercase font-semibold tracking-[0.06em] shrink-0"
+                          style={{ color: C.textTertiary }}
+                        >
+                          Aperçu
+                        </span>
+                        <span className="truncate" style={{ color: C.ink }}>
+                          {cessionInterneConstraintLabel(
+                            contrepartieBrouillon
+                          )}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={ajouterContrepartieContrainte}
+                        className="px-4 py-2 rounded-xl text-xs font-semibold transition-transform active:scale-[0.97] shrink-0"
+                        style={{
+                          background: C.activeBackground,
+                          color: C.textPrimary,
+                          border: `1px solid ${C.infoBorder}`,
+                          minHeight: 40,
+                          minWidth: 132,
+                          ...F_BODY,
+                        }}
+                        title="Ajouter cette contrainte au tableau"
+                      >
+                        + Ajouter
+                      </button>
+                    </div>
                     </div>
                   </div>
                 );
@@ -4366,13 +4401,13 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 className="mt-4 rounded-2xl border overflow-hidden"
                 style={{
                   borderColor: C.line,
-                  background: '#fff',
+                  background: C.surfaceCard,
                 }}
               >
                 <div
                   className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
                   style={{
-                    background: '#FAFAFC',
+                    background: C.surfaceElevated,
                     borderBottom: `1px solid ${C.line}`,
                   }}
                 >
@@ -4424,7 +4459,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     }}
                   >
                     <table
-                      className="w-full"
+                      className="w-full gsm-table--banking"
                       style={{
                         minWidth: 1160,
                         borderCollapse: 'separate',
@@ -4436,7 +4471,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                           position: 'sticky',
                           top: 0,
                           zIndex: 5,
-                          background: '#F5F6F9',
+                          background: C.surfaceElevated,
                         }}
                       >
                         <tr>
@@ -4505,13 +4540,13 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                 style={{
                                   background:
                                     constraint.active === false
-                                      ? '#F7F8FA'
+                                      ? C.surfaceElevated
                                       : definition?.category ===
                                         'Titres'
-                                      ? '#FFFCF4'
+                                      ? C.warningBackground
                                       : index % 2
-                                      ? '#FCFCFD'
-                                      : '#fff',
+                                      ? C.rowAlternate
+                                      : C.surfaceCard,
                                 }}
                               >
                                 <td
@@ -4547,8 +4582,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                     style={{
                                       background:
                                         constraint.active === false
-                                          ? '#EEF0F4'
-                                          : '#EAF8F3',
+                                          ? C.surfaceInset
+                                          : C.positiveBackground,
                                       color:
                                         constraint.active === false
                                           ? C.sub
@@ -4653,9 +4688,9 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                                     }
                                     className="w-9 h-9 rounded-xl border inline-flex items-center justify-center"
                                     style={{
-                                      borderColor: '#F0D2CF',
+                                      borderColor: C.negativeBorder,
                                       color: C.coral,
-                                      background: '#fff',
+                                      background: C.surfaceCard,
                                     }}
                                     title="Supprimer la contrainte"
                                   >
@@ -4677,7 +4712,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
               className="mt-5 p-4 rounded-2xl border"
               style={{
                 borderColor: C.line,
-                background: '#FBFCFE',
+                background: C.surfaceElevated,
               }}
             >
               <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -4739,7 +4774,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                     className="p-3 rounded-xl border"
                     style={{
                       borderColor: C.line,
-                      background: '#fff',
+                      background: C.surfaceCard,
                     }}
                   >
                     <div
@@ -4777,8 +4812,8 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
                 onClick={ouvrirCession}
                 className="px-4 py-2.5 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97]"
                 style={{
-                  background: cessionInterneReady ? C.navy : '#E6E8ED',
-                  color: cessionInterneReady ? '#fff' : '#8B93A7',
+                  background: cessionInterneReady ? C.activeBackground : C.surfaceInset,
+                  color: cessionInterneReady ? C.textPrimary : C.textMuted,
                   border: 'none',
                   cursor: cessionInterneReady ? 'pointer' : 'not-allowed',
                   ...F_BODY,
@@ -4798,7 +4833,7 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
       <div
         className="text-[10px] p-3 rounded-xl"
-        style={{ background: '#FBF7EE', color: C.sub, ...F_BODY }}
+        style={{ background: C.warningBackground, color: C.sub, ...F_BODY }}
       >
         <b style={{ color: C.ink }}>Important :</b> cette première version est
         une simulation intégrée à la maquette. Les positions sont reconstituées
@@ -5287,14 +5322,14 @@ function CessionA4Modal({
         style={{
           maxWidth: 1180,
           maxHeight: '94vh',
-          background: '#EEF0F4',
+          background: C.surfaceInset,
           boxShadow: '0 24px 80px rgba(15,27,51,0.30)',
         }}
       >
         <div
           className="sticky top-0 z-20 flex items-center justify-between gap-4 px-5 py-3"
           style={{
-            background: '#FFFFFF',
+            background: C.surfaceCard,
             borderBottom: `1px solid ${C.line}`,
           }}
         >
@@ -5325,7 +5360,7 @@ function CessionA4Modal({
               onClick={() => onClose?.()}
               className="w-9 h-9 rounded-full flex items-center justify-center"
               style={{
-                background: '#F0F1F5',
+                background: C.surfaceInset,
                 color: C.ink,
               }}
               title="Fermer"
@@ -5345,7 +5380,7 @@ function CessionA4Modal({
               minHeight: '297mm',
               maxWidth: '100%',
               margin: '0 auto',
-              background: '#FFFFFF',
+              background: C.surfaceCard,
               padding: '13mm 12mm',
               boxShadow: '0 10px 30px rgba(15,27,51,0.12)',
               color: C.ink,
@@ -5443,7 +5478,7 @@ function CessionA4Modal({
                   className="p-2 rounded-lg"
                   style={{
                     border: `1px solid ${C.line}`,
-                    background: '#FAFAFC',
+                    background: C.surfaceElevated,
                   }}
                 >
                   <div
@@ -5465,7 +5500,7 @@ function CessionA4Modal({
             <div className="grid grid-cols-3 gap-3 mt-4">
               <div
                 className="p-3 rounded-xl"
-                style={{ background: '#F4FBF8' }}
+                style={{ background: C.positiveBackground }}
               >
                 <div
                   className="text-[8px] uppercase font-bold"
@@ -5492,7 +5527,7 @@ function CessionA4Modal({
 
               <div
                 className="p-3 rounded-xl"
-                style={{ background: '#F3F6FC' }}
+                style={{ background: C.infoBackground }}
               >
                 <div
                   className="text-[8px] uppercase font-bold"
@@ -5519,7 +5554,7 @@ function CessionA4Modal({
 
               <div
                 className="p-3 rounded-xl"
-                style={{ background: '#FFF8F7' }}
+                style={{ background: C.negativeBackground }}
               >
                 <div
                   className="text-[8px] uppercase font-bold"
@@ -5561,7 +5596,7 @@ function CessionA4Modal({
                 }}
               >
                 <thead>
-                  <tr style={{ background: '#EEF1F7' }}>
+                  <tr style={{ background: C.surfaceElevated }}>
                     <th className="text-left p-1.5">Réf.</th>
                     <th className="text-left p-1.5">Vendeur</th>
                     <th className="text-left p-1.5">Titre</th>
@@ -5632,7 +5667,7 @@ function CessionA4Modal({
                 }}
               >
                 <thead>
-                  <tr style={{ background: '#EEF1F7' }}>
+                  <tr style={{ background: C.surfaceElevated }}>
                     <th className="text-left p-1.5">Réf.</th>
                     <th className="text-left p-1.5">Portefeuille</th>
                     <th className="text-left p-1.5">Titre</th>
@@ -5712,7 +5747,7 @@ function CessionA4Modal({
                 }}
               >
                 <thead>
-                  <tr style={{ background: '#FFF3F1' }}>
+                  <tr style={{ background: C.negativeBackground }}>
                     <th className="text-left p-1.5">Client</th>
                     <th className="text-right p-1.5">Retrait demandé</th>
                     <th className="text-right p-1.5">Couvert</th>
@@ -6497,7 +6532,7 @@ function Cession({
         available: coverage.nonListedAvailableNet,
         pct: coverage.nonListedPct,
         tone: 'teal',
-        background: '#EAF8F3',
+        background: C.positiveBackground,
         color: C.teal,
       },
       {
@@ -6507,8 +6542,8 @@ function Cession({
         available: coverage.listedBondAvailableNet,
         pct: coverage.listedBondPct,
         tone: 'gold',
-        background: '#FFF8E9',
-        color: '#8A6A16',
+        background: C.warningBackground,
+        color: C.warningText,
       },
       {
         label: 'Actions cotées',
@@ -6517,7 +6552,7 @@ function Cession({
         available: coverage.actionListedAvailableNet,
         pct: coverage.actionListedPct,
         tone: 'navy',
-        background: '#F3F6FC',
+        background: C.infoBackground,
         color: C.navy,
       },
       {
@@ -6527,7 +6562,7 @@ function Cession({
         available: coverage.cashAvailable,
         pct: coverage.cashPct,
         tone: 'slate',
-        background: '#F5F6F9',
+        background: C.surfaceElevated,
         color: C.sub,
       },
     ];
@@ -6810,7 +6845,7 @@ function Cession({
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 mt-3 items-stretch">
           <div
             className="xl:col-span-4 p-3 rounded-xl"
-            style={{ background: '#FAFAFC' }}
+            style={{ background: C.surfaceElevated }}
           >
             <div className="grid grid-cols-3 gap-2">
               <div>
@@ -6845,7 +6880,7 @@ function Cession({
 
               <div
                 className="px-2 py-1.5 rounded-lg"
-                style={{ background: '#fff', border: `1px solid ${C.line}` }}
+                style={{ background: C.surfaceCard, border: `1px solid ${C.line}` }}
               >
                 <div
                   className="text-[8px] uppercase font-semibold"
@@ -6874,7 +6909,7 @@ function Cession({
             ) : (
               <div
                 className="p-4 mt-2 text-center text-[10px] rounded-xl"
-                style={{ color: C.sub, background: '#fff' }}
+                style={{ color: C.sub, background: C.surfaceCard }}
               >
                 La liquidité disponible couvre déjà les retraits : aucune
                 cession supplémentaire n'est nécessaire.
@@ -6885,7 +6920,7 @@ function Cession({
           <div className="xl:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-2">
             <div
               className="p-3 rounded-xl border"
-              style={{ borderColor: '#CDEADF', background: '#F4FBF8' }}
+              style={{ borderColor: C.positiveBorder, background: C.positiveBackground }}
             >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Badge tone="teal">Marché non coté</Badge>
@@ -6922,7 +6957,7 @@ function Cession({
 
             <div
               className="p-3 rounded-xl border"
-              style={{ borderColor: '#D9DFEF', background: '#F3F6FC' }}
+              style={{ borderColor: C.infoBorder, background: C.infoBackground }}
             >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Badge tone="navy">Marché coté</Badge>
@@ -6972,7 +7007,7 @@ function Cession({
 
             <div
               className="p-3 rounded-xl border"
-              style={{ borderColor: '#F0C9C4', background: '#FFF8F7' }}
+              style={{ borderColor: C.negativeBorder, background: C.negativeBackground }}
             >
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <Badge tone="coral">Autres recours</Badge>
@@ -7012,7 +7047,7 @@ function Cession({
               className="md:col-span-3 px-3 py-2 rounded-lg flex items-center justify-between gap-3 flex-wrap"
               style={{
                 background:
-                  totalAlternativeRecourseRef > 1 ? '#FFF8E9' : '#EAF8F3',
+                  totalAlternativeRecourseRef > 1 ? C.warningBackground : C.positiveBackground,
               }}
             >
               <div className="min-w-0 flex-1">
@@ -7112,7 +7147,7 @@ function Cession({
               className="p-3 rounded-xl border"
               style={{
                 borderColor: C.line,
-                background: '#FAFAFC',
+                background: C.surfaceElevated,
               }}
             >
               <div
@@ -7143,8 +7178,8 @@ function Cession({
             style={{
               background:
                 totalInternalUnmatchedRef > 1
-                  ? '#FFF8E9'
-                  : '#EAF8F3',
+                  ? C.warningBackground
+                  : C.positiveBackground,
             }}
           >
             <div
@@ -7159,7 +7194,7 @@ function Cession({
                 ...F_MONO,
                 color:
                   totalInternalUnmatchedRef > 1
-                    ? '#8A6A16'
+                    ? C.warningText
                     : C.teal,
               }}
             >
@@ -7172,8 +7207,8 @@ function Cession({
             style={{
               background:
                 marketDepthShortfallCount > 0
-                  ? '#FFF8E9'
-                  : '#EAF8F3',
+                  ? C.warningBackground
+                  : C.positiveBackground,
             }}
           >
             <div
@@ -7188,7 +7223,7 @@ function Cession({
                 ...F_MONO,
                 color:
                   marketDepthShortfallCount > 0
-                    ? '#8A6A16'
+                    ? C.warningText
                     : C.teal,
               }}
             >
@@ -7201,8 +7236,8 @@ function Cession({
             style={{
               background:
                 unroutableOrders.length > 0
-                  ? '#FFF8F7'
-                  : '#EAF8F3',
+                  ? C.negativeBackground
+                  : C.positiveBackground,
             }}
           >
             <div
@@ -7295,15 +7330,15 @@ function Cession({
               className="p-3 rounded-xl border"
               style={{
                 borderColor: step.partial
-                  ? '#ECD6A4'
+                  ? C.warningBorder
                   : step.actif
-                  ? '#B9E3D4'
+                  ? C.positiveBorder
                   : C.line,
                 background: step.partial
-                  ? '#FFF8E9'
+                  ? C.warningBackground
                   : step.actif
-                  ? '#F1FAF6'
-                  : '#FAFAFC',
+                  ? C.positiveBackground
+                  : C.surfaceElevated,
               }}
             >
               <div className="flex items-center justify-between gap-2">
@@ -7315,8 +7350,8 @@ function Cession({
                         ? C.gold
                         : step.actif
                         ? C.teal
-                        : '#E7E9EF',
-                      color: step.actif ? '#fff' : C.sub,
+                        : C.surfaceInset,
+                      color: step.actif ? C.textPrimary : C.sub,
                     }}
                   >
                     {step.numero}
@@ -7335,14 +7370,14 @@ function Cession({
                     style={{
                       ...F_MONO,
                       background: step.complete
-                        ? '#DDF3EA'
+                        ? C.positiveBackground
                         : step.partial
-                        ? '#FBEDC9'
-                        : '#EEF0F4',
+                        ? C.warningBackground
+                        : C.surfaceInset,
                       color: step.complete
                         ? C.teal
                         : step.partial
-                        ? '#8A6A16'
+                        ? C.warningText
                         : C.sub,
                     }}
                     title="Retraits disponibles / retraits demandés"
@@ -7363,7 +7398,7 @@ function Cession({
 
         <div
           className="mt-4 p-4 rounded-xl flex items-center justify-between gap-4 flex-wrap"
-          style={{ background: '#FAFAFC' }}
+          style={{ background: C.surfaceElevated }}
         >
           <div>
             <div
@@ -7456,7 +7491,7 @@ function Cession({
             </div>
           </div>
 
-          <div className="inline-flex p-1 rounded-xl" style={{ background: '#F0F1F5' }}>
+          <div className="inline-flex p-1 rounded-xl" style={{ background: C.surfaceInset }}>
             {[
               {
                 id: 'non-cote',
@@ -7476,9 +7511,9 @@ function Cession({
                 onClick={() => setCessionMode(tab.id)}
                 className="px-4 py-2 rounded-lg text-xs font-semibold"
                 style={{
-                  background: cessionMode === tab.id ? '#fff' : 'transparent',
+                  background: cessionMode === tab.id ? C.surfaceCard : 'transparent',
                   color: tab.disabled
-                    ? '#A8AFBD'
+                    ? C.textMuted
                     : cessionMode === tab.id
                     ? C.navy
                     : C.sub,
@@ -7550,12 +7585,12 @@ function Cession({
           <Badge tone="navy">{titleRows.length} ligne(s)</Badge>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="gsm-table-scroll">
           <table
-            className="w-full"
+            className="w-full gsm-table--banking"
             style={{ minWidth: 1850 }}
           >
-            <thead style={{ background: '#FAFAFC' }}>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Client vendeur</Th>
                 <Th>Titre</Th>
@@ -7600,10 +7635,10 @@ function Cession({
                         borderTop: `1px solid ${C.line}`,
                         background:
                           channel === 'non-cote'
-                            ? '#F4FBF8'
+                            ? C.positiveBackground
                             : channel === 'cote'
-                            ? '#FCFCFD'
-                            : '#FFF8F7',
+                            ? C.rowAlternate
+                            : C.negativeBackground,
                       }}
                     >
                       <Td className="font-semibold">
@@ -7718,7 +7753,7 @@ function Cession({
         className="rounded-2xl border p-3"
         style={{
           borderColor: C.line,
-          background: '#F7F8FA',
+          background: C.surfaceElevated,
         }}
       >
         <div className="flex items-center justify-between gap-3 mb-2">
@@ -7848,7 +7883,7 @@ function Cession({
                       <div
                         key={label}
                         className="p-3 rounded-xl"
-                        style={{ background: '#FAFAFC' }}
+                        style={{ background: C.surfaceElevated }}
                       >
                         <div
                           className="text-[9px] uppercase font-semibold"
@@ -7902,12 +7937,12 @@ function Cession({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto mt-4">
+                    <div className="gsm-table-scroll mt-4">
                       <table
-                        className="w-full"
+                        className="w-full gsm-table--banking"
                         style={{ minWidth: 1120 }}
                       >
-                        <thead style={{ background: '#FAFAFC' }}>
+                        <thead style={{ background: C.surfaceElevated }}>
                           <tr>
                             <Th>Retenir</Th>
                             <Th>Client acheteur</Th>
@@ -7940,12 +7975,12 @@ function Cession({
                                   style={{
                                     borderTop: `1px solid ${C.line}`,
                                     background: disabled
-                                      ? '#FFF8F7'
+                                      ? C.negativeBackground
                                       : proposed
-                                      ? '#F1FAF6'
+                                      ? C.positiveBackground
                                       : index % 2
-                                      ? '#FCFCFD'
-                                      : '#fff',
+                                      ? C.rowAlternate
+                                      : C.surfaceCard,
                                   }}
                                 >
                                   <Td>
@@ -8175,7 +8210,7 @@ function Cession({
                       <div
                         key={label}
                         className="p-3 rounded-xl"
-                        style={{ background: '#FAFAFC' }}
+                        style={{ background: C.surfaceElevated }}
                       >
                         <div
                           className="text-[9px] uppercase font-semibold"
@@ -8422,13 +8457,13 @@ function Cession({
                         </Badge>
                       </div>
 
-                      <div className="overflow-x-auto">
+                      <div className="gsm-table-scroll">
                         <table
-                          className="w-full"
+                          className="w-full gsm-table--banking"
                           style={{ minWidth: 1100 }}
                         >
                           <thead
-                            style={{ background: '#FAFAFC' }}
+                            style={{ background: C.surfaceElevated }}
                           >
                             <tr>
                               <Th>Réf.</Th>
@@ -8516,8 +8551,8 @@ function Cession({
                         <div
                           className="m-4 p-3 rounded-xl text-xs"
                           style={{
-                            background: '#FFF8E9',
-                            color: '#8A6A16',
+                            background: C.warningBackground,
+                            color: C.warningText,
                           }}
                         >
                           <b>Profondeur insuffisante :</b>{' '}
@@ -8581,15 +8616,15 @@ function Cession({
                 style={{
                   background:
                     constraint.mode === 'Obligatoire'
-                      ? '#EEF1F7'
+                      ? C.surfaceElevated
                       : constraint.mode === 'Préférence'
-                      ? '#FBF1DD'
-                      : '#F3F4F6',
+                      ? C.warningBackground
+                      : C.surfaceInset,
                   color:
                     constraint.mode === 'Obligatoire'
                       ? C.navy
                       : constraint.mode === 'Préférence'
-                      ? '#8A6A16'
+                      ? C.warningText
                       : C.sub,
                 }}
               >

@@ -57,10 +57,10 @@ export function MoneyManagementPortfolioPositions({
             scrollbarGutter: 'stable',
           }}
         >
-          <table className="w-full" style={{ minWidth: 1580 }}>
+          <table className="w-full gsm-table--banking" style={{ minWidth: 1580 }}>
             <thead
               style={{
-                background: '#FAFAFC',
+                background: C.surfaceElevated,
                 position: 'sticky',
                 top: 0,
                 zIndex: 4,
@@ -99,7 +99,7 @@ export function MoneyManagementPortfolioPositions({
                     key={client.id}
                     style={{
                       borderTop: `1px solid ${C.line}`,
-                      background: index % 2 ? '#FCFCFD' : '#fff',
+                      background: index % 2 ? C.rowAlternate : C.surfaceCard,
                     }}
                   >
                     <Td className="font-semibold whitespace-nowrap">{client.nom}</Td>

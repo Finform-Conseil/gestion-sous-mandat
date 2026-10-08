@@ -29,32 +29,32 @@ function Carnet({ initial }) {
   return (
     <div className="space-y-4">
       <Breadcrumb items={['Accueil', "Carnet d'ordres"]} />
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2
           className="text-xl font-bold"
           style={{ ...F_DISPLAY, color: C.ink }}
         >
           Carnet d'ordres
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 max-w-full">
           {instrumentFilter && (
             <button
               onClick={() => setInstrumentFilter(null)}
               className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-              style={{ background: '#FBF1DD', color: '#8A6A16' }}
+              style={{ background: C.warningBackground, color: C.warningText }}
             >
               Instrument : {instrumentFilter} <X size={12} />
             </button>
           )}
-          <div className="flex gap-1.5">
+          <div className="gsm-chip-scroll">
             {['Tous', 'BRVM', 'NGX', 'GSE'].map((m) => (
               <button
                 key={m}
                 onClick={() => setF(m)}
                 className="px-3 py-1 rounded-full text-xs font-semibold"
                 style={{
-                  background: f === m ? C.navy : '#F0F1F5',
-                  color: f === m ? '#fff' : C.sub,
+                  background: f === m ? C.activeBackground : C.surfaceInset,
+                  color: f === m ? C.textPrimary : C.sub,
                 }}
               >
                 {m}
@@ -66,7 +66,7 @@ function Carnet({ initial }) {
       {cessionRows.length > 0 && (
         <Card
           className="p-4"
-          style={{ borderColor: C.gold, background: '#FFFCF5' }}
+          style={{ borderColor: C.gold, background: C.warningBackground }}
         >
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
@@ -111,7 +111,7 @@ function Carnet({ initial }) {
       )}
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Réf.</Th>
               <Th>Sens</Th>
@@ -129,7 +129,7 @@ function Carnet({ initial }) {
                 key={o.id}
                 style={{
                   borderTop: `1px solid ${C.line}`,
-                  background: i % 2 ? '#FCFCFD' : '#fff',
+                  background: i % 2 ? C.rowAlternate : C.surfaceCard,
                 }}
               >
                 <Td mono>{o.id}</Td>

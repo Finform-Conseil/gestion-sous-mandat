@@ -138,10 +138,10 @@ export function createClientAnalysisScreen(dependencies) {
     C.teal,
     C.indigo,
     C.coral,
-    '#8B93A7',
-    '#6D4C9F',
-    '#2F80ED',
-    '#9A6B2F',
+    C.chartSeriesMuted,
+    C.chartSeriesViolet,
+    C.chartSeriesBlue,
+    C.chartSeriesBronze,
   ];
   const formatCompact = (montant) =>
     new Intl.NumberFormat('fr-FR', {
@@ -488,7 +488,7 @@ export function createClientAnalysisScreen(dependencies) {
         </div>
       </div>
 
-      <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
         <div className="flex items-end justify-between gap-4 flex-wrap">
           <div>
             <Eyebrow>Filtres des historiques</Eyebrow>
@@ -512,7 +512,7 @@ export function createClientAnalysisScreen(dependencies) {
                 value={dateDebutHistorique}
                 onChange={(e) => setDateDebutHistorique(e.target.value)}
                 className="px-3 py-2 rounded-xl border text-xs min-w-[150px]"
-                style={{ borderColor: C.line, background: '#fff', ...F_MONO }}
+                style={{ borderColor: C.line, background: C.surfaceCard, ...F_MONO }}
                 aria-label="Date de début d'affichage des graphiques historiques"
               />
             </div>
@@ -530,7 +530,7 @@ export function createClientAnalysisScreen(dependencies) {
                   setFiltreSgiHistorique('Toutes');
                 }}
                 className="px-3 py-2 rounded-xl border text-xs min-w-[150px]"
-                style={{ borderColor: C.line, background: '#fff' }}
+                style={{ borderColor: C.line, background: C.surfaceCard }}
               >
                 {paysDisponiblesHistorique.map((paysOption) => (
                   <option key={paysOption}>{paysOption}</option>
@@ -548,7 +548,7 @@ export function createClientAnalysisScreen(dependencies) {
                 value={filtreSgiHistorique}
                 onChange={(e) => setFiltreSgiHistorique(e.target.value)}
                 className="px-3 py-2 rounded-xl border text-xs min-w-[190px]"
-                style={{ borderColor: C.line, background: '#fff' }}
+                style={{ borderColor: C.line, background: C.surfaceCard }}
               >
                 {sgiDisponiblesHistorique.map((sgiOption) => (
                   <option key={sgiOption}>{sgiOption}</option>
@@ -564,7 +564,7 @@ export function createClientAnalysisScreen(dependencies) {
                   style={{
                     borderColor: C.line,
                     color: C.navy,
-                    background: '#fff',
+                    background: C.surfaceCard,
                   }}
                 >
                   Tout l'historique
@@ -970,7 +970,7 @@ export function createClientAnalysisScreen(dependencies) {
           <Eyebrow>Principales positions consolidées</Eyebrow>
         </div>
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Instrument</Th>
               <Th>SGI</Th>

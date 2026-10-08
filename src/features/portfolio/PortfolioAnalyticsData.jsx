@@ -456,7 +456,7 @@ function HistoricalEventDot({ cx, cy, payload }) {
         cx={cx}
         cy={cy}
         r={7}
-        fill="#fff"
+        fill={C.surfaceCard}
         stroke={couleur}
         strokeWidth={2.5}
       />

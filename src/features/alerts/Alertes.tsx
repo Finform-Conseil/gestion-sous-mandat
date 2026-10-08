@@ -57,7 +57,7 @@ export function AlertesScreen({ alerts, onRebalance }: Props) {
               value={filtreType}
               onChange={(event) => setFiltreType(event.target.value)}
               className="min-w-[180px] px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', ...F_BODY }}
+              style={{ borderColor: C.line, background: C.surfaceCard, ...F_BODY }}
             >
               {typesDisponibles.map((type) => (
                 <option key={type} value={type}>{type}</option>
@@ -70,7 +70,7 @@ export function AlertesScreen({ alerts, onRebalance }: Props) {
               type="button"
               onClick={() => setFiltreType('Tous')}
               className="px-3 py-2 rounded-xl border text-xs font-semibold"
-              style={{ borderColor: C.line, color: C.navy, background: '#fff' }}
+              style={{ borderColor: C.line, color: C.navy, background: C.surfaceCard }}
             >
               Réinitialiser
             </button>
@@ -80,7 +80,7 @@ export function AlertesScreen({ alerts, onRebalance }: Props) {
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Client</Th><Th>Type</Th><Th>Actif</Th><Th>Écart</Th><Th>Marché</Th><Th>Sévérité</Th><Th>Depuis</Th><Th>Actions</Th>
             </tr>
@@ -99,7 +99,7 @@ export function AlertesScreen({ alerts, onRebalance }: Props) {
                 key={`${alert.client}-${alert.type}-${alert.actif}-${index}`}
                 style={{
                   borderTop: `1px solid ${C.line}`,
-                  background: index % 2 ? '#FCFCFD' : '#fff',
+                  background: index % 2 ? C.rowAlternate : C.surfaceCard,
                 }}
               >
                 <Td className="font-semibold">{alert.client}</Td>

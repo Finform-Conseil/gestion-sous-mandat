@@ -109,7 +109,7 @@ export function HomePerformanceHistory({
           <div
             key={stat.label}
             className="rounded-xl border p-2.5"
-            style={{ borderColor: C.line, background: '#FAFAFC' }}
+            style={{ borderColor: C.line, background: C.surfaceElevated }}
           >
             <div
               className="text-[9px] uppercase font-semibold"
@@ -193,7 +193,7 @@ export function HomePerformanceHistory({
                 <div
                   className="rounded-xl border p-3 text-xs shadow-sm"
                   style={{
-                    background: '#fff',
+                    background: C.surfaceCard,
                     borderColor: C.line,
                     ...F_BODY,
                   }}
@@ -298,7 +298,7 @@ export function HomePerformanceHistory({
               className="w-2.5 h-2.5 rounded-full border-2"
               style={{
                 borderColor: eventColor(type),
-                background: '#fff',
+                background: C.surfaceCard,
               }}
             />
             {type}
@@ -309,7 +309,7 @@ export function HomePerformanceHistory({
 
       <div
         className="mt-3 rounded-xl px-3 py-2 text-[10px]"
-        style={{ background: '#F7F8FB', color: C.sub, ...F_BODY }}
+        style={{ background: C.surfaceElevated, color: C.sub, ...F_BODY }}
       >
         <b style={{ color: C.ink }}>Lecture :</b> la courbe « Gestion
         globale (TWR) » mesure uniquement la performance de gestion. Les

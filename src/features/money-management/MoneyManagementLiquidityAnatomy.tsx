@@ -173,7 +173,7 @@ function AnatomyToolbar({
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-xl border"
-          style={{ borderColor: C.line, background: '#fff' }}
+          style={{ borderColor: C.line, background: C.surfaceCard }}
         >
           <label
             htmlFor="manager-liquidity-situation-date"
@@ -236,7 +236,7 @@ function ExportButton({
       className="px-3 py-2 rounded-xl border text-xs font-semibold transition-opacity"
       style={{
         borderColor: C.line,
-        background: excel ? '#E4F5EF' : '#fff',
+        background: excel ? C.positiveBackground : C.surfaceCard,
         color: excel ? C.teal : C.navy,
         opacity: disabled ? 0.45 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -296,7 +296,7 @@ function AccountSelector({
               className="w-full p-3 rounded-xl border text-left transition-colors"
               style={{
                 borderColor: active ? C.navy : C.line,
-                background: active ? '#EFF3FB' : '#fff',
+                background: active ? C.infoBackground : C.surfaceCard,
               }}
             >
               <div className="flex items-start justify-between gap-2">
@@ -328,7 +328,7 @@ function AccountSelector({
                   </div>
                 </div>
               </div>
-              <div className="h-1.5 rounded-full mt-2" style={{ background: '#EEF0F4' }}>
+              <div className="h-1.5 rounded-full mt-2" style={{ background: C.surfaceInset }}>
                 <div
                   className="h-1.5 rounded-full"
                   style={{ width: `${Math.min(100, mobilePercent)}%`, background: C.teal }}
@@ -386,25 +386,25 @@ function AccountSummary({
           label="Dernier dépôt (2)"
           value={detail.dateDernierDepot}
           subValue={`${fmt(Math.round(detail.montantDernierDepot))} ${detail.client.devise}`}
-          background="#F7F8FB"
+          background={C.surfaceElevated}
           subColor={C.navy}
         />
         <MiniMetric
           label="Bloquée / réservée"
           value={`${fmt(detail.liquiditeBloquee)} ${detail.client.devise}`}
-          background="#FBE9E7"
+          background={C.negativeBackground}
           labelColor={C.coral}
         />
         <MiniMetric
           label="Autre liquidité à investir (12)"
           value={`${fmt(detail.autreLiquiditeAInvestir)} ${detail.client.devise}`}
-          background="#FBF1DD"
-          labelColor="#8A6A16"
+          background={C.warningBackground}
+          labelColor={C.warningText}
         />
         <MiniMetric
           label="Liquidité disponible (21)"
           value={`${fmt(detail.liquiditeDisponibleNette)} ${detail.client.devise}`}
-          background="#E4F5EF"
+          background={C.positiveBackground}
           labelColor={C.teal}
         />
       </div>
@@ -454,7 +454,7 @@ function ViewTabs({
   ];
 
   return (
-    <div className="flex gap-1.5 flex-wrap mb-4">
+    <div className="gsm-chip-scroll mb-4">
       {tabs.map(([id, label]) => (
         <button
           key={id}
@@ -462,8 +462,8 @@ function ViewTabs({
           onClick={() => onChange(id)}
           className="px-3 py-1.5 rounded-full text-xs font-semibold"
           style={{
-            background: view === id ? C.navy : '#F0F1F5',
-            color: view === id ? '#fff' : C.sub,
+            background: view === id ? C.activeBackground : C.surfaceInset,
+            color: view === id ? C.textPrimary : C.sub,
           }}
         >
           {label}
@@ -526,9 +526,9 @@ function AllocationsView({
   roleTone: (role: string) => BadgeTone;
 }) {
   const totals = [
-    ['Bloquée / réservée', detail.liquiditeBloquee, C.coral, '#FBE9E7'],
-    ['À investir', detail.autreLiquiditeAInvestir, '#8A6A16', '#FBF1DD'],
-    ['Disponible', detail.liquiditeDisponibleNette, C.teal, '#E4F5EF'],
+    ['Bloquée / réservée', detail.liquiditeBloquee, C.coral, C.negativeBackground],
+    ['À investir', detail.autreLiquiditeAInvestir, C.warningText, C.warningBackground],
+    ['Disponible', detail.liquiditeDisponibleNette, C.teal, C.positiveBackground],
   ] as const;
 
   return (
@@ -576,7 +576,7 @@ function AllocationsView({
                   {pct.toFixed(1)}%
                 </div>
               </div>
-              <div className="h-1.5 rounded-full mt-2" style={{ background: '#EEF0F4' }}>
+              <div className="h-1.5 rounded-full mt-2" style={{ background: C.surfaceInset }}>
                 <div
                   className="h-1.5 rounded-full"
                   style={{ width: `${Math.min(100, pct)}%`, background: color }}
@@ -638,7 +638,7 @@ function ProfileView({ detail }: { detail: LiquidityAccountDetail }) {
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="p-4 rounded-xl" style={{ background: '#EFF3FB' }}>
+        <div className="p-4 rounded-xl" style={{ background: C.infoBackground }}>
           <div className="text-[10px] uppercase font-semibold" style={{ color: C.sub }}>
             26. Rendement du portefeuille
           </div>
@@ -654,7 +654,7 @@ function ProfileView({ detail }: { detail: LiquidityAccountDetail }) {
 
 function ProfileMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="p-4 rounded-xl" style={{ background: '#F7F8FB' }}>
+    <div className="p-4 rounded-xl" style={{ background: C.surfaceElevated }}>
       <div className="text-[10px] uppercase font-semibold" style={{ color: C.sub }}>{label}</div>
       <div className="text-lg font-bold mt-1" style={F_DISPLAY}>{value}</div>
     </div>

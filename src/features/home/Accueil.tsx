@@ -10,8 +10,6 @@ export interface AccueilProps {
   ) => void;
   devise: string;
   onDeviseChange: (currency: string) => void;
-  dark: boolean;
-  onToggleDark: () => void;
   cessionRetraitEtats?: Array<Record<string, unknown>>;
   dependencies?: unknown;
 }
@@ -21,8 +19,6 @@ export function Accueil({
   openClient,
   devise,
   onDeviseChange,
-  dark,
-  onToggleDark,
   cessionRetraitEtats = [],
 }: AccueilProps) {
   return (
@@ -31,8 +27,6 @@ export function Accueil({
       openClient={openClient}
       devise={devise}
       onDeviseChange={onDeviseChange}
-      dark={dark}
-      onToggleDark={onToggleDark}
       cessionRetraitEtats={cessionRetraitEtats}
     />
   );

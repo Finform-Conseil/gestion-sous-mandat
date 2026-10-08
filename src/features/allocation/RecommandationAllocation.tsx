@@ -27,7 +27,7 @@ export function RecommandationAllocationScreen({
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
-          <thead style={{ background: '#FAFAFC' }}>
+          <thead style={{ background: C.surfaceElevated }}>
             <tr>
               <Th>Client</Th>
               <Th>Actuel</Th>
@@ -45,7 +45,7 @@ export function RecommandationAllocationScreen({
                   key={client.id}
                   style={{
                     borderTop: `1px solid ${C.line}`,
-                    background: index % 2 ? '#FCFCFD' : '#fff',
+                    background: index % 2 ? C.rowAlternate : C.surfaceCard,
                   }}
                 >
                   <Td className="font-semibold">{client.nom}</Td>

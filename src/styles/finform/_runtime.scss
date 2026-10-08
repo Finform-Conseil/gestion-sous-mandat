@@ -1,0 +1,145 @@
+// GENERATED FINFORM RUNTIME-THEME BRIDGE.
+// Sources:
+// - algowebsite/styles/abstracts/_variables.scss
+//   SHA-256: 870bc0d010af818a78b23712ba9ff96f1a59acbfa48cee148bb4378d8598273c
+// - algowebsite/styles/base/_reset.scss
+//   SHA-256: 886b7fdbc4f4dd877a82aa6619182919b66d740429fa90b78b95282e63e1ad20
+//
+// Parent FINFORM custom properties are the contract.
+// GSM-specific aliases derive from that contract; they do not own theme values.
+
+@use 'tokens' as *;
+
+:root {
+  --font-syne: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-fraunces: Georgia, "Times New Roman", serif;
+  --font-dm-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --background-color: #102A43;
+  --text-color: #E0E0E0;
+  --text-secondary: #ADB5BD;
+  --primary-color: #00BFFF;
+  --accent-gold: #FF9F04;
+  --card-background: #102A43;
+  --border-color: #345A7D;
+  --hover-background: #234663;
+  --positive-color: #20C997;
+  --negative-color: #F86C6B;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --overlay: rgba(0, 0, 0, 0.7);
+
+  --surface-page: var(--background-color);
+  --surface-card: var(--card-background);
+  --surface-toolbar: var(--card-background);
+  --surface-inset: color-mix(in srgb, var(--background-color) 88%, #000 12%);
+  --surface-elevated: color-mix(in srgb, var(--card-background) 94%, var(--text-color) 6%);
+  --surface-contextual: #304653;
+  --surface-popover: var(--surface-elevated);
+  --surface-modal: var(--surface-elevated);
+  --text-primary: var(--text-color);
+  --text-tertiary: color-mix(in srgb, var(--text-color) 62%, transparent);
+  --text-muted: color-mix(in srgb, var(--text-color) 48%, transparent);
+  --border-subtle: color-mix(in srgb, var(--border-color) 72%, transparent);
+  --active-background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+  --focus-ring-color: color-mix(in srgb, var(--primary-color) 58%, transparent);
+  --shadow-elevated: 0 12px 32px var(--shadow);
+  --shadow-modal: 0 20px 50px var(--shadow);
+
+  --space-2xs: #{$spacing-2xs};
+  --space-xs: #{$spacing-xs};
+  --space-sm: #{$spacing-sm};
+  --space-md: #{$spacing-md};
+  --space-lg: #{$spacing-lg};
+  --radius-xs: #{$border-radius-xs};
+  --radius-sm: #{$border-radius-sm};
+  --radius-md: #{$border-radius-md};
+  --radius-lg: #{$border-radius-lg};
+  --radius-full: #{$border-radius-full};
+  --transition-fast: #{$transition-fast};
+  --control-height-sm: 2.375rem;
+  --control-height-md: 2.5rem;
+  --control-height-lg: 3rem;
+  --icon-button-size: 2.5rem;
+  --toolbar-button-size: 2.25rem;
+  --icon-size-sm: 1.125rem;
+  --icon-size-md: 1.25rem;
+  --field-padding-x: 0.75rem;
+  --field-padding-y: 0.5rem;
+  --font-family-ui: var(--font-syne), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --shell-nav-height: 64px;
+  --shell-ticker-height: 36px;
+
+  // Global scroll surfaces — theme-adaptive FINFORM primitives.
+  --scrollbar-size: 0.5rem;
+  --scrollbar-size-compact: 0.375rem;
+  --scrollbar-radius: var(--radius-full);
+  --scrollbar-track: color-mix(in srgb, var(--border-color) 16%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 44%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 64%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+  --scrollbar-corner: transparent;
+
+  --row-alternate-background: var(--surface-elevated);
+  --status-positive-bg: color-mix(in srgb, var(--positive-color) 14%, transparent);
+  --status-positive-border: color-mix(in srgb, var(--positive-color) 38%, transparent);
+  --status-negative-bg: color-mix(in srgb, var(--negative-color) 14%, transparent);
+  --status-negative-border: color-mix(in srgb, var(--negative-color) 38%, transparent);
+  --status-warning-bg: var(--surface-contextual);
+  --status-warning-border: color-mix(in srgb, var(--accent-gold) 38%, transparent);
+  --status-warning-text: color-mix(in srgb, var(--accent-gold) 82%, var(--text-primary) 18%);
+  --status-info-bg: var(--active-background);
+  --status-info-border: color-mix(in srgb, var(--primary-color) 38%, transparent);
+  --text-on-primary: #102A43;
+  --text-on-accent: #102A43;
+  --text-on-positive: #102A43;
+  --text-on-negative: #FFFFFF;
+
+  // Sidebar FINFORM brand surface. It intentionally stays on the canonical
+  // dark brand palette in both page themes; consumers use semantic aliases.
+  --gsm-sidebar-background: #102A43;
+  --gsm-sidebar-text: #E0E0E0;
+  --gsm-sidebar-text-strong: color-mix(in srgb, #E0E0E0 96%, transparent);
+  --gsm-sidebar-text-soft: color-mix(in srgb, #E0E0E0 82%, transparent);
+  --gsm-sidebar-muted: color-mix(in srgb, #E0E0E0 62%, transparent);
+  --gsm-sidebar-meta: color-mix(in srgb, #E0E0E0 48%, transparent);
+  --gsm-sidebar-border: color-mix(in srgb, #345A7D 55%, transparent);
+  --gsm-sidebar-surface-hover: color-mix(in srgb, #E0E0E0 5.5%, transparent);
+  --gsm-sidebar-surface-active: color-mix(in srgb, #E0E0E0 7.5%, transparent);
+  --gsm-sidebar-card-bg: color-mix(in srgb, #E0E0E0 6%, transparent);
+  --gsm-sidebar-card-border: color-mix(in srgb, #E0E0E0 10%, transparent);
+  --gsm-sidebar-control-bg: color-mix(in srgb, #E0E0E0 8%, transparent);
+  --gsm-sidebar-focus-ring: color-mix(in srgb, #FF9F04 72%, transparent);
+  --gsm-sidebar-manager-bg: color-mix(in srgb, #FF9F04 12%, transparent);
+  --gsm-sidebar-manager-border: color-mix(in srgb, #FF9F04 32%, transparent);
+  --gsm-sidebar-client-bg: color-mix(in srgb, #20C997 12%, transparent);
+  --gsm-sidebar-client-border: color-mix(in srgb, #20C997 32%, transparent);
+  --gsm-sidebar-positive: #20C997;
+  --gsm-sidebar-positive-soft: color-mix(in srgb, #20C997 72%, #E0E0E0 28%);
+  --gsm-sidebar-warning-soft: color-mix(in srgb, #FF9F04 62%, #E0E0E0 38%);
+  --gsm-sidebar-negative-soft: color-mix(in srgb, #F86C6B 74%, #E0E0E0 26%);
+  --gsm-sidebar-write-bg: color-mix(in srgb, #20C997 20%, transparent);
+  --gsm-sidebar-admin-bg: color-mix(in srgb, #FF9F04 16%, transparent);
+
+  // GSM data-viz extensions. These are series identities, not UI surfaces.
+  --chart-series-muted: #8B93A7;
+  --chart-series-violet: #6D4C9F;
+  --chart-series-blue: #2F80ED;
+  --chart-series-bronze: #9A6B2F;
+}
+
+[data-theme='light'] {
+  --background-color: #F8F9FA;
+  --text-color: #212529;
+  --text-secondary: #6C757D;
+  --primary-color: #00BFFF;
+  --accent-gold: #FF9F04;
+  --card-background: #FFFFFF;
+  --surface-contextual: #E7E9EA;
+  --border-color: #DEE2E6;
+  --hover-background: #E9ECEF;
+  --positive-color: #28A745;
+  --negative-color: #DC3545;
+  --status-warning-bg: var(--surface-contextual);
+  --shadow: rgba(0, 0, 0, 0.1);
+  --overlay: rgba(0, 0, 0, 0.5);
+}

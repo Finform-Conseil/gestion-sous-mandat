@@ -463,7 +463,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
   return (
     <div className="space-y-4">
       <Breadcrumb items={['Accueil', 'Portefeuilles', client.nom]} />
-      <div className="flex items-center justify-between">
+      <div className="gsm-responsive-header flex items-center justify-between gap-3">
         <div>
           <h2
             className="text-xl font-bold"
@@ -471,7 +471,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           >
             {client.nom}
           </h2>
-          <div className="flex gap-2 mt-1">
+          <div className="flex gap-2 mt-1 flex-wrap">
             <Badge tone="navy">{client.type}</Badge>
             <Badge tone="navy">
               {client.marche} · {client.devise}
@@ -479,7 +479,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             <Badge tone="slate">Risque {client.risque}</Badge>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="gsm-responsive-actions flex items-center gap-2">
           {besoinsReequilibrage.length > 0 ? (
             <Btn
               tone="ghost"
@@ -495,7 +495,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           ) : (
             <Badge tone="teal">Allocation conforme — aucun rééquilibrage</Badge>
           )}
-          <div className="flex items-center gap-2">
+          <div className="gsm-responsive-actions flex items-center gap-2">
             <select name="gsm-portfoliodetailworkflow-499"
               value={reportPeriod}
               onChange={(e) => setReportPeriod(e.target.value)}
@@ -518,8 +518,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
       <Card
         className="p-5"
         style={{
-          borderColor: plusValuePositive ? '#CDE9DF' : '#F1CFCB',
-          background: plusValuePositive ? '#FBFEFC' : '#FFFCFC',
+          borderColor: C.borderSubtle,
+          background: C.surfaceCard,
         }}
       >
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -545,8 +545,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             onClick={() => setDetailFluxOuvert((ouvert) => !ouvert)}
             className="px-3.5 py-2 rounded-xl text-xs font-semibold"
             style={{
-              background: detailFluxOuvert ? '#EEF0F4' : C.navy,
-              color: detailFluxOuvert ? C.navy : '#fff',
+              background: detailFluxOuvert ? C.surfaceInset : C.activeBackground,
+              color: C.textPrimary,
               ...F_BODY,
             }}
           >
@@ -559,7 +559,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         <div className="grid grid-cols-5 gap-3 mt-4">
           <div
             className="p-3 rounded-xl border"
-            style={{ borderColor: C.line, background: '#fff' }}
+            style={{ borderColor: C.line, background: C.surfaceCard }}
           >
             <div
               className="text-[10px] uppercase font-semibold"
@@ -577,7 +577,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
           <div
             className="p-3 rounded-xl border"
-            style={{ borderColor: C.line, background: '#fff' }}
+            style={{ borderColor: C.line, background: C.surfaceCard }}
           >
             <div
               className="text-[10px] uppercase font-semibold"
@@ -598,7 +598,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
           <div
             className="p-3 rounded-xl border"
-            style={{ borderColor: C.line, background: '#fff' }}
+            style={{ borderColor: C.line, background: C.surfaceCard }}
           >
             <div
               className="text-[10px] uppercase font-semibold"
@@ -619,7 +619,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
           <div
             className="p-3 rounded-xl border"
-            style={{ borderColor: C.line, background: '#fff' }}
+            style={{ borderColor: C.line, background: C.surfaceCard }}
           >
             <div
               className="text-[10px] uppercase font-semibold"
@@ -641,8 +641,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           <div
             className="p-3 rounded-xl border"
             style={{
-              borderColor: plusValuePositive ? '#B8DFD2' : '#ECC2BD',
-              background: plusValuePositive ? '#EAF7F2' : '#FDECEA',
+              borderColor: C.borderSubtle,
+              background: C.surfaceCard,
             }}
           >
             <div
@@ -685,8 +685,12 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </div>
 
         <div
-          className="mt-3 p-3 rounded-xl text-[10px]"
-          style={{ background: '#F7F8FA', color: C.sub, ...F_BODY }}
+          className="mt-3 pt-3 text-[10px]"
+          style={{
+            borderTop: `1px solid ${C.borderSubtle}`,
+            color: C.sub,
+            ...F_BODY,
+          }}
         >
           <b style={{ color: C.ink }}>Méthode :</b> plus / moins-value = encours
           actuel + retraits cumulés − dépôts cumulés. Le pourcentage affiché
@@ -712,11 +716,11 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             </div>
 
             <div
-              className="overflow-x-auto rounded-xl border"
+              className="gsm-table-scroll rounded-xl border"
               style={{ borderColor: C.line }}
             >
-              <table className="w-full">
-                <thead style={{ background: '#FAFAFC' }}>
+              <table className="w-full gsm-table--banking">
+                <thead style={{ background: C.surfaceElevated }}>
                   <tr>
                     <Th>Date</Th>
                     <Th>Nature</Th>
@@ -778,7 +782,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
       </Card>
 
       {reportOpen.notice && (
-        <Card className="p-4" style={{ borderColor: C.gold }}>
+        <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
           <Eyebrow>
             Rapport d'analyse — {client.nom} ·{' '}
             {reportOpen.period || 'Trimestre en cours'}
@@ -835,19 +839,23 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
             </div>
           </div>
           <div
-            className="text-xs mt-3 p-3 rounded-xl"
-            style={{ background: '#FBF7EE', color: C.ink }}
+            className="text-xs mt-3 pt-3"
+            style={{
+              borderTop: `1px solid ${C.borderSubtle}`,
+              color: C.sub,
+            }}
           >
-            Commentaire de Gestion: la performance de la période reflète
+            <b style={{ color: C.ink }}>Commentaire de Gestion :</b> la performance de la période reflète
             principalement le renforcement de la ligne Télécoms et
             l'encaissement d'un coupon obligataire ; l'écart d'allocation
             Actions reste au-dessus de la cible et justifie un arbitrage.
           </div>
           <div
-            className="text-xs mt-2 p-3 rounded-xl"
-            style={{ background: '#EFF3FB', color: C.ink }}
+            className="text-xs mt-2"
+            style={{ color: C.sub }}
           >
-            <b>Commentaire (rentabilité) :</b> {rentabiliteComment(client)}
+            <b style={{ color: C.ink }}>Commentaire (rentabilité) :</b>{' '}
+            {rentabiliteComment(client)}
           </div>
         </Card>
       )}
@@ -874,7 +882,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
                 </div>
                 <div
                   className="h-2 rounded-full"
-                  style={{ background: '#EEF0F4' }}
+                  style={{ background: C.surfaceInset }}
                 >
                   <div
                     className="h-2 rounded-full"
@@ -893,7 +901,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </Card>
       </div>
 
-      <Card className="p-5" style={{ borderColor: '#D8DFEF' }}>
+      <Card className="p-5" style={{ borderColor: C.borderSubtle }}>
         <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
           <div>
             <Eyebrow>Évolution de la valorisation par classe d'actifs</Eyebrow>
@@ -979,8 +987,12 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </div>
 
         <div
-          className="mt-3 p-3 rounded-xl text-[11px]"
-          style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}
+          className="mt-3 pt-3 text-[11px]"
+          style={{
+            borderTop: `1px solid ${C.borderSubtle}`,
+            color: C.sub,
+            ...F_BODY,
+          }}
         >
           Dans cette maquette, le détail historique mensuel par classe d'actifs
           est une série de démonstration reconstruite à partir de la
@@ -1040,11 +1052,14 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
               )} ${client.devise}`,
               data: repartitionEtatsGenerale,
             },
-          ].map((bloc) => (
+          ].map((bloc, blocIndex) => (
             <div
               key={bloc.titre}
-              className="rounded-2xl border p-4"
-              style={{ borderColor: C.line, background: '#FAFAFC' }}
+              className="p-4"
+              style={{
+                borderLeft:
+                  blocIndex === 0 ? 'none' : `1px solid ${C.borderSubtle}`,
+              }}
             >
               <div className="flex items-center justify-between gap-2">
                 <div>
@@ -1141,8 +1156,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
               Actions
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 700 }}>
+            <div className="gsm-table-scroll">
+              <table className="w-full gsm-table--banking" style={{ minWidth: 700 }}>
                 <thead>
                   <tr>
                     <Th>Titre</Th>
@@ -1228,8 +1243,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
               Obligations
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 700 }}>
+            <div className="gsm-table-scroll">
+              <table className="w-full gsm-table--banking" style={{ minWidth: 700 }}>
                 <thead>
                   <tr>
                     <Th>Titre</Th>
@@ -1305,8 +1320,12 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </div>
 
         <div
-          className="text-[10px] mt-3 p-3 rounded-xl"
-          style={{ background: '#FAFAFC', color: C.sub, ...F_BODY }}
+          className="text-[10px] mt-3 pt-3"
+          style={{
+            borderTop: `1px solid ${C.borderSubtle}`,
+            color: C.sub,
+            ...F_BODY,
+          }}
         >
           <b style={{ color: C.ink }}>Calcul :</b> +/- Value = valeur de marché
           de la ligne − coût historique de la position. Le coût historique est
@@ -1318,7 +1337,7 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
       <Card
         className="p-5"
-        style={{ borderColor: C.teal }}
+        style={{ borderColor: C.borderSubtle }}
       >
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -1359,12 +1378,27 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto mt-4">
+        <div className="gsm-table-scroll mt-4">
           <table
-            className="w-full"
-            style={{ minWidth: 1250 }}
+            className="gsm-table--banking"
+            style={{ minWidth: 1580 }}
           >
-            <thead style={{ background: '#FAFAFC' }}>
+            <colgroup>
+              <col style={{ width: 190 }} />
+              <col style={{ width: 180 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 95 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 120 }} />
+              <col style={{ width: 145 }} />
+              <col style={{ width: 175 }} />
+              <col style={{ width: 115 }} />
+              <col style={{ width: 145 }} />
+            </colgroup>
+            <thead style={{ background: C.surfaceElevated }}>
               <tr>
                 <Th>Titre</Th>
                 <Th>Émetteur</Th>
@@ -1398,38 +1432,35 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
                       style={{
                         borderTop: `1px solid ${C.line}`,
                         background:
-                          index % 2 ? '#FCFCFD' : '#fff',
+                          index % 2 ? C.rowAlternate : C.surfaceCard,
                       }}
                     >
-                      <Td className="font-semibold">
-                        {position.titre}
+                      <Td>
+                        <div className="gsm-table__primary">
+                          {position.titre}
+                        </div>
                       </Td>
-                      <Td>{position.emetteur}</Td>
+                      <Td>
+                        <div className="gsm-table__primary" style={{ fontWeight: 400 }}>
+                          {position.emetteur}
+                        </div>
+                      </Td>
                       <Td>
                         <Badge tone="slate">
                           {position.marche}
                         </Badge>
                       </Td>
                       <Td mono>
-                        {Number(
-                          position.coupon || 0
-                        ).toFixed(2)}
-                        %
+                        {Number(position.coupon || 0).toFixed(2)}%
                       </Td>
                       <Td mono>
-                        {Number(
-                          position.rendement || 0
-                        ).toFixed(2)}
-                        %
+                        {Number(position.rendement || 0).toFixed(2)}%
                       </Td>
                       <Td mono>
                         {position.echeance}
                       </Td>
                       <Td mono>
-                        {Number(
-                          position.expositionPct || 0
-                        ).toFixed(2)}
-                        %
+                        {Number(position.expositionPct || 0).toFixed(2)}%
                       </Td>
                       <Td mono>
                         {fmt(position.quantite)}
@@ -1444,27 +1475,23 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
                         )}{' '}
                         {position.devise}
                       </Td>
-                      <Td mono className="whitespace-nowrap">
-                        {fmt(
-                          Math.round(position.valeur)
-                        )}{' '}
-                        {position.devise}
-                        <div
-                          className="text-[9px] mt-1"
-                          style={{
-                            color:
-                              plusMoinsValue >= 0
-                                ? C.teal
-                                : C.coral,
-                          }}
-                        >
-                          {plusMoinsValue >= 0
-                            ? '+'
-                            : ''}
-                          {fmt(
-                            Math.round(plusMoinsValue)
-                          )}{' '}
-                          latent
+                      <Td mono>
+                        <div className="gsm-table__metric-stack">
+                          <span>
+                            {fmt(Math.round(position.valeur))} {position.devise}
+                          </span>
+                          <span
+                            className="gsm-table__secondary"
+                            style={{
+                              color:
+                                plusMoinsValue >= 0
+                                  ? C.teal
+                                  : C.coral,
+                            }}
+                          >
+                            {plusMoinsValue >= 0 ? '+' : ''}
+                            {fmt(Math.round(plusMoinsValue))} latent
+                          </span>
                         </div>
                       </Td>
                       <Td>
@@ -1499,9 +1526,9 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
         </div>
 
         <div
-          className="text-[10px] mt-3 p-3 rounded-xl"
+          className="text-[10px] mt-3 pt-3"
           style={{
-            background: '#EAF8F3',
+            borderTop: `1px solid ${C.borderSubtle}`,
             color: C.sub,
             ...F_BODY,
           }}
@@ -1728,7 +1755,7 @@ function ProfondeurMarche({ ctx, go, mode = 'gestionnaire', goClient }) {
       </div>
 
       {espaceClient && (
-        <Card className="p-4" style={{ borderColor: '#D8DFEF' }}>
+        <Card className="p-4" style={{ borderColor: C.borderSubtle }}>
           <div className="grid grid-cols-4 gap-4">
             <div>
               <div

@@ -8,11 +8,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ChevronRight, Moon, Sun, X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import { convertCurrency, fmt, FX, toRef } from '../../shared/lib/finance';
 import { C, F_BODY, F_DISPLAY, F_MONO, PALETTE } from '../../shared/theme/theme';
 import { Badge, Btn, Card, Eyebrow, Pct, Td, Th } from '../../shared/ui/UiAtoms';
 import { Breadcrumb } from '../../shared/ui/Navigation';
+import { AvailableWithdrawalsModal } from '../../shared/ui/AvailableWithdrawalsModal';
 import { Donut, HistoryLegend, Legende, MarketTicker } from './HomeWidgets';
 import {
   CLIENTS,
@@ -45,8 +46,6 @@ function Accueil({
   openClient,
   devise,
   onDeviseChange,
-  dark,
-  onToggleDark,
   cessionRetraitEtats = /** @type {Array<Record<string, unknown>>} */ ([]),
 }) {
   const [dim, setDim] = useState('Profil de risque');
@@ -274,14 +273,6 @@ function Accueil({
             ))}
           </select>
         </div>
-        <button
-          onClick={onToggleDark}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold"
-          style={{ borderColor: C.line, color: C.ink }}
-        >
-          {dark ? <Sun size={14} /> : <Moon size={14} />}{' '}
-          {dark ? 'Mode lumineux' : 'Mode sombre'}
-        </button>
       </div>
       <div className="grid grid-cols-4 gap-4 items-stretch">
         <Card className="p-4">
@@ -545,7 +536,7 @@ function Accueil({
                     onClick={() => setRetraitsDisponiblesOuverts(true)}
                     className="w-full flex items-center justify-between gap-2 text-[11px] rounded-lg px-2 py-1.5 transition-colors"
                     style={{
-                      background: stat.nombre > 0 ? '#EAF8F3' : 'transparent',
+                      background: stat.nombre > 0 ? C.positiveBackground : 'transparent',
                       cursor: stat.nombre > 0 ? 'pointer' : 'default',
                       opacity: stat.nombre > 0 ? 1 : 0.6,
                     }}
@@ -583,152 +574,13 @@ function Accueil({
           </div>
         </Card>
 
-        {retraitsDisponiblesOuverts && (
-          <div
-            className="fixed inset-0 flex items-center justify-center p-4"
-            style={{
-              zIndex: 120,
-              background: 'rgba(15, 27, 51, 0.48)',
-              backdropFilter: 'blur(2px)',
-            }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="retraits-disponibles-title"
-            onClick={() => setRetraitsDisponiblesOuverts(false)}
-          >
-            <div
-              className="w-full max-w-6xl rounded-2xl border shadow-2xl overflow-hidden"
-              style={{
-                background: C.card,
-                borderColor: C.line,
-                maxHeight: '82vh',
-              }}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div
-                className="flex items-start justify-between gap-4 p-5"
-                style={{ borderBottom: `1px solid ${C.line}` }}
-              >
-                <div>
-                  <Eyebrow>État cession-retrait</Eyebrow>
-                  <h3
-                    id="retraits-disponibles-title"
-                    className="text-lg font-bold"
-                    style={{ ...F_DISPLAY, color: C.ink }}
-                  >
-                    Retraits disponibles
-                  </h3>
-                  <div className="text-xs mt-1" style={{ color: C.sub }}>
-                    Fonds disponibles pour remise ou règlement au client.
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setRetraitsDisponiblesOuverts(false)}
-                  className="w-9 h-9 rounded-xl border flex items-center justify-center"
-                  style={{ borderColor: C.line, color: C.sub }}
-                  aria-label="Fermer"
-                >
-                  <X size={17} />
-                </button>
-              </div>
-
-              <div className="overflow-auto" style={{ maxHeight: '65vh' }}>
-                <table className="w-full" style={{ minWidth: 1050 }}>
-                  <thead
-                    className="sticky top-0"
-                    style={{ background: '#FAFAFC', zIndex: 1 }}
-                  >
-                    <tr>
-                      <Th>Client</Th>
-                      <Th>Chargée de clientèle</Th>
-                      <Th>Montant de retrait disponible</Th>
-                      <Th>Observation du chargé de clientèle</Th>
-                      <Th>Mode de paiement</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {retraitsDisponiblesAccueil.map((item, index) => (
-                      <tr
-                        key={`${item.clientId}-${item.modePaiement}-${index}`}
-                        style={{
-                          borderTop: `1px solid ${C.line}`,
-                          background: index % 2 ? '#FCFCFD' : '#fff',
-                        }}
-                      >
-                        <Td>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setRetraitsDisponiblesOuverts(false);
-                              openClient?.(item.clientId);
-                            }}
-                            className="font-semibold text-left hover:underline underline-offset-4"
-                            style={{ color: C.indigo }}
-                            title={`Ouvrir le portefeuille de ${item.client}`}
-                          >
-                            {item.client}
-                          </button>
-                        </Td>
-                        <Td className="whitespace-nowrap">
-                          {item.chargeeClientele || 'Non renseignée'}
-                        </Td>
-                        <Td mono className="whitespace-nowrap">
-                          <span style={{ color: C.teal, fontWeight: 700 }}>
-                            {fmt(Number(item.montant || 0))} {item.devise}
-                          </span>
-                        </Td>
-                        <Td>
-                          <div
-                            className="text-xs leading-relaxed"
-                            style={{ color: C.sub, minWidth: 310 }}
-                          >
-                            {item.observationChargeeClientele ||
-                              'Aucune observation renseignée.'}
-                          </div>
-                        </Td>
-                        <Td>
-                          <Badge tone="teal">
-                            {item.modePaiement || 'Non renseigné'}
-                          </Badge>
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div
-                className="flex items-center justify-between gap-3 p-4"
-                style={{
-                  borderTop: `1px solid ${C.line}`,
-                  background: '#FAFAFC',
-                }}
-              >
-                <div className="text-[10px]" style={{ color: C.sub }}>
-                  {retraitsDisponiblesAccueil.length} retrait(s) disponible(s)
-                </div>
-                <div className="flex items-center gap-2">
-                  <Btn
-                    tone="ghost"
-                    onClick={() => setRetraitsDisponiblesOuverts(false)}
-                  >
-                    Fermer
-                  </Btn>
-                  <Btn
-                    onClick={() => {
-                      setRetraitsDisponiblesOuverts(false);
-                      go('cession-retrait');
-                    }}
-                  >
-                    Ouvrir Cession_Retrait
-                  </Btn>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <AvailableWithdrawalsModal
+          open={retraitsDisponiblesOuverts}
+          items={retraitsDisponiblesAccueil}
+          onClose={() => setRetraitsDisponiblesOuverts(false)}
+          onOpenClient={openClient}
+          onOpenWithdrawals={() => go('cession-retrait')}
+        />
 
         <Card className="p-4">
           <div
@@ -783,8 +635,9 @@ function Accueil({
                 }}
                 className="px-3 py-1 rounded-full text-xs font-semibold"
                 style={{
-                  background: dim === d ? C.navy : '#F0F1F5',
-                  color: dim === d ? '#fff' : C.sub,
+                  background: dim === d ? C.navySoft : C.card,
+                  color: dim === d ? C.ink : C.sub,
+                  border: `1px solid ${dim === d ? C.indigo : C.line}`,
                   ...F_BODY,
                 }}
               >
@@ -822,7 +675,7 @@ function Accueil({
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-medium text-left transition-transform active:scale-[0.98]"
                       style={{
                         borderColor: C.line,
-                        background: '#fff',
+                        background: C.card,
                         cursor: 'pointer',
                         ...F_BODY,
                       }}
@@ -937,7 +790,7 @@ function Accueil({
                     <div className="max-h-56 overflow-y-auto pr-1">
                       {selection.dimension === 'Profil de risque' ? (
                         <table className="w-full">
-                          <thead style={{ background: '#FAFAFC' }}>
+                          <thead style={{ background: C.navySoft }}>
                             <tr>
                               <Th>Client</Th>
                               <Th>Exposition Actions</Th>
@@ -991,7 +844,7 @@ function Accueil({
                         </table>
                       ) : (
                         <table className="w-full">
-                          <thead style={{ background: '#FAFAFC' }}>
+                          <thead style={{ background: C.navySoft }}>
                             <tr>
                               <Th>Client</Th>
                               <Th>Exposition</Th>
@@ -1099,7 +952,7 @@ function Accueil({
               <div
                 key={stat.label}
                 className="rounded-xl border p-2.5"
-                style={{ borderColor: C.line, background: '#FAFAFC' }}
+                style={{ borderColor: C.line, background: C.navySoft }}
               >
                 <div
                   className="text-[9px] uppercase font-semibold"
@@ -1185,7 +1038,7 @@ function Accueil({
                     <div
                       className="rounded-xl border p-3 text-xs shadow-sm"
                       style={{
-                        background: '#fff',
+                        background: C.card,
                         borderColor: C.line,
                         ...F_BODY,
                       }}
@@ -1292,7 +1145,7 @@ function Accueil({
                   className="w-2.5 h-2.5 rounded-full border-2"
                   style={{
                     borderColor: historicalEventColor(type),
-                    background: '#fff',
+                    background: C.card,
                   }}
                 />
                 {type}
@@ -1302,7 +1155,7 @@ function Accueil({
           </div>
           <div
             className="mt-3 rounded-xl px-3 py-2 text-[10px]"
-            style={{ background: '#F7F8FB', color: C.sub, ...F_BODY }}
+            style={{ background: C.navySoft, color: C.sub, ...F_BODY }}
           >
             <b style={{ color: C.ink }}>Lecture :</b> la courbe « Gestion
             globale (TWR) » mesure uniquement la performance de gestion. Les

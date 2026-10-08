@@ -351,7 +351,7 @@ export function createAnalysePortefeuilleScreen(dependencies) {
         {clientsFiltres.length === 0 && (
           <div
             className="mt-4 p-3 rounded-xl text-xs"
-            style={{ background: '#FDEEEE', color: C.coral }}
+            style={{ background: C.negativeBackground, color: C.coral }}
           >
             Aucun portefeuille ne correspond à cette combinaison de filtres.
             Modifiez le type, le profil de risque ou le portefeuille cible.
@@ -366,8 +366,8 @@ export function createAnalysePortefeuilleScreen(dependencies) {
             onClick={() => setTab(t)}
             className="px-3.5 py-1.5 rounded-full text-xs font-semibold"
             style={{
-              background: tab === t ? C.navy : '#F0F1F5',
-              color: tab === t ? '#fff' : C.sub,
+              background: tab === t ? C.activeBackground : C.surfaceInset,
+              color: tab === t ? C.textPrimary : C.sub,
             }}
           >
             {t}
@@ -387,7 +387,7 @@ export function createAnalysePortefeuilleScreen(dependencies) {
               </div>
               <div
                 className="px-4 py-3 rounded-2xl border text-right min-w-[260px]"
-                style={{ borderColor: C.gold, background: '#FBF7EE' }}
+                style={{ borderColor: C.gold, background: C.warningBackground }}
               >
                 <div
                   className="text-[10px] uppercase font-semibold"
@@ -417,7 +417,7 @@ export function createAnalysePortefeuilleScreen(dependencies) {
             ) : (
               <div
                 className="mt-4 p-4 rounded-xl text-sm text-center"
-                style={{ background: '#FAFAFC', color: C.sub }}
+                style={{ background: C.surfaceElevated, color: C.sub }}
               >
                 Aucune allocation à afficher pour le périmètre sélectionné.
               </div>
@@ -529,7 +529,7 @@ export function createAnalysePortefeuilleScreen(dependencies) {
             ) : (
               <div
                 className="mt-3 p-4 rounded-xl text-sm"
-                style={{ background: '#FAFAFC', color: C.sub }}
+                style={{ background: C.surfaceElevated, color: C.sub }}
               >
                 Le périmètre sélectionné ne comporte aucune devise différente de
                 la devise principale {devise}. Aucun choc de change n'est à
@@ -550,8 +550,8 @@ export function createAnalysePortefeuilleScreen(dependencies) {
                 onClick={() => setCorrDim(d)}
                 className="px-3 py-1 rounded-full text-xs font-semibold"
                 style={{
-                  background: corrDim === d ? C.navy : '#F0F1F5',
-                  color: corrDim === d ? '#fff' : C.sub,
+                  background: corrDim === d ? C.activeBackground : C.surfaceInset,
+                  color: corrDim === d ? C.textPrimary : C.sub,
                 }}
               >
                 {d}
@@ -655,7 +655,7 @@ export function createAnalysePortefeuilleScreen(dependencies) {
                               height: 36,
                               fontSize: 11,
                               background: `rgba(214,86,74,${v})`,
-                              color: v > 0.5 ? '#fff' : C.ink,
+                              color: v > 0.5 ? C.onNegative : C.ink,
                               ...F_MONO,
                             }}
                           >
