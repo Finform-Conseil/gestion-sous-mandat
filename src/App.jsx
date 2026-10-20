@@ -29522,508 +29522,759 @@ function PriseDecisions({ go }) {
   );
 }
 
-function Comite({ devise = 'XOF', go }) {
+/* ------------ RAPPORT DE COMITÉ : VUE CONSOLIDÉE ET SUIVI ------------ */
+const COMITE_RAPPORT_CONFIG_KEY = 'opcvm-gsm-rapport-comite-config-v2';
+const COMITE_RAPPORT_SUIVI_KEY = 'opcvm-gsm-rapport-comite-suivi-v2';
+
+const comiteLireStockage = (key, fallback) => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const comiteConvertirMontant = (montant, deviseSource, deviseCible) => {
+  if (!FX[deviseSource] || !FX[deviseCible]) return 0;
+  return convertCurrency(Number(montant || 0), deviseSource, deviseCible);
+};
+
+const comitePourcentage = (montant, total) =>
+  total > 0 ? (100 * montant) / total : 0;
+
+const comiteCsvCellule = (value) => {
+  let str = String(value ?? '');
+  // Neutralise les formules Excel provenant de champs saisis/libellés de clients.
+  if (/^[\s]*[=+@-]/.test(str)) str = `'${str}`;
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+function Comite({
+  devise = 'XOF',
+  go,
+  cessionRetraitEtats = [],
+  operationalDbStatus = 'Mode local',
+}) {
   const [filtreBourse, setFiltreBourse] = useState('Toutes');
   const [filtreSecteur, setFiltreSecteur] = useState('Tous');
-  const totalRef = CLIENTS.reduce(
-    (s, c) => s + convertCurrency(c.encours, c.devise, devise),
-    0
+  const [filtreClient, setFiltreClient] = useState('');
+  const [onglet, setOnglet] = useState('synthese');
+  const [editerRapport, setEditerRapport] = useState(false);
+  const [message, setMessage] = useState('');
+  const [config, setConfig] = useState(() => ({
+    periode: 'Mois en cours',
+    dateComite: formatIsoLocalDate(new Date()),
+    gestionnaire: '',
+    participants: '',
+    benchmark: 'À renseigner',
+    statut: 'Brouillon',
+    commentaires: '',
+    ...comiteLireStockage(COMITE_RAPPORT_CONFIG_KEY, {}),
+  }));
+  const [suivi, setSuivi] = useState(() =>
+    comiteLireStockage(COMITE_RAPPORT_SUIVI_KEY, {})
   );
-  const boursesDisponibles = ['Toutes', ...new Set(RECOS.map((r) => r.marche))];
-  const secteursDisponibles = ['Tous', ...new Set(RECOS.map((r) => r.secteur))];
-  const recommandationsFiltrees = RECOS.filter(
-    (r) =>
-      (filtreBourse === 'Toutes' || r.marche === filtreBourse) &&
-      (filtreSecteur === 'Tous' || r.secteur === filtreSecteur)
+  const [decisions] = useState(() => lireDecisionsComite());
+  const [decisionSelectionnee, setDecisionSelectionnee] = useState(() =>
+    lireDecisionsComite()[0]?.id || ''
   );
-  const previsionTresorerie30j = UPCOMING_CASHFLOWS.filter((c) => {
-    const j = joursDepuisAujourdhui(c.echeance);
-    return j >= 0 && j <= 30;
-  }).reduce((s, c) => s + convertCurrency(c.montant, c.devise, devise), 0);
+
+  const clientsGeres = Array.isArray(CLIENTS) ? CLIENTS : [];
+  const boursesDisponibles = [
+    'Toutes',
+    ...new Set(clientsGeres.map((c) => c.marche).filter(Boolean)),
+  ];
+  const clients = clientsGeres.filter((c) =>
+    (filtreBourse === 'Toutes' || c.marche === filtreBourse) &&
+    `${c.nom || ''} ${c.id || ''} ${c.pays || ''}`
+      .toLocaleLowerCase('fr')
+      .includes(filtreClient.toLocaleLowerCase('fr'))
+  );
+  const idsClients = new Set(clients.map((c) => String(c.id)));
+  const nomsClients = new Set(clients.map((c) => String(c.nom)));
+  const totalRef = clients.reduce(
+    (s, c) => s + comiteConvertirMontant(c.encours, c.devise, devise), 0
+  );
+  const performancePonderee = totalRef > 0
+    ? clients.reduce((s, c) =>
+        s + comiteConvertirMontant(c.encours, c.devise, devise) * Number(c.perf || 0), 0
+      ) / totalRef
+    : 0;
+  const rentabilitePonderee = totalRef > 0
+    ? clients.reduce((s, c) =>
+        s + comiteConvertirMontant(c.encours, c.devise, devise) * Number(c.rentabilite || 0), 0
+      ) / totalRef
+    : 0;
+  const liquiditeEstimee = clients.reduce((s, c) =>
+    s + comiteConvertirMontant(
+      Number(c.encours || 0) * Number(c.alloc?.Liquidité || 0) / 100,
+      c.devise, devise
+    ), 0
+  );
+
+  // IMPORTANT : ces agrégats étaient auparavant définis dans AnalysePortefeuille,
+  // et étaient donc hors portée de Comite (ReferenceError, écran vide).
+  const comiteRepartition = (keyFn) => {
+    const cumul = {};
+    clients.forEach((client) => {
+      const cle = keyFn(client);
+      cumul[cle] = (cumul[cle] || 0) +
+        comiteConvertirMontant(client.encours, client.devise, devise);
+    });
+    return Object.entries(cumul)
+      .map(([name, montant]) => ({
+        name, value: Math.round(comitePourcentage(montant, totalRef) * 10) / 10,
+      }))
+      .filter((r) => r.value > 0);
+  };
+  const assetMixAnalyse = ASSET_KEYS.map((name) => {
+    const montant = clients.reduce((somme, c) =>
+      somme + comiteConvertirMontant(
+        Number(c.encours || 0) * Number(c.alloc?.[name] || 0) / 100,
+        c.devise, devise
+      ), 0
+    );
+    return { name, value: Number(comitePourcentage(montant, totalRef).toFixed(1)) };
+  });
+  const marketMixAnalyse = comiteRepartition((c) => `${c.marche} (${c.devise})`);
+  const countryMixAnalyse = comiteRepartition((c) => c.pays || 'Non renseigné');
+
+  const risques = clients.flatMap((c) =>
+    Object.keys(c.cible || {}).map((classe) => {
+      const actuel = Number(c.alloc?.[classe] || 0);
+      const cible = Number(c.cible?.[classe] || 0);
+      return {
+        id: `${c.id}-${classe}`,
+        client: c.nom,
+        marche: c.marche,
+        classe,
+        actuel,
+        cible,
+        ecart: actuel - cible,
+      };
+    }).filter((r) => Math.abs(r.ecart) >= 5)
+  ).sort((a, b) => Math.abs(b.ecart) - Math.abs(a.ecart));
+
+  const demandes = (Array.isArray(cessionRetraitEtats) ? cessionRetraitEtats : [])
+    .filter((r) =>
+      idsClients.has(String(r.clientId)) || nomsClients.has(String(r.client || ''))
+    );
+  const demandesActives = demandes.filter((r) =>
+    !['Retrait disponible', 'Payé', 'Annulé', 'Rejeté', 'Terminé', 'Clôturé']
+      .includes(r.statut)
+  );
+  const besoinTotal = demandesActives.reduce(
+    (s, r) => s + comiteConvertirMontant(r.montant, r.devise, devise), 0
+  );
+  const demandesNouvelles = demandes.filter((r) =>
+    ['Demande reçue', 'Nouvelle demande', 'En attente'].includes(r.statut)
+  ).length;
+  const marcheStats = [...new Set(clients.map((c) => c.marche).filter(Boolean))]
+    .map((marche) => {
+      const sousEnsemble = clients.filter((c) => c.marche === marche);
+      const encours = sousEnsemble.reduce(
+        (s, c) => s + comiteConvertirMontant(c.encours, c.devise, devise), 0
+      );
+      return {
+        marche,
+        nb: sousEnsemble.length,
+        encours,
+        poids: comitePourcentage(encours, totalRef),
+      };
+    }).sort((a, b) => b.encours - a.encours);
+
+  const recommandations = RECOS.filter((r) =>
+    (filtreBourse === 'Toutes' || r.marche === filtreBourse) &&
+    (filtreSecteur === 'Tous' || r.secteur === filtreSecteur)
+  );
+  const secteursDisponibles = ['Tous', ...new Set(RECOS.map((r) => r.secteur).filter(Boolean))];
+  const decisionActive = decisions.find((d) => d.id === decisionSelectionnee) || decisions[0];
+  const lignesDecision = Array.isArray(decisionActive?.allocations)
+    ? decisionActive.allocations
+    : [];
+
+  const mouvementsFuturs = UPCOMING_CASHFLOWS.filter((flux) => {
+    const dateFlux = parseFR(flux.echeance);
+    const aujourdHui = new Date();
+    aujourdHui.setHours(0, 0, 0, 0);
+    return dateFlux >= aujourdHui && dateFlux <= new Date(aujourdHui.getTime() + 30 * 86400000);
+  });
+  const previsionTresorerie30j = mouvementsFuturs.reduce(
+    (s, c) => s + comiteConvertirMontant(c.montant, c.devise, devise), 0
+  );
+
+  const majSuivi = (id, champ, value) => {
+    setSuivi((courant) => {
+      const prochain = {
+        ...courant,
+        [id]: { ...(courant[id] || {}), [champ]: value },
+      };
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem(COMITE_RAPPORT_SUIVI_KEY, JSON.stringify(prochain));
+        } catch { /* le suivi reste en mémoire */ }
+      }
+      return prochain;
+    });
+  };
+
+  const enregistrerConfig = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(COMITE_RAPPORT_CONFIG_KEY, JSON.stringify(config));
+        setMessage('Paramètres et commentaires du rapport enregistrés localement.');
+        setEditerRapport(false);
+      } catch {
+        setMessage('Stockage local indisponible : les paramètres restent en mémoire.');
+      }
+    }
+  };
+
+  const exporterCsv = () => {
+    const lignes = [
+      ['Rapport de comité de gestion', config.periode, config.dateComite],
+      ['Statut', config.statut],
+      ['Gestionnaire', config.gestionnaire],
+      ['Participants', config.participants],
+      ['Benchmark déclaré', config.benchmark],
+      ['Source', operationalDbStatus],
+      ['Devise', devise],
+      ['Nombre de portefeuilles', clients.length],
+      ['Encours consolidé', Math.round(totalRef)],
+      ['Performance pondérée indicative (%)', performancePonderee.toFixed(3)],
+      ['Rentabilité pondérée indicative (%)', rentabilitePonderee.toFixed(3)],
+      ['Liquidité estimée (allocation)', Math.round(liquiditeEstimee)],
+      ['Retraits actifs', demandesActives.length],
+      ['Besoin de trésorerie des retraits', Math.round(besoinTotal)],
+      [],
+      ['PORTEFEUILLES', 'Compte', 'Marché', 'Profil', 'Devise native', 'Encours natif', 'Performance indicative (%)', 'Allocation Actions (%)', 'Allocation Obligations souveraines (%)', 'Allocation Obligations privées (%)', 'Allocation Liquidité (%)'],
+      ...clients.map((c) => [
+        c.nom, c.numeroCompte || c.id || '', c.marche, c.profilRisque,
+        c.devise, c.encours, c.perf, c.alloc?.Actions,
+        c.alloc?.['Obl. souveraines'], c.alloc?.['Obl. privées'], c.alloc?.Liquidité,
+      ]),
+      [],
+      ['RETRAITS', 'Client', 'Montant', 'Devise', 'Statut', 'Date demande', 'Date souhaitée'],
+      ...demandes.map((r) => [
+        r.client, r.montant, r.devise, r.statut, r.dateDemande, r.dateSouhaitee,
+      ]),
+      [],
+      ['DÉCISIONS DU COMITÉ', 'Identifiant', 'Titre', 'Sens', 'Pourcentage opération', 'Instrument', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'],
+      ...lignesDecision.map((a, i) => {
+        const id = `${decisionActive.id}-${a.id || i}`;
+        return [
+          decisionActive.id, a.id || i, a.typeInstrument, a.sens,
+          a.pourcentageOperation, a.instrument,
+          (a.portefeuillesEligibles || []).join(' | '),
+          suivi[id]?.statut || 'À instruire', suivi[id]?.responsable || '',
+          suivi[id]?.echeance || '', suivi[id]?.commentaire || '',
+        ];
+      }),
+      [],
+      ['Commentaires généraux', config.commentaires],
+    ];
+    const contenu = '\ufeff' + lignes.map((ligne) => ligne.map(comiteCsvCellule).join(';')).join('\r\n');
+    exportDownloadBlob(
+      new Blob([contenu], { type: 'text/csv;charset=utf-8;' }),
+      `rapport-comite-gsm-${config.dateComite || 'situation'}.csv`
+    );
+  };
+
+  const tabs = [
+    ['synthese', 'Synthèse & marchés'],
+    ['portefeuilles', 'Portefeuilles & risques'],
+    ['liquidite', 'Liquidité & cessions'],
+    ['decisions', `Décisions (${decisions.length})`],
+  ];
+
   return (
-    <div className="space-y-6">
+    <div id="gsm-comite-report" className="space-y-5">
       <Breadcrumb items={['Accueil', 'Rapport de comité de gestion']} />
-      <div className="flex items-center justify-between">
-        <h2
-          className="text-xl font-bold"
-          style={{ ...F_DISPLAY, color: C.ink }}
-        >
-          Rapport de comité de gestion — Juillet 2026
-        </h2>
-        <div className="flex items-center gap-2">
+      <style>{`@media print {
+        body * { visibility: hidden !important; }
+        #gsm-comite-report, #gsm-comite-report * { visibility: visible !important; }
+        #gsm-comite-report { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; }
+        #gsm-comite-actions, #gsm-comite-tabs, .gsm-comite-no-print, .gsm-comite-interactive { display: none !important; }
+        #gsm-comite-print-full { display: block !important; }
+        #gsm-comite-report table { page-break-inside: auto; }
+        #gsm-comite-report tr, #gsm-comite-report .rounded-2xl { page-break-inside: avoid; }
+      }`}</style>
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion sous mandat · comité de gestion</Eyebrow>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
+            Rapport de comité de gestion
+          </h2>
+          <p className="text-xs mt-1" style={{ color: C.sub }}>
+            {config.periode} · Situation actuelle au {config.dateComite || '—'} · {clients.length} portefeuille(s)
+          </p>
+          <p className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Indicateurs de portefeuille issus du référentiel chargé ({operationalDbStatus}).
+            Les performances disponibles sont indicatives ; les cotations et les prévisions locales ne constituent pas des données officielles.
+          </p>
+        </div>
+        <div id="gsm-comite-actions" className="flex gap-2 flex-wrap">
           <Btn onClick={() => go('decisions-comite')}>Prise de décisions</Btn>
-          <Btn tone="gold">Editer</Btn>
+          <Btn tone="ghost" onClick={() => setEditerRapport((v) => !v)}>
+            {editerRapport ? 'Fermer paramètres' : 'Éditer le rapport'}
+          </Btn>
+          <Btn tone="ghost" onClick={exporterCsv}>Exporter CSV</Btn>
+          <Btn tone="gold" onClick={() => window.print()}>Imprimer / PDF</Btn>
         </div>
       </div>
 
-      <Card
-        className="p-0 overflow-hidden"
-        style={{ borderColor: C.gold, background: '#FBF7EE' }}
-      >
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Briefcase size={16} color={C.navy} />
-            <span
-              className="text-sm font-semibold"
-              style={{ color: C.ink, ...F_BODY }}
-            >
-              Encours total sous gestion
-            </span>
-          </div>
-          <span
-            className="text-xl font-bold"
-            style={{ ...F_DISPLAY, color: C.navy }}
-          >
-            {fmt(Math.round(totalRef))} {devise}
-          </span>
+      {message && (
+        <div className="px-4 py-3 rounded-xl text-xs font-semibold" style={{ color: C.teal, background: '#E4F5EF' }}>
+          {message}
         </div>
-        <div
-          className="p-4 flex items-center justify-between"
-          style={{ borderTop: `1px solid ${C.gold}` }}
-        >
-          <div className="flex items-center gap-2">
-            <Droplets size={16} color={C.gold} />
-            <span
-              className="text-sm font-semibold"
-              style={{ color: C.ink, ...F_BODY }}
-            >
-              Prévision de trésorerie — dividendes &amp; coupons attendus dans
-              le mois
-            </span>
-          </div>
-          <span className="text-lg font-bold" style={F_DISPLAY}>
-            {fmt(Math.round(previsionTresorerie30j))} {devise}
-          </span>
-        </div>
-      </Card>
+      )}
 
-      <div className="grid grid-cols-2 gap-4">
-        <Card className="p-5">
-          <Eyebrow>Rendement de la période</Eyebrow>
-          <div className="flex items-end gap-6 mt-2">
-            <div>
-              <div className="text-xs" style={{ color: C.sub }}>
-                Performance gestionnaire
-              </div>
-              <div className="text-2xl font-bold" style={F_DISPLAY}>
-                +2.4%
-              </div>
-            </div>
-            <div>
-              <div className="text-xs" style={{ color: C.sub }}>
-                Rentabilité générale
-              </div>
-              <div className="text-2xl font-bold" style={F_DISPLAY}>
-                +1.9%
-              </div>
-            </div>
-          </div>
-          <div className="text-xs mt-2" style={{ color: C.sub }}>
-            Dispersion clients : de -1.4% (Emeka Okafor) à +4.6% (Ama Boateng)
-          </div>
-        </Card>
-        <Card className="p-5">
-          <Eyebrow>Écarts sur les autres types d'actifs</Eyebrow>
-          <div className="space-y-2 mt-2 text-sm" style={F_BODY}>
-            <div className="flex justify-between">
-              <span>Obl. souveraines</span>
-              <Badge tone="teal">-1 pt vs cible (conforme)</Badge>
-            </div>
-            <div className="flex justify-between">
-              <span>Obl. privées</span>
-              <Badge tone="gold">+3 pts vs cible</Badge>
-            </div>
-            <div className="flex justify-between">
-              <span>Liquidité</span>
-              <Badge tone="teal">Conforme</Badge>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      <Card className="p-5">
-        <div className="flex items-end justify-between gap-4 flex-wrap mb-3">
-          <div>
-            <Eyebrow>Recommandations d'achat / vente — tous marchés</Eyebrow>
-            <div className="text-xs" style={{ color: C.sub, ...F_BODY }}>
-              Synthèse des signaux techniques et fondamentaux présentée au
-              comité.
-            </div>
-          </div>
-          <div className="flex items-end gap-3 flex-wrap">
-            <div>
-              <label
-                className="text-xs font-semibold block mb-1"
-                style={{ color: C.sub }}
-              >
-                Bourse
-              </label>
-              <select
-                value={filtreBourse}
-                onChange={(e) => setFiltreBourse(e.target.value)}
-                className="px-3 py-2 rounded-xl border text-sm"
-                style={{ borderColor: C.line, ...F_BODY }}
-              >
-                {boursesDisponibles.map((bourse) => (
-                  <option key={bourse}>{bourse}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className="text-xs font-semibold block mb-1"
-                style={{ color: C.sub }}
-              >
-                Secteur
-              </label>
-              <select
-                value={filtreSecteur}
-                onChange={(e) => setFiltreSecteur(e.target.value)}
-                className="px-3 py-2 rounded-xl border text-sm"
-                style={{ borderColor: C.line, ...F_BODY }}
-              >
-                {secteursDisponibles.map((secteur) => (
-                  <option key={secteur}>{secteur}</option>
-                ))}
-              </select>
-            </div>
-            <Badge tone="gold">
-              {recommandationsFiltrees.length} valeur(s)
-            </Badge>
-          </div>
-        </div>
-
-        <div
-          className="overflow-x-auto rounded-xl border"
-          style={{ borderColor: C.line }}
-        >
-          <table className="w-full" style={{ minWidth: 1740 }}>
-            <thead style={{ background: '#FAFAFC' }}>
-              <tr>
-                <th
-                  rowSpan={2}
-                  className="text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.sub, ...F_BODY }}
-                >
-                  Titre
-                </th>
-                <th
-                  rowSpan={2}
-                  className="text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.sub, ...F_BODY }}
-                >
-                  Recommandation
-                </th>
-                <th
-                  rowSpan={2}
-                  className="text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.sub, ...F_BODY }}
-                >
-                  Prix min
-                </th>
-                <th
-                  rowSpan={2}
-                  className="text-left text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.sub, ...F_BODY }}
-                >
-                  Prix max
-                </th>
-                <th
-                  colSpan={5}
-                  className="text-center text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: C.navy, background: '#EFF3FB', ...F_BODY }}
-                >
-                  Analyse technique
-                </th>
-                <th
-                  colSpan={5}
-                  className="text-center text-[11px] uppercase tracking-wider font-semibold py-2 px-3"
-                  style={{ color: '#8A6A16', background: '#FBF7EE', ...F_BODY }}
-                >
-                  Analyse fondamentale
-                </th>
-              </tr>
-              <tr>
-                <Th>MM</Th>
-                <Th>MACD</Th>
-                <Th>RSI</Th>
-                <Th>BOL</Th>
-                <Th>Signal technique</Th>
-                <Th>PER</Th>
-                <Th>Rentabilité</Th>
-                <Th>EVOL</Th>
-                <Th>VALO</Th>
-                <Th>Signal fondamental</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {recommandationsFiltrees.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={16}
-                    className="text-center text-sm py-6"
-                    style={{ color: C.sub, ...F_BODY }}
+      {editerRapport && (
+        <Card className="p-5 gsm-comite-no-print">
+          <div className="text-sm font-bold mb-3" style={{ color: C.ink }}>Paramétrage et compte rendu du comité</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              ['periode', 'Période', 'select'],
+              ['dateComite', 'Date du comité', 'date'],
+              ['gestionnaire', 'Gestionnaire / rapporteur', 'text'],
+              ['participants', 'Participants', 'text'],
+              ['benchmark', 'Benchmark', 'text'],
+              ['statut', 'Statut du rapport', 'select'],
+            ].map(([champ, libelle, type]) => (
+              <label key={champ} className="space-y-1">
+                <span className="text-xs font-semibold" style={{ color: C.sub }}>{libelle}</span>
+                {type === 'select' ? (
+                  <select
+                    value={config[champ]}
+                    onChange={(e) => setConfig((c) => ({ ...c, [champ]: e.target.value }))}
+                    className="w-full rounded-xl border p-2 text-xs"
+                    style={{ borderColor: C.line }}
                   >
-                    Aucune recommandation ne correspond à cette combinaison de
-                    filtres.
-                  </td>
-                </tr>
-              )}
-              {recommandationsFiltrees.map((r, i) => (
-                <tr
-                  key={r.titre}
-                  style={{
-                    borderTop: `1px solid ${C.line}`,
-                    background: i % 2 ? '#FCFCFD' : '#fff',
-                  }}
-                >
-                  <Td className="font-semibold whitespace-nowrap">{r.titre}</Td>
-                  <Td>
-                    <Badge tone="navy">{r.marche}</Badge>
-                  </Td>
-                  <Td className="whitespace-nowrap">{r.secteur}</Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        r.sens === 'Achat'
-                          ? 'teal'
-                          : r.sens === 'Vente'
-                          ? 'coral'
-                          : 'slate'
-                      }
-                    >
-                      {r.sens}
-                    </Badge>
-                  </Td>
-                  <Td mono className="whitespace-nowrap">
-                    {Math.min(r.cours, r.objectif)} {r.devise}
-                  </Td>
-                  <Td mono className="whitespace-nowrap">
-                    {Math.max(r.cours, r.objectif)} {r.devise}
-                  </Td>
-                  <Td mono className="whitespace-nowrap">
-                    {r.technique.mm}
-                  </Td>
-                  <Td className="whitespace-nowrap">{r.technique.macd}</Td>
-                  <Td mono>{r.technique.rsi}</Td>
-                  <Td className="whitespace-nowrap">{r.technique.bol}</Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        r.technique.signal === 'Acheter'
-                          ? 'teal'
-                          : r.technique.signal === 'Vendre'
-                          ? 'coral'
-                          : r.technique.signal === 'Alléger'
-                          ? 'gold'
-                          : 'slate'
-                      }
-                    >
-                      {r.technique.signal}
-                    </Badge>
-                  </Td>
-                  <Td mono>{r.fondamentale.per.toFixed(1)}x</Td>
-                  <Td mono>{r.fondamentale.rentabilite}</Td>
-                  <Td mono>{r.fondamentale.evol}</Td>
-                  <Td className="whitespace-nowrap">{r.fondamentale.valo}</Td>
-                  <Td>
-                    <Badge
-                      tone={
-                        r.fondamentale.signal === 'Acheter' ? 'teal' : 'coral'
-                      }
-                    >
-                      {r.fondamentale.signal}
-                    </Badge>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <Card className="p-5">
-        <Eyebrow>
-          Impact des recommandations du comité précédent sur la gestion
-        </Eyebrow>
-        <table className="w-full mt-1">
-          <thead>
-            <tr>
-              <Th>Thème</Th>
-              <Th>Portefeuilles</Th>
-              <Th>Impact mesuré</Th>
-              <Th>Statut</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {IMPACT_COMITE.map((r) => (
-              <tr key={r.theme} style={{ borderTop: `1px solid ${C.line}` }}>
-                <Td className="font-semibold">{r.theme}</Td>
-                <Td>{r.pf}</Td>
-                <Td>
-                  <Pct v={parseFloat(r.impact)} />
-                </Td>
-                <Td>
-                  <Badge tone={r.statut === 'Appliqué' ? 'teal' : 'gold'}>
-                    {r.statut}
-                  </Badge>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-
-      <Card className="p-5">
-        <Eyebrow>Contribution sectorielle à la valorisation générale</Eyebrow>
-        <div className="grid grid-cols-2 gap-6 items-center">
-          <ResponsiveContainer width="100%" height={260}>
-            <PieChart>
-              <Pie
-                data={SECTOR_CONTRIB}
-                dataKey="valeur"
-                nameKey="name"
-                innerRadius={55}
-                outerRadius={100}
-                paddingAngle={2}
-                label={({ name, valeur, pct }) =>
-                  `${name} · ${valeur} M · ${pct}%`
-                }
-              >
-                {SECTOR_CONTRIB.map((_, i) => (
-                  <Cell
-                    key={i}
-                    fill={PALETTE[i % PALETTE.length]}
-                    stroke="none"
+                    {(champ === 'periode'
+                      ? ['Mois en cours', 'Trimestre en cours', 'Semestre en cours', 'Année en cours', 'Période personnalisée']
+                      : ['Brouillon', 'En revue', 'Validé localement']
+                    ).map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    type={type}
+                    value={config[champ] || ''}
+                    onChange={(e) => setConfig((c) => ({ ...c, [champ]: e.target.value }))}
+                    className="w-full rounded-xl border p-2 text-xs"
+                    style={{ borderColor: C.line }}
                   />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(v, n, p) => [
-                  `${v} M XOF (${p.payload.pct}%)`,
-                  p.payload.name,
-                ]}
-                contentStyle={{
-                  borderRadius: 10,
-                  fontSize: 12,
-                  border: `1px solid ${C.line}`,
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2">
-            {SECTOR_CONTRIB.map((s, i) => (
-              <div
-                key={s.name}
-                className="flex items-center justify-between text-sm"
-                style={F_BODY}
-              >
-                <span
-                  className="flex items-center gap-2"
-                  style={{ color: C.ink }}
-                >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ background: PALETTE[i % PALETTE.length] }}
-                  />
-                  {s.name}
-                </span>
-                <span
-                  className="font-semibold"
-                  style={{ ...F_MONO, color: C.sub }}
-                >
-                  {s.valeur} M XOF · {s.pct}%
-                </span>
-              </div>
+                )}
+              </label>
             ))}
           </div>
+          <label className="block mt-3 space-y-1">
+            <span className="text-xs font-semibold" style={{ color: C.sub }}>Commentaires et recommandations du comité</span>
+            <textarea
+              rows={4}
+              value={config.commentaires || ''}
+              onChange={(e) => setConfig((c) => ({ ...c, commentaires: e.target.value }))}
+              className="w-full rounded-xl border p-3 text-sm"
+              style={{ borderColor: C.line }}
+              placeholder="Analyse du contexte, décisions, responsables et réserves…"
+            />
+          </label>
+          <div className="flex justify-end mt-3"><Btn onClick={enregistrerConfig}>Enregistrer les paramètres</Btn></div>
+          <p className="text-[10px] mt-2" style={{ color: C.sub }}>
+            Paramètres conservés dans le navigateur. La validation locale ne constitue pas un PV signé ni un instantané historisé en base.
+          </p>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[
+          ['Encours consolidé', `${fmt(Math.round(totalRef))} ${devise}`, 'Agrégation convertie'],
+          ['Portefeuilles', fmt(clients.length), 'Comptes gérés pris en compte'],
+          ['Performance indicative', `${performancePonderee >= 0 ? '+' : ''}${performancePonderee.toFixed(2)}%`, 'Moyenne pondérée ; pas un TWR'],
+          ['Liquidité estimée', `${fmt(Math.round(liquiditeEstimee))} ${devise}`, 'Encours × poids de liquidité'],
+        ].map(([titre, valeur, sousTitre]) => (
+          <Card key={titre} className="p-4">
+            <div className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>{titre}</div>
+            <div className="text-lg font-bold mt-1" style={{ ...F_DISPLAY, color: C.navy }}>{valeur}</div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>{sousTitre}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div id="gsm-comite-tabs" className="flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: C.line }}>
+        {tabs.map(([id, libelle]) => (
+          <button
+            type="button"
+            key={id}
+            onClick={() => setOnglet(id)}
+            className="rounded-xl px-4 py-2 text-xs font-semibold"
+            style={{ background: onglet === id ? C.navy : '#EDF0F6', color: onglet === id ? '#fff' : C.ink }}
+          >{libelle}</button>
+        ))}
+      </div>
+
+      <Card className="p-4 gsm-comite-no-print">
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="flex-1 min-w-[190px] space-y-1">
+            <span className="block text-xs font-semibold" style={{ color: C.sub }}>Rechercher un portefeuille</span>
+            <input
+              value={filtreClient}
+              onChange={(e) => setFiltreClient(e.target.value)}
+              placeholder="Client, compte, pays…"
+              className="w-full px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line }}
+            />
+          </label>
+          <label className="min-w-[165px] space-y-1">
+            <span className="block text-xs font-semibold" style={{ color: C.sub }}>Marché</span>
+            <select value={filtreBourse} onChange={(e) => setFiltreBourse(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: C.line }}>
+              {boursesDisponibles.map((b) => <option key={b}>{b}</option>)}
+            </select>
+          </label>
+          {onglet === 'synthese' && (
+            <label className="min-w-[165px] space-y-1">
+              <span className="block text-xs font-semibold" style={{ color: C.sub }}>Secteur recommandé</span>
+              <select value={filtreSecteur} onChange={(e) => setFiltreSecteur(e.target.value)} className="w-full px-3 py-2 rounded-xl border text-sm" style={{ borderColor: C.line }}>
+                {secteursDisponibles.map((v) => <option key={v}>{v}</option>)}
+              </select>
+            </label>
+          )}
+          <Btn tone="ghost" onClick={() => { setFiltreBourse('Toutes'); setFiltreSecteur('Tous'); setFiltreClient(''); }}>Effacer filtres</Btn>
         </div>
       </Card>
 
-      <Card className="p-5">
-        <Eyebrow>Exposition générale du gestionnaire</Eyebrow>
-        <div className="grid grid-cols-2 gap-6 mt-2">
-          {[
-            ["Type d'actif", assetMixAnalyse],
-            ['Marché / devise', marketMixAnalyse],
-            ['Pays', countryMixAnalyse],
-            ['Secteur', SECTOR_MIX],
-          ].map(([t, d]) => {
-            const data = d.map((s) => ({
-              ...s,
-              valeurM: Math.round((totalRef * s.value) / 100 / 1_000_000),
-            }));
-            return (
-              <div key={t}>
-                <div
-                  className="text-xs font-semibold mb-2"
-                  style={{ color: C.sub }}
-                >
-                  {t}
-                </div>
-                <div className="grid grid-cols-2 gap-3 items-center">
-                  <ResponsiveContainer width="100%" height={170}>
-                    <PieChart>
-                      <Pie
-                        data={data}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={32}
-                        outerRadius={62}
-                        paddingAngle={2}
-                        label={({ value }) => `${value}%`}
-                      >
-                        {data.map((_, i) => (
-                          <Cell
-                            key={i}
-                            fill={PALETTE[i % PALETTE.length]}
-                            stroke="none"
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(v, n, p) => [
-                          `${p.payload.valeurM} M ${devise} (${v}%)`,
-                          p.payload.name,
-                        ]}
-                        contentStyle={{
-                          borderRadius: 10,
-                          fontSize: 11,
-                          border: `1px solid ${C.line}`,
-                        }}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="space-y-1">
-                    {data.map((s, i) => (
-                      <div
-                        key={s.name}
-                        className="flex items-center justify-between text-xs"
-                        style={F_BODY}
-                      >
-                        <span
-                          className="flex items-center gap-1.5"
-                          style={{ color: C.ink }}
-                        >
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ background: PALETTE[i % PALETTE.length] }}
-                          />
-                          {s.name}
-                        </span>
-                        <span
-                          className="font-semibold"
-                          style={{ ...F_MONO, color: C.sub }}
-                        >
-                          {s.valeurM} M · {s.value}%
-                        </span>
-                      </div>
-                    ))}
+      {onglet === 'synthese' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="p-5">
+              <Eyebrow>Répartition des actifs · calculée</Eyebrow>
+              <Donut data={assetMixAnalyse} size={220} />
+              <div className="space-y-1 text-xs">
+                {assetMixAnalyse.map((r) => (
+                  <div key={r.name} className="flex justify-between gap-4"><span>{r.name}</span><b>{r.value}%</b></div>
+                ))}
+              </div>
+            </Card>
+            <Card className="p-5">
+              <Eyebrow>Répartition par marché · calculée</Eyebrow>
+              <Donut data={marketMixAnalyse} size={220} />
+              <div className="space-y-1 text-xs">
+                {marcheStats.map((r) => (
+                  <div key={r.marche} className="flex justify-between gap-4">
+                    <span>{r.marche} · {r.nb} portefeuille(s)</span>
+                    <b>{r.poids.toFixed(1)}%</b>
                   </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+          <Card className="p-5">
+            <div className="flex justify-between gap-3 flex-wrap">
+              <div>
+                <Eyebrow>Lecture consolidée</Eyebrow>
+                <div className="text-xs mt-1" style={{ color: C.sub }}>
+                  Rentabilité pondérée indicative : <b>{rentabilitePonderee.toFixed(2)}%</b> ·
+                  Portefeuilles avec écarts d'allocation ≥ 5 points : <b>{new Set(risques.map((r) => r.client)).size}</b> ·
+                  Écarts repérés : <b>{risques.length}</b>.
                 </div>
               </div>
-            );
-          })}
+              <Badge tone="gold">Seuil d'alerte indicatif : 5 pts</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+              <div>
+                <div className="text-xs font-bold mb-2">Exposition par pays</div>
+                {countryMixAnalyse.map((r) => (
+                  <div key={r.name} className="flex justify-between text-xs py-1 border-b" style={{ borderColor: C.line }}>
+                    <span>{r.name}</span><b>{r.value}%</b>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="text-xs font-bold mb-2">Trésorerie prévisionnelle à 30 jours · calendrier de démonstration</div>
+                <div className="text-lg font-bold" style={{ color: C.teal }}>
+                  {fmt(Math.round(previsionTresorerie30j))} {devise}
+                </div>
+                <div className="text-[10px]" style={{ color: C.sub }}>
+                  {mouvementsFuturs.length} échéance(s) à venir renseignée(s) dans le calendrier local ; à actualiser depuis l'API métier.
+                </div>
+              </div>
+            </div>
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap mb-3">
+              <div>
+                <Eyebrow>Recommandations actions & obligations · maquette</Eyebrow>
+                <p className="text-xs" style={{ color: C.sub }}>Signaux indicatifs provenant du référentiel local RECOS ; ne constituent pas des ordres exécutés.</p>
+              </div>
+              <Badge tone="navy">{recommandations.length} recommandation(s)</Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 1000 }}>
+                <thead><tr>
+                  {['Instrument', 'Marché', 'Secteur', 'Sens', 'Cours', 'Objectif', 'Signal technique', 'RSI', 'PER', 'Signal fondamental'].map((s) => <Th key={s}>{s}</Th>)}
+                </tr></thead>
+                <tbody>
+                  {recommandations.map((r) => (
+                    <tr key={`${r.marche}-${r.titre}`} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td className="font-semibold">{r.titre}</Td><Td>{r.marche}</Td><Td>{r.secteur}</Td>
+                      <Td><Badge tone={r.sens === 'Achat' ? 'teal' : r.sens === 'Vente' ? 'coral' : 'slate'}>{r.sens}</Badge></Td>
+                      <Td mono>{fmtPrice(r.cours)} {r.devise}</Td>
+                      <Td mono>{fmtPrice(r.objectif)} {r.devise}</Td>
+                      <Td>{r.technique?.signal || '—'}</Td>
+                      <Td mono>{r.technique?.rsi ?? '—'}</Td>
+                      <Td mono>{typeof r.fondamentale?.per === 'number' ? `${r.fondamentale.per.toFixed(1)}x` : '—'}</Td>
+                      <Td>{r.fondamentale?.signal || '—'}</Td>
+                    </tr>
+                  ))}
+                  {recommandations.length === 0 && <tr><td colSpan={10} className="text-center p-5">Aucune recommandation avec ces filtres.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {onglet === 'portefeuilles' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <Card className="p-5">
+            <Eyebrow>Analyse individuelle de tous les comptes gérés</Eyebrow>
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full" style={{ minWidth: 1280 }}>
+                <thead><tr>
+                  {['Portefeuille', 'Profil', 'Marché', 'Encours natif', 'Performance indic.', 'Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité', 'Écart actions vs cible'].map((label) => <Th key={label}>{label}</Th>)}
+                </tr></thead>
+                <tbody>
+                  {clients.map((c) => {
+                    const ecartActions = Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0);
+                    return (
+                      <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                        <Td className="font-semibold">{c.nom}<div className="text-[10px]" style={{ color: C.sub }}>{c.numeroCompte || c.id}</div></Td>
+                        <Td>{c.profilRisque || c.risque || '—'}</Td>
+                        <Td>{c.marche}</Td>
+                        <Td mono>{fmt(Math.round(Number(c.encours || 0)))} {c.devise}</Td>
+                        <Td><Pct v={Number(c.perf || 0)} /></Td>
+                        <Td mono>{Number(c.alloc?.Actions || 0).toFixed(1)}%</Td>
+                        <Td mono>{Number(c.alloc?.['Obl. souveraines'] || 0).toFixed(1)}%</Td>
+                        <Td mono>{Number(c.alloc?.['Obl. privées'] || 0).toFixed(1)}%</Td>
+                        <Td mono>{Number(c.alloc?.Liquidité || 0).toFixed(1)}%</Td>
+                        <Td><Badge tone={Math.abs(ecartActions) >= 5 ? 'coral' : 'teal'}>{ecartActions > 0 ? '+' : ''}{ecartActions.toFixed(1)} pts</Badge></Td>
+                      </tr>
+                    );
+                  })}
+                  {!clients.length && <tr><td colSpan={10} className="p-5 text-center">Aucun portefeuille dans le périmètre sélectionné.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Card className="p-5">
+            <Eyebrow>Écarts significatifs d'allocation vs cible · seuil indicatif ±5 pts</Eyebrow>
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full" style={{ minWidth: 760 }}>
+                <thead><tr>{['Portefeuille', 'Marché', 'Catégorie', 'Actuel', 'Cible', 'Écart'].map((label) => <Th key={label}>{label}</Th>)}</tr></thead>
+                <tbody>
+                  {risques.slice(0, 30).map((r) => (
+                    <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td>{r.client}</Td><Td>{r.marche}</Td><Td>{r.classe}</Td>
+                      <Td mono>{r.actuel.toFixed(1)}%</Td><Td mono>{r.cible.toFixed(1)}%</Td>
+                      <Td><Badge tone="coral">{r.ecart > 0 ? '+' : ''}{r.ecart.toFixed(1)} pts</Badge></Td>
+                    </tr>
+                  ))}
+                  {!risques.length && <tr><td colSpan={6} className="p-5 text-center">Aucun dépassement indicatif détecté.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {onglet === 'liquidite' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              ['Retraits actifs', fmt(demandesActives.length)],
+              ['Nouvelles demandes', fmt(demandesNouvelles)],
+              ['Besoin total des retraits actifs', `${fmt(Math.round(besoinTotal))} ${devise}`],
+            ].map(([titre, valeur]) => (
+              <Card key={titre} className="p-4"><div className="text-xs" style={{ color: C.sub }}>{titre}</div><div className="text-xl font-bold mt-2">{valeur}</div></Card>
+            ))}
+          </div>
+          <Card className="p-5">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+              <div><Eyebrow>Besoins de liquidité clients & état des cessions</Eyebrow><p className="text-xs mt-1" style={{ color: C.sub }}>Demandes récupérées de l'état opérationnel ou du mode démonstration.</p></div>
+              <Btn onClick={() => go('cession-retrait')}>Ouvrir État cession-retrait</Btn>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 840 }}>
+                <thead><tr>{['Client', 'Montant demandé', 'Statut', 'Demande', 'Date souhaitée', 'Mode paiement'].map((s) => <Th key={s}>{s}</Th>)}</tr></thead>
+                <tbody>
+                  {demandes.map((r, i) => (
+                    <tr key={String(r.id || `${r.clientId}-${r.dateDemande}-${i}`)} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td className="font-semibold">{r.client || clients.find((c) => String(c.id) === String(r.clientId))?.nom || '—'}</Td>
+                      <Td mono>{fmt(Math.round(Number(r.montant || 0)))} {r.devise}</Td>
+                      <Td><Badge tone={r.statut === 'Retrait disponible' ? 'teal' : r.statut === 'Demande reçue' ? 'coral' : 'gold'}>{r.statut || '—'}</Badge></Td>
+                      <Td>{r.dateDemande || '—'}</Td><Td>{r.dateSouhaitee || '—'}</Td><Td>{r.modePaiement || '—'}</Td>
+                    </tr>
+                  ))}
+                  {!demandes.length && <tr><td colSpan={6} className="p-5 text-center">Aucune demande de retrait dans le périmètre.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Card className="p-4">
+            <p className="text-xs" style={{ color: C.sub }}>
+              L'exécution des cessions, les confirmations d'ordres et les avis d'opérés sont à rapprocher des écritures métier. Cette synthèse ne marque jamais une vente ou un retrait comme exécuté par simple simulation.
+            </p>
+          </Card>
+        </div>
+      )}
+
+      {onglet === 'decisions' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <Card className="p-5">
+            <div className="flex justify-between items-start gap-4 flex-wrap">
+              <div>
+                <Eyebrow>Décisions de comité enregistrées</Eyebrow>
+                <p className="text-xs mt-1" style={{ color: C.sub }}>
+                  Reprise des allocations créées depuis « Prise de décisions » : achat / vente, pourcentage, critères et portefeuilles éligibles.
+                </p>
+              </div>
+              <Btn onClick={() => go('decisions-comite')}>Ajouter ou modifier les décisions</Btn>
+            </div>
+            <div className="flex items-end gap-3 flex-wrap mt-4">
+              <label className="flex-1 min-w-[220px] space-y-1">
+                <span className="text-xs font-semibold" style={{ color: C.sub }}>Sélectionner un comité enregistré</span>
+                <select
+                  value={decisionActive?.id || ''}
+                  onChange={(e) => setDecisionSelectionnee(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border text-sm"
+                  style={{ borderColor: C.line }}
+                >
+                  {!decisions.length && <option value="">Aucune décision enregistrée</option>}
+                  {decisions.map((d) => (
+                    <option key={d.id} value={d.id}>{d.id} · {d.libelleDate || ''} · {d.allocations?.length || 0} allocation(s)</option>
+                  ))}
+                </select>
+              </label>
+              <Badge tone="gold">{lignesDecision.length} allocation(s)</Badge>
+              <Badge tone="navy">{decisionActive?.nombrePortefeuilles || 0} portefeuille(s)</Badge>
+            </div>
+            {!decisions.length && (
+              <div className="p-5 mt-3 rounded-xl" style={{ background: '#FBF7EE', color: C.sub }}>
+                Aucune décision n'a encore été enregistrée. Ouvrez « Prise de décisions », ajoutez des allocations puis cliquez sur « Enregistrer Décisions » : elles apparaîtront ici.
+              </div>
+            )}
+          </Card>
+          {!!lignesDecision.length && (
+            <Card className="p-5">
+              <Eyebrow>Tableau des allocations & suivi opérationnel</Eyebrow>
+              <div className="overflow-x-auto mt-3">
+                <table className="w-full" style={{ minWidth: 1500 }}>
+                  <thead><tr>
+                    {['Sens & classe', 'Instrument', 'Marché', '% de cession / liquidité', 'Critère d’exposition', 'Type d’ordre', 'Prix min / max / objectif', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'].map((s) => <Th key={s}>{s}</Th>)}
+                  </tr></thead>
+                  <tbody>
+                    {lignesDecision.map((a, i) => {
+                      const id = `${decisionActive.id}-${a.id || i}`;
+                      const suiviLigne = suivi[id] || {};
+                      return (
+                        <tr key={id} style={{ borderTop: `1px solid ${C.line}`, verticalAlign: 'top' }}>
+                          <Td><Badge tone={a.sens === 'Vente' ? 'coral' : 'teal'}>{a.sens}</Badge><div className="text-xs mt-1">{a.typeInstrument}</div></Td>
+                          <Td className="font-semibold">{a.instrument}</Td><Td>{a.marche}</Td>
+                          <Td mono>{a.pourcentageOperation}%<div className="text-[9px]">{a.sens === 'Vente' ? 'de cession' : 'de liquidité'}</div></Td>
+                          <Td>{a.operateur} {a.seuil}% · {a.typePortefeuille || 'Tous'}</Td>
+                          <Td>{a.typeOrdre}</Td>
+                          <Td mono>{a.prixMin ?? '—'} / {a.prixMax ?? '—'} / {a.prixObjectif ?? '—'}</Td>
+                          <Td><PortefeuillesConcernesDropdown portefeuilles={a.portefeuillesEligibles || []} /></Td>
+                          <Td>
+                            <select className="rounded-lg border p-2 text-xs min-w-[125px]" style={{ borderColor: C.line }} value={suiviLigne.statut || 'À instruire'} onChange={(e) => majSuivi(id, 'statut', e.target.value)}>
+                              {['À instruire', 'Validée', 'En cours', 'Exécutée', 'Suspendue', 'Rejetée'].map((v) => <option key={v}>{v}</option>)}
+                            </select>
+                          </Td>
+                          <Td><input className="rounded-lg border p-2 text-xs w-32" style={{ borderColor: C.line }} value={suiviLigne.responsable || ''} onChange={(e) => majSuivi(id, 'responsable', e.target.value)} placeholder="Responsable" /></Td>
+                          <Td><input type="date" className="rounded-lg border p-2 text-xs" style={{ borderColor: C.line }} value={suiviLigne.echeance || ''} onChange={(e) => majSuivi(id, 'echeance', e.target.value)} /></Td>
+                          <Td><textarea rows={2} className="rounded-lg border p-2 text-xs w-44" style={{ borderColor: C.line }} value={suiviLigne.commentaire || ''} onChange={(e) => majSuivi(id, 'commentaire', e.target.value)} placeholder="Suivi de l'action" /></Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] mt-3" style={{ color: C.sub }}>
+                Le statut « Exécutée » est une annotation de suivi du comité ; il ne crée pas d'ordre, de transaction ni d'écriture comptable. À rapprocher du carnet et des avis d'opérés.
+              </p>
+            </Card>
+          )}
+        </div>
+      )}
+
+      <section id="gsm-comite-print-full" className="hidden space-y-6">
+        <h3 className="text-lg font-bold mt-5">Synthèse de gestion et périmètre</h3>
+        <p className="text-xs">Période : {config.periode} · Date : {config.dateComite} · Gestionnaire : {config.gestionnaire || 'Non renseigné'} · Participants : {config.participants || 'Non renseignés'}</p>
+        <p className="text-xs">Encours consolidé : {fmt(Math.round(totalRef))} {devise} · {clients.length} comptes · Perf. indicative : {performancePonderee.toFixed(2)}% · Liquidité indicative : {fmt(Math.round(liquiditeEstimee))} {devise}</p>
+        <h4 className="font-semibold">Marchés et allocations</h4>
+        <table className="w-full text-xs"><thead><tr><Th>Marché</Th><Th>Portefeuilles</Th><Th>Encours converti</Th><Th>Poids</Th></tr></thead>
+          <tbody>{marcheStats.map((r) => <tr key={r.marche}><Td>{r.marche}</Td><Td>{r.nb}</Td><Td>{fmt(Math.round(r.encours))} {devise}</Td><Td>{r.poids.toFixed(1)}%</Td></tr>)}</tbody>
+        </table>
+        <h4 className="font-semibold">Situation portefeuille par portefeuille</h4>
+        <table className="w-full text-xs"><thead><tr>{['Portefeuille', 'Marché', 'Encours natif', 'Performance indic.', 'Actions', 'Oblig. souv.', 'Oblig. privées', 'Liquidité'].map((t) => <Th key={t}>{t}</Th>)}</tr></thead>
+          <tbody>{clients.map((c) => <tr key={c.id}>
+            <Td>{c.nom}</Td><Td>{c.marche}</Td><Td>{fmt(c.encours)} {c.devise}</Td>
+            <Td>{Number(c.perf || 0).toFixed(2)}%</Td><Td>{c.alloc?.Actions || 0}%</Td>
+            <Td>{c.alloc?.['Obl. souveraines'] || 0}%</Td><Td>{c.alloc?.['Obl. privées'] || 0}%</Td>
+            <Td>{c.alloc?.Liquidité || 0}%</Td>
+          </tr>)}</tbody>
+        </table>
+        <h4 className="font-semibold">Alertes de dépassement (±5 pts)</h4>
+        <table className="w-full text-xs"><thead><tr>{['Portefeuille', 'Catégorie', 'Actuel', 'Cible', 'Écart'].map((t) => <Th key={t}>{t}</Th>)}</tr></thead>
+          <tbody>{risques.map((r) => <tr key={r.id}><Td>{r.client}</Td><Td>{r.classe}</Td><Td>{r.actuel}%</Td><Td>{r.cible}%</Td><Td>{r.ecart.toFixed(1)} pts</Td></tr>)}
+            {!risques.length && <tr><td colSpan={5}>Aucun dépassement relevé.</td></tr>}</tbody>
+        </table>
+        <h4 className="font-semibold">Retraits et cessions</h4>
+        <p className="text-xs">{demandesActives.length} retraits actifs, besoin total converti : {fmt(Math.round(besoinTotal))} {devise}</p>
+        <table className="w-full text-xs"><thead><tr><Th>Client</Th><Th>Montant</Th><Th>Statut</Th><Th>Date demande</Th></tr></thead>
+          <tbody>{demandes.map((r, i) => <tr key={r.id || i}><Td>{r.client}</Td><Td>{fmt(r.montant)} {r.devise}</Td><Td>{r.statut}</Td><Td>{r.dateDemande}</Td></tr>)}</tbody>
+        </table>
+        <h4 className="font-semibold">Décisions enregistrées et suivi</h4>
+        {decisionActive ? (
+          <><p className="text-xs">Comité {decisionActive.id}, créé le {decisionActive.libelleDate || '—'}</p>
+            <table className="w-full text-xs"><thead><tr>{['Sens', 'Instrument', 'Opération', 'Portefeuilles', 'Statut', 'Responsable', 'Échéance'].map((t) => <Th key={t}>{t}</Th>)}</tr></thead>
+              <tbody>{lignesDecision.map((a, i) => {
+                const id = `${decisionActive.id}-${a.id || i}`;
+                return <tr key={id}><Td>{a.sens}</Td><Td>{a.instrument}</Td>
+                  <Td>{a.pourcentageOperation}%</Td><Td>{(a.portefeuillesEligibles || []).join(', ') || 'Aucun'}</Td>
+                  <Td>{suivi[id]?.statut || 'À instruire'}</Td><Td>{suivi[id]?.responsable || '—'}</Td><Td>{suivi[id]?.echeance || '—'}</Td></tr>;
+              })}</tbody>
+            </table>
+          </>
+        ) : <p className="text-xs">Aucune décision enregistrée à ce jour.</p>}
+        <h4 className="font-semibold">Commentaires de séance</h4>
+        <p className="whitespace-pre-wrap text-xs">{config.commentaires || 'Aucun commentaire formalisé.'}</p>
+        <p className="text-[10px]">Document de travail. Les décisions, rendements et opérations doivent être rapprochés de la base opérationnelle et validés avant diffusion.</p>
+      </section>
+
+      <Card className="p-4">
+        <div className="text-xs font-semibold" style={{ color: C.ink }}>
+          Cadre de lecture & limites des données
+        </div>
+        <p className="text-[11px] mt-2" style={{ color: C.sub }}>
+          Calculé : encours consolidé, répartitions, allocations, écarts vs cibles et montants des demandes de retrait chargées.
+          Indicatif / simulé : performances de la maquette, recommandations RECOS et calendrier UPCOMING_CASHFLOWS.
+          Non disponible sans historique opérationnel : rendement réellement attribuable à la période sélectionnée,
+          frais réalisés, ordres exécutés, contribution sectorielle réelle et PV validé en base.
+          La période sélectionnée est un libellé de comité : elle ne reconstitue pas une situation financière historique.
+        </p>
+        {!!config.commentaires && (
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: C.line }}>
+            <div className="font-semibold text-xs" style={{ color: C.ink }}>Commentaires du comité</div>
+            <p className="text-xs mt-2 whitespace-pre-wrap" style={{ color: C.sub }}>{config.commentaires}</p>
+          </div>
+        )}
+        <div className="text-[10px] mt-3" style={{ color: C.sub }}>
+          {config.gestionnaire ? `Gestionnaire : ${config.gestionnaire} · ` : ''}
+          {config.participants ? `Participants : ${config.participants} · ` : ''}
+          Statut : {config.statut}. Pour un historique multi-utilisateurs, un PV opposable et une traçabilité, synchroniser ces données avec la base opérationnelle.
         </div>
       </Card>
     </div>
@@ -36637,7 +36888,14 @@ export default function App() {
                 {screen === 'analyse' && (
                   <AnalysePortefeuille devise={siteDevise} />
                 )}
-                {screen === 'comite' && <Comite devise={siteDevise} go={go} />}
+                {screen === 'comite' && (
+                  <Comite
+                    devise={siteDevise}
+                    go={go}
+                    cessionRetraitEtats={cessionRetraitEtats}
+                    operationalDbStatus={operationalDbStatus}
+                  />
+                )}
                 {screen === 'decisions-comite' && <PriseDecisions go={go} />}
                 {screen === 'documentation' && <Documentation mode="gestionnaire" />}
               </>
