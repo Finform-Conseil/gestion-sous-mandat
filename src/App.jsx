@@ -29525,6 +29525,7 @@ function PriseDecisions({ go }) {
 /* ------------ RAPPORT DE COMITÉ : VUE CONSOLIDÉE ET SUIVI ------------ */
 const COMITE_RAPPORT_CONFIG_KEY = 'opcvm-gsm-rapport-comite-config-v2';
 const COMITE_RAPPORT_SUIVI_KEY = 'opcvm-gsm-rapport-comite-suivi-v2';
+const COMITE_RAPPORT_ANNUAIRE_KEY = 'opcvm-gsm-rapport-comite-annuaire-v1';
 
 const comiteLireStockage = (key, fallback) => {
   if (typeof window === 'undefined') return fallback;
@@ -29563,6 +29564,29 @@ function Comite({
   const [onglet, setOnglet] = useState('synthese');
   const [editerRapport, setEditerRapport] = useState(false);
   const [message, setMessage] = useState('');
+  // Aucun nom d'employé n'est inventé : l'annuaire est renseigné par l'entreprise.
+  const [annuaireComite, setAnnuaireComite] = useState(() => {
+    const initial = comiteLireStockage(COMITE_RAPPORT_ANNUAIRE_KEY, []);
+    return Array.isArray(initial)
+      ? initial.filter((p) => p && p.id && p.nom && p.fonction)
+      : [];
+  });
+  const [rechercheParticipant, setRechercheParticipant] = useState('');
+  const [nouveauParticipantNom, setNouveauParticipantNom] = useState('');
+  const [nouveauParticipantFonction, setNouveauParticipantFonction] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        COMITE_RAPPORT_ANNUAIRE_KEY,
+        JSON.stringify(annuaireComite)
+      );
+    } catch {
+      // Sans stockage local, l'annuaire demeure disponible durant la session React.
+    }
+  }, [annuaireComite]);
+
   const [config, setConfig] = useState(() => ({
     periode: 'Mois en cours',
     dateComite: formatIsoLocalDate(new Date()),
@@ -29580,6 +29604,78 @@ function Comite({
   const [decisionSelectionnee, setDecisionSelectionnee] = useState(() =>
     lireDecisionsComite()[0]?.id || ''
   );
+
+  // La sélection persistée contient les identifiants des collaborateurs, pas
+  // une chaîne de texte ambiguë. L'ancienne saisie reste lisible si elle existe.
+  const idsParticipantsComite = Array.isArray(config.participantsIds)
+    ? config.participantsIds.map(String)
+    : [];
+  const personnesSelectionnees = annuaireComite.filter((personne) =>
+    idsParticipantsComite.includes(String(personne.id))
+  );
+  const participantsTexte = Array.isArray(config.participantsIds)
+    ? personnesSelectionnees
+        .map((personne) => `${personne.nom} — ${personne.fonction}`)
+        .join(' ; ')
+    : String(config.participants || '');
+  const employesFiltres = annuaireComite.filter((personne) =>
+    `${personne.nom} ${personne.fonction}`
+      .toLocaleLowerCase('fr')
+      .includes(rechercheParticipant.trim().toLocaleLowerCase('fr'))
+  );
+
+  const cocherParticipant = (identifiant, coche) => {
+    const id = String(identifiant);
+    setConfig((precedent) => {
+      const ids = Array.isArray(precedent.participantsIds)
+        ? precedent.participantsIds.map(String)
+        : [];
+      const suivants = coche
+        ? Array.from(new Set([...ids, id]))
+        : ids.filter((valeur) => valeur !== id);
+      return { ...precedent, participantsIds: suivants, participants: '' };
+    });
+  };
+
+  const ajouterParticipantAnnuaire = (event) => {
+    event.preventDefault();
+    const nom = nouveauParticipantNom.trim().replace(/\s+/g, ' ');
+    const fonction = nouveauParticipantFonction.trim().replace(/\s+/g, ' ');
+    if (!nom || !fonction) {
+      setMessage('Renseigne le nom et la fonction du collaborateur.');
+      return;
+    }
+    const doublon = annuaireComite.some(
+      (personne) => personne.nom.toLocaleLowerCase('fr') === nom.toLocaleLowerCase('fr')
+        && personne.fonction.toLocaleLowerCase('fr') === fonction.toLocaleLowerCase('fr')
+    );
+    if (doublon) {
+      setMessage('Ce collaborateur avec cette fonction est déjà dans l’annuaire.');
+      return;
+    }
+    const id = `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    setAnnuaireComite((personnes) => [...personnes, { id, nom, fonction }]);
+    setNouveauParticipantNom('');
+    setNouveauParticipantFonction('');
+    setMessage(`${nom} ajouté à l’annuaire. Coche sa case pour l’inclure au comité.`);
+  };
+
+  const retirerParticipantAnnuaire = (identifiant) => {
+    const personne = annuaireComite.find((item) => item.id === identifiant);
+    if (!personne) return;
+    if (typeof window !== 'undefined' &&
+      !window.confirm(`Retirer ${personne.nom} de l’annuaire du comité ?`)) return;
+    setAnnuaireComite((personnes) =>
+      personnes.filter((item) => item.id !== identifiant)
+    );
+    setConfig((precedent) => ({
+      ...precedent,
+      participantsIds: (Array.isArray(precedent.participantsIds)
+        ? precedent.participantsIds : []).filter((id) => String(id) !== String(identifiant)),
+      participants: '',
+    }));
+    setMessage(`${personne.nom} retiré de l’annuaire.`);
+  };
 
   const clientsGeres = Array.isArray(CLIENTS) ? CLIENTS : [];
   const boursesDisponibles = [
@@ -29737,7 +29833,7 @@ function Comite({
       ['Rapport de comité de gestion', config.periode, config.dateComite],
       ['Statut', config.statut],
       ['Gestionnaire', config.gestionnaire],
-      ['Participants', config.participants],
+      ['Participants (nom et fonction)', participantsTexte || 'Non renseignés'],
       ['Benchmark déclaré', config.benchmark],
       ['Source', operationalDbStatus],
       ['Devise', devise],
@@ -29840,7 +29936,6 @@ function Comite({
               ['periode', 'Période', 'select'],
               ['dateComite', 'Date du comité', 'date'],
               ['gestionnaire', 'Gestionnaire / rapporteur', 'text'],
-              ['participants', 'Participants', 'text'],
               ['benchmark', 'Benchmark', 'text'],
               ['statut', 'Statut du rapport', 'select'],
             ].map(([champ, libelle, type]) => (
@@ -29870,6 +29965,114 @@ function Comite({
               </label>
             ))}
           </div>
+
+          <section className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: '#FAFBFD' }}>
+            <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
+              <div>
+                <div className="text-xs font-bold" style={{ color: C.ink }}>Participants au comité</div>
+                <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                  Cochez les collaborateurs présents : leurs noms et leurs fonctions figureront dans le compte rendu.
+                </p>
+              </div>
+              <Badge tone={personnesSelectionnees.length ? 'teal' : 'slate'}>
+                {personnesSelectionnees.length} participant(s) sélectionné(s)
+              </Badge>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+              <div className="lg:col-span-3 min-w-0">
+                <label className="block space-y-1 mb-2">
+                  <span className="text-[11px] font-semibold" style={{ color: C.sub }}>Rechercher un nom ou une fonction</span>
+                  <input
+                    type="search"
+                    value={rechercheParticipant}
+                    onChange={(e) => setRechercheParticipant(e.target.value)}
+                    placeholder="Rechercher un collaborateur…"
+                    className="w-full rounded-xl border px-3 py-2 text-xs"
+                    style={{ borderColor: C.line }}
+                  />
+                </label>
+                <div className="rounded-xl border bg-white max-h-60 overflow-y-auto" style={{ borderColor: C.line }}>
+                  {employesFiltres.length ? employesFiltres.map((personne) => (
+                    <div
+                      key={personne.id}
+                      className="flex items-center gap-2 px-3 py-2 border-b last:border-b-0"
+                      style={{ borderColor: C.line }}
+                    >
+                      <label className="flex flex-1 min-w-0 items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={idsParticipantsComite.includes(String(personne.id))}
+                          onChange={(e) => cocherParticipant(personne.id, e.target.checked)}
+                          className="h-4 w-4 shrink-0 accent-emerald-700"
+                          aria-label={`Inclure ${personne.nom}, ${personne.fonction}`}
+                        />
+                        <span className="flex flex-col min-w-0">
+                          <span className="font-semibold text-xs" style={{ color: C.ink }}>{personne.nom}</span>
+                          <span className="text-[11px]" style={{ color: C.sub }}>{personne.fonction}</span>
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => retirerParticipantAnnuaire(personne.id)}
+                        title={`Retirer ${personne.nom} de l’annuaire`}
+                        aria-label={`Retirer ${personne.nom} de l’annuaire`}
+                        className="text-[11px] px-2 py-1 rounded-lg hover:bg-red-50 shrink-0"
+                        style={{ color: C.coral }}
+                      >Retirer</button>
+                    </div>
+                  )) : (
+                    <p className="px-3 py-4 text-xs" style={{ color: C.sub }}>
+                      {annuaireComite.length
+                        ? 'Aucun collaborateur ne correspond à cette recherche.'
+                        : 'Annuaire vide. Ajoutez d’abord les employés ou responsables de votre entreprise.'}
+                    </p>
+                  )}
+                </div>
+                {!Array.isArray(config.participantsIds) && Boolean(config.participants) && (
+                  <p className="text-[11px] mt-2" style={{ color: C.sub }}>
+                    Ancienne saisie conservée : {config.participants}. La première sélection par cases la remplacera.
+                  </p>
+                )}
+              </div>
+              <div className="lg:col-span-2 rounded-xl border bg-white p-3" style={{ borderColor: C.line }}>
+                <div className="text-xs font-semibold mb-1" style={{ color: C.ink }}>Ajouter à l’annuaire</div>
+                <p className="text-[11px] mb-3" style={{ color: C.sub }}>
+                  Renseignez une fois les personnes de l’entreprise pour les retrouver à chaque comité.
+                </p>
+                <form onSubmit={ajouterParticipantAnnuaire} className="space-y-2">
+                  <label className="block space-y-1">
+                    <span className="text-[11px]" style={{ color: C.sub }}>Nom et prénom</span>
+                    <input
+                      type="text" required value={nouveauParticipantNom}
+                      onChange={(e) => setNouveauParticipantNom(e.target.value)}
+                      placeholder="Nom et prénom"
+                      className="w-full rounded-xl border px-3 py-2 text-xs"
+                      style={{ borderColor: C.line }}
+                    />
+                  </label>
+                  <label className="block space-y-1">
+                    <span className="text-[11px]" style={{ color: C.sub }}>Titre / fonction</span>
+                    <input
+                      type="text" required value={nouveauParticipantFonction}
+                      onChange={(e) => setNouveauParticipantFonction(e.target.value)}
+                      placeholder="Ex. : Directeur des investissements"
+                      className="w-full rounded-xl border px-3 py-2 text-xs"
+                      style={{ borderColor: C.line }}
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="w-full rounded-xl px-3 py-2 text-xs font-semibold text-white"
+                    style={{ background: C.navy }}
+                  >Ajouter ce collaborateur</button>
+                </form>
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl px-3 py-2 text-[11px]" style={{ background: '#EDF4F1', color: C.ink }}>
+              <b>Participants retenus :</b> {participantsTexte || 'Aucune personne cochée.'}
+            </div>
+          </section>
+
           <label className="block mt-3 space-y-1">
             <span className="text-xs font-semibold" style={{ color: C.sub }}>Commentaires et recommandations du comité</span>
             <textarea
@@ -30211,7 +30414,7 @@ function Comite({
 
       <section id="gsm-comite-print-full" className="hidden space-y-6">
         <h3 className="text-lg font-bold mt-5">Synthèse de gestion et périmètre</h3>
-        <p className="text-xs">Période : {config.periode} · Date : {config.dateComite} · Gestionnaire : {config.gestionnaire || 'Non renseigné'} · Participants : {config.participants || 'Non renseignés'}</p>
+        <p className="text-xs">Période : {config.periode} · Date : {config.dateComite} · Gestionnaire : {config.gestionnaire || 'Non renseigné'} · Participants : {participantsTexte || 'Non renseignés'}</p>
         <p className="text-xs">Encours consolidé : {fmt(Math.round(totalRef))} {devise} · {clients.length} comptes · Perf. indicative : {performancePonderee.toFixed(2)}% · Liquidité indicative : {fmt(Math.round(liquiditeEstimee))} {devise}</p>
         <h4 className="font-semibold">Marchés et allocations</h4>
         <table className="w-full text-xs"><thead><tr><Th>Marché</Th><Th>Portefeuilles</Th><Th>Encours converti</Th><Th>Poids</Th></tr></thead>
@@ -30273,7 +30476,7 @@ function Comite({
         )}
         <div className="text-[10px] mt-3" style={{ color: C.sub }}>
           {config.gestionnaire ? `Gestionnaire : ${config.gestionnaire} · ` : ''}
-          {config.participants ? `Participants : ${config.participants} · ` : ''}
+          {participantsTexte ? `Participants : ${participantsTexte} · ` : ''}
           Statut : {config.statut}. Pour un historique multi-utilisateurs, un PV opposable et une traçabilité, synchroniser ces données avec la base opérationnelle.
         </div>
       </Card>
