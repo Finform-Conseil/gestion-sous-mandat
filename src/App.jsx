@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   PieChart,
   Pie,
@@ -16677,6 +16677,62 @@ const CESSION_RETRAIT_STATUTS = [
   'Retrait disponible',
 ];
 
+/* -------- PARCOURS CESSION / RETRAIT — NAVIGATION INTELLIGENTE -------- */
+// Persistance limitée à l'onglet courant : les véritables dossiers et droits
+// devront être persistés/contrôlés côté API pour une utilisation multi-utilisateur.
+const GSM_CESSION_WORKFLOW_STORAGE = 'opcvm-gsm-cession-workflow-v1';
+
+const cessionRetraitRequestKey = (demande) => {
+  // L'ID API est prioritaire. Les autres attributs permettent aussi de détecter
+  // une nouvelle demande du même client avec un montant ou une date différente.
+  const clientId = String(demande?.clientId ?? demande?.portfolio_id ?? '');
+  const id = demande?.id == null ? '' : String(demande.id);
+  const amount = Number(demande?.montant ?? demande?.amount ?? 0);
+  const date = String(demande?.dateDemande ?? demande?.requested_date ?? '');
+  const currency = String(demande?.devise ?? demande?.currency ?? '');
+  return [id, clientId, amount, date, currency].join('|');
+};
+
+const cessionRetraitNewRequests = (demandes = [], workflow = null) => {
+  if (!workflow?.route?.plans?.length) return [];
+  const alreadyLaunched = new Set(workflow.launchedRequestKeys || []);
+
+  return (Array.isArray(demandes) ? demandes : []).filter((demande) => {
+    if (demande?.statut !== 'Demande reçue') return false;
+    const key = cessionRetraitRequestKey(demande);
+    // Pour les demandes sans ID, l'absence de traitement du client reste
+    // un signal pertinent ; une nouvelle version (montant/date) est détectée.
+    return !alreadyLaunched.has(key);
+  });
+};
+
+const chargerParcoursCession = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(GSM_CESSION_WORKFLOW_STORAGE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.version === 1 && Array.isArray(parsed?.route?.plans) &&
+      parsed.route.plans.length > 0
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const enregistrerParcoursCession = (workflow) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(
+      GSM_CESSION_WORKFLOW_STORAGE,
+      JSON.stringify(workflow)
+    );
+  } catch (error) {
+    console.warn('[GSM] Parcours cession non conservé dans cet onglet :', error);
+  }
+};
+
 const cessionRetraitStatusTone = (statut) =>
   statut === 'Retrait disponible'
     ? 'teal'
@@ -17961,7 +18017,6 @@ const cessionApplyManagerEdits = (
 const CESSION_INTERNE_CONSTRAINT_MODES = [
   'Obligatoire',
   'Préférence',
-  'Information',
 ];
 
 const cessionInterneUniqueOptions = (values) =>
@@ -19122,14 +19177,29 @@ const cessionInterneConstraintLabel = (constraint) => {
   return `${definition.label} ${constraint.operator || ''} ${value}`.trim();
 };
 
-function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
+function CessionRetrait({
+  go,
+  devise = 'XOF',
+  onCessionStatusChange,
+  cessionRetraitEtats = [],
+  hasLaunchedCession = false,
+}) {
   const [requests, setRequests] = useState(() =>
     CLIENTS.reduce((map, client) => {
       const seed = CESSION_RETRAIT_SEED[client.id];
+      const pendingRequest = cessionRetraitEtats.find(
+        (item) => item.clientId === client.id &&
+          item.statut === 'Demande reçue'
+      );
       map[client.id] = {
-        selected: Boolean(seed?.selected),
-        montant: seed?.montant || 0,
-        date: seed?.date || '2026-09-15',
+        // Une fois un premier cycle lancé, on ne sélectionne plus les retraits
+        // historiques : seules les demandes encore à traiter le sont.
+        selected: hasLaunchedCession
+          ? Boolean(pendingRequest)
+          : Boolean(seed?.selected || pendingRequest),
+        id: pendingRequest?.id ?? null,
+        montant: pendingRequest?.montant ?? seed?.montant ?? 0,
+        date: pendingRequest?.dateSouhaitee || seed?.date || '2026-09-15',
         urgence: seed?.urgence || 'Normale',
       };
       return map;
@@ -19445,11 +19515,14 @@ function CessionRetrait({ go, devise = 'XOF', onCessionStatusChange }) {
 
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
+        id: plan.request?.id ?? undefined,
         client: plan.client.nom,
         montant: plan.withdrawal,
         devise: plan.client.devise,
         statut: 'Processus lancé',
-        dateDemande: CESSION_RETRAIT_REFERENCE_DATE,
+        dateDemande: cessionRetraitEtats.find(
+          (item) => item.clientId === plan.client.id
+        )?.dateDemande || CESSION_RETRAIT_REFERENCE_DATE,
         dateSouhaitee: plan.request?.date || CESSION_RETRAIT_REFERENCE_DATE,
       });
     });
@@ -23189,6 +23262,7 @@ function Cession({
 
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
+        id: plan.request?.id ?? undefined,
         client: plan.client.nom,
         montant: plan.withdrawal,
         devise: plan.client.devise,
@@ -23208,6 +23282,7 @@ function Cession({
 
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
+        id: plan.request?.id ?? undefined,
         client: plan.client.nom,
         montant: plan.withdrawal,
         devise: plan.client.devise,
@@ -23220,6 +23295,7 @@ function Cession({
   const rendreRetraitDisponible = () => {
     plans.forEach((plan) => {
       onCessionStatusChange?.(plan.client.id, {
+        id: plan.request?.id ?? undefined,
         client: plan.client.nom,
         montant: plan.withdrawal,
         devise: plan.client.devise,
@@ -23278,7 +23354,7 @@ function Cession({
             ouvrez la page Cession.
           </div>
           <div className="mt-4">
-            <Btn onClick={() => go('cession-retrait')}>
+            <Btn onClick={() => go('cession-retrait', { forceNeeds: true })}>
               Retour Cession_Retrait
             </Btn>
           </div>
@@ -23304,7 +23380,10 @@ function Cession({
           </h2>
         </div>
 
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          <Btn tone="ghost" onClick={() => go('cession-retrait', { forceNeeds: true })}>
+            Revoir les demandes
+          </Btn>
           <Badge tone="navy">
             {orders.length} ligne(s)
           </Badge>
@@ -35666,6 +35745,10 @@ export default function App() {
   const [cessionRetraitEtats, setCessionRetraitEtats] = useState(
     CESSION_RETRAIT_ETATS_DEMO
   );
+  const [cessionWorkflow, setCessionWorkflow] = useState(
+    chargerParcoursCession
+  );
+  const navigationVersion = useRef(0);
   const [clientWatchlistTitles, setClientWatchlistTitles] = useState(() => {
     const fallback = ['SONATEL', 'MTN NIGERIA', 'GCB BANK'];
     if (typeof window === 'undefined') return fallback;
@@ -35900,6 +35983,104 @@ export default function App() {
   };
 
   const go = (id, params = {}) => {
+    // Annule une décision de redirection devenue obsolète quand une autre
+    // page a été sélectionnée entre-temps.
+    const currentNavigationVersion = ++navigationVersion.current;
+    if (id === 'cession-retrait') {
+      // Un retour explicite permet toujours au gestionnaire de réexaminer les
+      // besoins, même s'il existe un plan de cession déjà lancé.
+      if (params.forceNeeds) {
+        setScreen('cession-retrait');
+        setCtx({});
+        remonterEnHaut();
+        return;
+      }
+
+      // Clic sur « État cession-retrait » : vérifier l'API avant de décider.
+      // Les données locales restent le repli lorsque FastAPI est inaccessible.
+      const workflow = cessionWorkflow;
+      if (!workflow?.route?.plans?.length) {
+        setScreen('cession-retrait');
+        setCtx({});
+        remonterEnHaut();
+        return;
+      }
+
+      (async () => {
+        let currentRequests = cessionRetraitEtats;
+        try {
+          const snapshot = await Promise.race([
+            loadGsmOperationalSnapshot(),
+            new Promise((resolve) => window.setTimeout(() => resolve(null), 2500)),
+          ]);
+          if (Array.isArray(snapshot?.withdrawalRequests)) {
+            currentRequests = snapshot.withdrawalRequests;
+            setCessionRetraitEtats(currentRequests);
+          }
+        } catch {
+          // Mode local : la dernière situation connue est utilisée.
+        }
+
+        if (navigationVersion.current !== currentNavigationVersion) return;
+        const nouvellesDemandes = cessionRetraitNewRequests(
+          currentRequests,
+          workflow
+        );
+        if (nouvellesDemandes.length > 0) {
+          setScreen('cession-retrait');
+          setCtx({});
+        } else {
+          setScreen('cession');
+          setCtx(workflow.route);
+        }
+        remonterEnHaut();
+      })();
+      return;
+    }
+
+    if (id === 'cession' && Array.isArray(params.plans) && params.plans.length) {
+      // Lors du lancement des retraits, conserver les plans précédemment
+      // lancés et compléter ceux des nouvelles demandes.
+      const previousPlans = cessionWorkflow?.route?.plans || [];
+      const planKey = (plan) => plan?.request?.id != null
+        ? `withdrawal:${plan.request.id}`
+        : `client:${plan?.client?.id}`;
+      const updatedPlans = new Set(params.plans.map(planKey));
+      const plans = [
+        ...previousPlans.filter((plan) => !updatedPlans.has(planKey(plan))),
+        ...params.plans,
+      ];
+      const selectedClients = new Set(
+        params.plans.map((plan) => String(plan?.client?.id))
+      );
+      const launchedRequestKeys = Array.from(new Set([
+        ...(cessionWorkflow?.launchedRequestKeys || []),
+        ...cessionRetraitEtats
+          .filter((item) => selectedClients.has(String(item.clientId)))
+          .map(cessionRetraitRequestKey),
+      ]));
+      const route = { ...params, plans };
+      const nextWorkflow = {
+        version: 1,
+        route,
+        launchedRequestKeys,
+      };
+      setCessionWorkflow(nextWorkflow);
+      enregistrerParcoursCession(nextWorkflow);
+      setScreen('cession');
+      setCtx(route);
+      remonterEnHaut();
+      return;
+    }
+
+    if (id === 'cession' && !params.plans?.length &&
+        cessionWorkflow?.route?.plans?.length) {
+      setScreen('cession');
+      setCtx(cessionWorkflow.route);
+      remonterEnHaut();
+      return;
+    }
+
     setScreen(id);
     setCtx(params);
     remonterEnHaut();
@@ -35907,7 +36088,14 @@ export default function App() {
 
   const updateCessionRetraitStatus = async (clientId, patch = {}) => {
     const client = CLIENTS.find((item) => item.id === clientId);
+    // Avec plusieurs demandes pour un même client, traiter la bonne demande
+    // grâce à l'ID de retrait (et pas uniquement l'ID du portefeuille).
+    const requestId = patch.id == null ? null : String(patch.id);
     const existing = cessionRetraitEtats.find(
+      (item) => requestId !== null && String(item.id) === requestId
+    ) || cessionRetraitEtats.find(
+      (item) => item.clientId === clientId && item.statut === 'Demande reçue'
+    ) || cessionRetraitEtats.find(
       (item) => item.clientId === clientId
     );
 
@@ -35939,10 +36127,16 @@ export default function App() {
 
     // Mise à jour optimiste de l'interface.
     setCessionRetraitEtats((current) => {
-      const exists = current.some((item) => item.clientId === clientId);
-      return exists
-        ? current.map((item) =>
-            item.clientId === clientId ? nextItem : item
+      const targetIndex = current.findIndex((item) =>
+        nextItem.id != null
+          ? String(item.id) === String(nextItem.id)
+          : item.clientId === clientId && item.statut === 'Demande reçue'
+      );
+      const fallbackIndex = targetIndex >= 0 ? targetIndex :
+        current.findIndex((item) => item.clientId === clientId);
+      return fallbackIndex >= 0
+        ? current.map((item, index) =>
+            index === fallbackIndex ? nextItem : item
           )
         : [nextItem, ...current];
     });
@@ -35986,13 +36180,14 @@ export default function App() {
 
         if (result?.id) {
           nextItem.id = result.id;
-          setCessionRetraitEtats((current) =>
-            current.map((item) =>
-              item.clientId === clientId
-                ? { ...item, id: result.id }
-                : item
-            )
-          );
+          setCessionRetraitEtats((current) => {
+            const targetIndex = current.findIndex((item) =>
+              item.clientId === clientId && item.id == null
+            );
+            return current.map((item, index) =>
+              index === targetIndex ? { ...item, id: result.id } : item
+            );
+          });
         }
       }
 
@@ -36423,6 +36618,8 @@ export default function App() {
                     go={go}
                     devise={siteDevise}
                     onCessionStatusChange={updateCessionRetraitStatus}
+                    cessionRetraitEtats={cessionRetraitEtats}
+                    hasLaunchedCession={Boolean(cessionWorkflow?.route?.plans?.length)}
                   />
                 )}
                 {screen === 'cession' && (
