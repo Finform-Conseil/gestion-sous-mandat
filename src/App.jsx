@@ -29563,6 +29563,7 @@ function Comite({
   const [filtreClient, setFiltreClient] = useState('');
   const [onglet, setOnglet] = useState('synthese');
   const [editerRapport, setEditerRapport] = useState(false);
+  const [ouvrirSelectionDecisions, setOuvrirSelectionDecisions] = useState(false);
   const [message, setMessage] = useState('');
   // Aucun nom d'employé n'est inventé : l'annuaire est renseigné par l'entreprise.
   const [annuaireComite, setAnnuaireComite] = useState(() => {
@@ -29600,10 +29601,25 @@ function Comite({
   const [suivi, setSuivi] = useState(() =>
     comiteLireStockage(COMITE_RAPPORT_SUIVI_KEY, {})
   );
-  const [decisions] = useState(() => lireDecisionsComite());
+  const [decisions, setDecisions] = useState(() => lireDecisionsComite());
   const [decisionSelectionnee, setDecisionSelectionnee] = useState(() =>
     lireDecisionsComite()[0]?.id || ''
   );
+
+  // Recharge les décisions enregistrées dans l'autre écran (et les autres onglets).
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const actualiserDecisions = () => setDecisions(lireDecisionsComite());
+    const surStockage = (event) => {
+      if (event.key === DECISIONS_COMITE_STORAGE_KEY) actualiserDecisions();
+    };
+    window.addEventListener('focus', actualiserDecisions);
+    window.addEventListener('storage', surStockage);
+    return () => {
+      window.removeEventListener('focus', actualiserDecisions);
+      window.removeEventListener('storage', surStockage);
+    };
+  }, []);
 
   // La sélection persistée contient les identifiants des collaborateurs, pas
   // une chaîne de texte ambiguë. L'ancienne saisie reste lisible si elle existe.
@@ -29791,6 +29807,40 @@ function Comite({
     ? decisionActive.allocations
     : [];
 
+  // Les décisions incluses sont choisies explicitement pour le compte rendu.
+  // Pour les anciens rapports sans ce champ, on conserve la dernière décision
+  // comme dans la version initiale, puis on fige la sélection à l'enregistrement.
+  const idsDecisionsRapport = Array.isArray(config.decisionsRapportIds)
+    ? [...new Set(config.decisionsRapportIds.map(String))]
+    : decisions[0]?.id ? [String(decisions[0].id)] : [];
+  const snapshotsDecisionsRapport = config.decisionsRapportSnapshots || {};
+  const decisionsPourRapport = idsDecisionsRapport
+    .map((id) => decisions.find((decision) => String(decision.id) === id)
+      || snapshotsDecisionsRapport[id])
+    .filter((decision) => decision && Array.isArray(decision.allocations));
+  const allocationsPourRapport = decisionsPourRapport.flatMap((decision) =>
+    decision.allocations.map((allocation, index) => ({
+      decision,
+      allocation,
+      cleSuivi: `${decision.id}-${allocation.id || index}`,
+    }))
+  );
+
+  const modifierDecisionsRapport = (id, coche) => {
+    const idTexte = String(id);
+    setConfig((precedent) => {
+      const ids = Array.isArray(precedent.decisionsRapportIds)
+        ? precedent.decisionsRapportIds.map(String)
+        : decisions[0]?.id ? [String(decisions[0].id)] : [];
+      return {
+        ...precedent,
+        decisionsRapportIds: coche
+          ? [...new Set([...ids, idTexte])]
+          : ids.filter((item) => item !== idTexte),
+      };
+    });
+  };
+
   const mouvementsFuturs = UPCOMING_CASHFLOWS.filter((flux) => {
     const dateFlux = parseFR(flux.echeance);
     const aujourdHui = new Date();
@@ -29817,10 +29867,21 @@ function Comite({
   };
 
   const enregistrerConfig = () => {
+    // Un instantané des décisions retenues garantit que leur texte restera
+    // dans le rapport même si une décision source est supprimée ultérieurement.
+    // Ce n'est toutefois pas un archivage réglementaire en base de données.
+    const prochainConfig = {
+      ...config,
+      decisionsRapportIds: idsDecisionsRapport,
+      decisionsRapportSnapshots: Object.fromEntries(
+        decisionsPourRapport.map((decision) => [decision.id, decision])
+      ),
+    };
+    setConfig(prochainConfig);
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.setItem(COMITE_RAPPORT_CONFIG_KEY, JSON.stringify(config));
-        setMessage('Paramètres et commentaires du rapport enregistrés localement.');
+        window.localStorage.setItem(COMITE_RAPPORT_CONFIG_KEY, JSON.stringify(prochainConfig));
+        setMessage(`${decisionsPourRapport.length} décision(s) intégrée(s) au compte rendu. Paramètres enregistrés localement.`);
         setEditerRapport(false);
       } catch {
         setMessage('Stockage local indisponible : les paramètres restent en mémoire.');
@@ -29834,6 +29895,8 @@ function Comite({
       ['Statut', config.statut],
       ['Gestionnaire', config.gestionnaire],
       ['Participants (nom et fonction)', participantsTexte || 'Non renseignés'],
+      ['Décisions intégrées au compte rendu', decisionsPourRapport.length],
+      ['Allocations décidées intégrées', allocationsPourRapport.length],
       ['Benchmark déclaré', config.benchmark],
       ['Source', operationalDbStatus],
       ['Devise', devise],
@@ -29857,17 +29920,18 @@ function Comite({
         r.client, r.montant, r.devise, r.statut, r.dateDemande, r.dateSouhaitee,
       ]),
       [],
-      ['DÉCISIONS DU COMITÉ', 'Identifiant', 'Titre', 'Sens', 'Pourcentage opération', 'Instrument', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'],
-      ...lignesDecision.map((a, i) => {
-        const id = `${decisionActive.id}-${a.id || i}`;
-        return [
-          decisionActive.id, a.id || i, a.typeInstrument, a.sens,
-          a.pourcentageOperation, a.instrument,
-          (a.portefeuillesEligibles || []).join(' | '),
-          suivi[id]?.statut || 'À instruire', suivi[id]?.responsable || '',
-          suivi[id]?.echeance || '', suivi[id]?.commentaire || '',
-        ];
-      }),
+      ['DÉCISIONS INTÉGRÉES AU RAPPORT', 'Référence comité', 'Date de création', 'Allocation', 'Classe', 'Sens', 'Pourcentage opération', 'Instrument', 'Marché', 'Profil concerné', 'Critère d’exposition', 'Type d’ordre', 'Prix min', 'Prix max', 'Prix objectif', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'],
+      ...allocationsPourRapport.map(({ decision, allocation: a, cleSuivi }) => [
+        'Décision incluse', decision.id, decision.libelleDate || decision.creeLe || '',
+        a.id || '', a.typeInstrument || '', a.sens || '',
+        a.pourcentageOperation ?? '', a.instrument || '', a.marche || '',
+        a.typePortefeuille || '', `${a.operateur || ''} ${a.seuil ?? ''}%`,
+        a.typeOrdre || '', a.prixMin ?? '', a.prixMax ?? '', a.prixObjectif ?? '',
+        (a.portefeuillesEligibles || []).join(' | '),
+        suivi[cleSuivi]?.statut || 'À instruire', suivi[cleSuivi]?.responsable || '',
+        suivi[cleSuivi]?.echeance || '', suivi[cleSuivi]?.commentaire || '',
+      ]),
+      ...(allocationsPourRapport.length ? [] : [['Aucune décision sélectionnée pour ce rapport']]),
       [],
       ['Commentaires généraux', config.commentaires],
     ];
@@ -29965,6 +30029,89 @@ function Comite({
               </label>
             ))}
           </div>
+
+          {/* Sélection explicite des décisions à intégrer dans le rapport. */}
+          <section className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: '#F6F8FC' }}>
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-xs font-bold" style={{ color: C.ink }}>Décisions à intégrer au compte rendu</div>
+                <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                  Choisissez les décisions qui doivent figurer dans le rapport et les exports. Vous pouvez sélectionner plusieurs comités.
+                </p>
+                <p className="text-[11px] mt-1 font-semibold" style={{ color: C.indigo }}>
+                  {decisionsPourRapport.length} décision(s) sélectionnée(s) · {allocationsPourRapport.length} allocation(s)
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Btn tone="gold" onClick={() => setOuvrirSelectionDecisions((v) => !v)}>
+                  Prise de décisions {ouvrirSelectionDecisions ? '▲' : '▼'}
+                </Btn>
+                <Btn tone="ghost" onClick={() => { enregistrerConfig(); go('decisions-comite'); }}>
+                  Créer / modifier des décisions
+                </Btn>
+              </div>
+            </div>
+
+            {ouvrirSelectionDecisions && (
+              <div className="mt-4 rounded-xl border bg-white p-3" style={{ borderColor: C.line }}>
+                <div className="flex justify-between items-center gap-3 flex-wrap mb-3">
+                  <span className="text-xs font-semibold" style={{ color: C.ink }}>Décisions disponibles pour ce rapport</span>
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="button" className="text-xs font-semibold" style={{ color: C.indigo }}
+                      onClick={() => setConfig((c) => ({ ...c, decisionsRapportIds: decisions.map((d) => String(d.id)) }))}
+                      disabled={!decisions.length}>Tout sélectionner</button>
+                    <button type="button" className="text-xs font-semibold" style={{ color: C.coral }}
+                      onClick={() => setConfig((c) => ({ ...c, decisionsRapportIds: [] }))}>Aucune</button>
+                  </div>
+                </div>
+                {!decisions.length && (
+                  <p className="text-xs py-4" style={{ color: C.sub }}>
+                    Aucune décision enregistrée. Utilisez « Créer / modifier des décisions »,
+                    enregistrez les allocations puis revenez au rapport.
+                  </p>
+                )}
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {decisions.map((decision) => (
+                    <label key={decision.id}
+                      className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer"
+                      style={{ borderColor: idsDecisionsRapport.includes(String(decision.id)) ? C.indigo : C.line }}>
+                      <input type="checkbox" className="h-4 w-4 mt-0.5 shrink-0 accent-indigo-700"
+                        checked={idsDecisionsRapport.includes(String(decision.id))}
+                        onChange={(e) => modifierDecisionsRapport(decision.id, e.target.checked)} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-xs font-semibold" style={{ color: C.ink }}>
+                          {decision.id} · {decision.libelleDate || decision.creeLe || 'Date inconnue'}
+                        </span>
+                        <span className="block text-[11px] mt-1" style={{ color: C.sub }}>
+                          {(decision.allocations || []).length} allocation(s) · {decision.nombrePortefeuilles || 0} portefeuille(s) concernés
+                        </span>
+                        <span className="block text-[11px] mt-1" style={{ color: C.sub }}>
+                          {(decision.allocations || []).map((a) => `${a.sens} ${a.instrument} (${a.pourcentageOperation}%)`).join(' ; ')}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {decisionsPourRapport.some((decision) => !decisions.some((d) => d.id === decision.id)) && (
+                  <p className="mt-3 text-[11px]" style={{ color: C.sub }}>
+                    Certaines décisions incluses proviennent d'une copie enregistrée dans ce rapport ; leur source a depuis été supprimée.
+                  </p>
+                )}
+              </div>
+            )}
+            {!!allocationsPourRapport.length && (
+              <div className="mt-3 rounded-xl bg-white p-3 border" style={{ borderColor: C.line }}>
+                <p className="text-[11px] font-semibold mb-2" style={{ color: C.ink }}>Aperçu des décisions retenues</p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {allocationsPourRapport.map(({ decision, allocation: a, cleSuivi }) => (
+                    <p key={cleSuivi} className="text-[11px]" style={{ color: C.sub }}>
+                      <b>{decision.id}</b> · {a.sens} {a.instrument} · {a.pourcentageOperation}% · {suivi[cleSuivi]?.statut || 'À instruire'}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
 
           <section className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.line, background: '#FAFBFD' }}>
             <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
@@ -30362,6 +30509,14 @@ function Comite({
               </label>
               <Badge tone="gold">{lignesDecision.length} allocation(s)</Badge>
               <Badge tone="navy">{decisionActive?.nombrePortefeuilles || 0} portefeuille(s)</Badge>
+              {decisionActive && (
+                <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer" style={{ color: C.ink }}>
+                  <input type="checkbox" className="w-4 h-4 accent-indigo-700"
+                    checked={idsDecisionsRapport.includes(String(decisionActive.id))}
+                    onChange={(e) => modifierDecisionsRapport(decisionActive.id, e.target.checked)} />
+                  Inclure dans ce rapport
+                </label>
+              )}
             </div>
             {!decisions.length && (
               <div className="p-5 mt-3 rounded-xl" style={{ background: '#FBF7EE', color: C.sub }}>
@@ -30439,19 +30594,26 @@ function Comite({
         <table className="w-full text-xs"><thead><tr><Th>Client</Th><Th>Montant</Th><Th>Statut</Th><Th>Date demande</Th></tr></thead>
           <tbody>{demandes.map((r, i) => <tr key={r.id || i}><Td>{r.client}</Td><Td>{fmt(r.montant)} {r.devise}</Td><Td>{r.statut}</Td><Td>{r.dateDemande}</Td></tr>)}</tbody>
         </table>
-        <h4 className="font-semibold">Décisions enregistrées et suivi</h4>
-        {decisionActive ? (
-          <><p className="text-xs">Comité {decisionActive.id}, créé le {decisionActive.libelleDate || '—'}</p>
-            <table className="w-full text-xs"><thead><tr>{['Sens', 'Instrument', 'Opération', 'Portefeuilles', 'Statut', 'Responsable', 'Échéance'].map((t) => <Th key={t}>{t}</Th>)}</tr></thead>
-              <tbody>{lignesDecision.map((a, i) => {
-                const id = `${decisionActive.id}-${a.id || i}`;
-                return <tr key={id}><Td>{a.sens}</Td><Td>{a.instrument}</Td>
-                  <Td>{a.pourcentageOperation}%</Td><Td>{(a.portefeuillesEligibles || []).join(', ') || 'Aucun'}</Td>
-                  <Td>{suivi[id]?.statut || 'À instruire'}</Td><Td>{suivi[id]?.responsable || '—'}</Td><Td>{suivi[id]?.echeance || '—'}</Td></tr>;
-              })}</tbody>
-            </table>
-          </>
-        ) : <p className="text-xs">Aucune décision enregistrée à ce jour.</p>}
+        <h4 className="font-semibold">Décisions intégrées au compte rendu et suivi</h4>
+        <p className="text-xs">{decisionsPourRapport.length} décision(s) retenue(s), {allocationsPourRapport.length} allocation(s). Les choix sont effectués dans « Éditer le rapport ».</p>
+        {decisionsPourRapport.length ? decisionsPourRapport.map((decision) => (
+          <div key={decision.id} className="space-y-2" style={{ pageBreakInside: 'avoid' }}>
+            <h5 className="font-semibold text-sm">{decision.id} · {decision.libelleDate || decision.creeLe || 'Date non renseignée'}</h5>
+            {decision.allocations.map((a, i) => {
+              const id = `${decision.id}-${a.id || i}`;
+              return (
+                <div key={id} className="p-2 border rounded-lg text-xs space-y-1" style={{ borderColor: C.line, pageBreakInside: 'avoid' }}>
+                  <div><b>{a.sens} · {a.typeInstrument} · {a.instrument}</b> — {a.pourcentageOperation}%</div>
+                  <div>Marché : {a.marche || '—'} · Critère : {a.operateur || ''} {a.seuil ?? ''}% · Profil : {a.typePortefeuille || 'Tous'}</div>
+                  <div>Ordre : {a.typeOrdre || '—'} · Prix minimum : {a.prixMin ?? '—'} · maximum : {a.prixMax ?? '—'} · objectif : {a.prixObjectif ?? '—'}</div>
+                  <div>Portefeuilles concernés : {(a.portefeuillesEligibles || []).join(', ') || 'Aucun'}</div>
+                  <div>Suivi : {suivi[id]?.statut || 'À instruire'} · Responsable : {suivi[id]?.responsable || '—'} · Échéance : {suivi[id]?.echeance || '—'}</div>
+                  {!!suivi[id]?.commentaire && <div>Commentaire : {suivi[id].commentaire}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )) : <p className="text-xs">Aucune décision sélectionnée pour ce rapport.</p>}
         <h4 className="font-semibold">Commentaires de séance</h4>
         <p className="whitespace-pre-wrap text-xs">{config.commentaires || 'Aucun commentaire formalisé.'}</p>
         <p className="text-[10px]">Document de travail. Les décisions, rendements et opérations doivent être rapprochés de la base opérationnelle et validés avant diffusion.</p>
