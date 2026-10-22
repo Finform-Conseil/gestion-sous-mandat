@@ -6839,6 +6839,7 @@ const NAV = [
   { id: 'portefeuilles', label: 'Vue Portefeuilles', icon: Briefcase },
   { id: 'money-management', label: 'Money Management', icon: Droplets },
   { id: 'cession-retrait', label: 'Cession_Retrait', icon: ArrowDownRight },
+  { id: 'ordres-groupes', label: 'Ordre groupé', icon: ListOrdered },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
@@ -7146,6 +7147,7 @@ const BREADCRUMB_ROUTES = {
   Portefeuilles: 'portefeuilles',
   'Money Management': 'money-management',
   "Carnet d'ordres": 'carnet',
+  'Ordre groupé': 'ordres-groupes',
   "Avis d'opéré": 'avis',
   'Marchés Actions': 'vue-boursiere',
   'Marchés Obligataire': 'marches',
@@ -13345,7 +13347,585 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
   );
 }
 
-function Carnet({ initial }) {
+/* -------------------- GSM · ORDRES GROUPÉS (PRÉPARATION) -------------------- */
+/*
+ * Trois circuits de préparation, sans envoi simulé comme réel :
+ * 1) Direct simple : plusieurs clients, un titre, un prix limite commun.
+ * 2) Direct multicritère : plusieurs clients/titres, tranches de prix par titre,
+ *    enveloppes et plafonds individuels.
+ * 3) Valorix 999 : grand volume, paramètres d'un automate supervisé, mais
+ *    aucune interface Valorix, flux de carnet temps réel ni routeur réel ici.
+ * Les lignes sont des BROUILLONS, pas des ordres exécutés/routés.
+ */
+const GSM_GROUPED_ORDERS_KEY = 'opcvm-gsm-grouped-orders-drafts-v1';
+const GSM_GROUPED_OPTIONS = [
+  {
+    id: 'simple',
+    title: 'Option 1 · Direct simple',
+    subtitle: 'Un titre, un prix commun, plusieurs clients',
+    description: 'Préparation d’un même ordre pour plusieurs comptes. Le prix limite est commun ; les quantités restent individualisées.',
+  },
+  {
+    id: 'multi',
+    title: 'Option 1 améliorée · Direct multicritère',
+    subtitle: 'Plusieurs titres, plusieurs prix, plusieurs clients',
+    description: 'Une seule préparation génère des instructions distinctes par portefeuille, titre et tranche de prix.',
+  },
+  {
+    id: 'valorix999',
+    title: 'Option 3 · Valorix 999 supervisé',
+    subtitle: 'Gros volumes, pricing algorithmique à superviser',
+    description: 'Prépare un carnet 999 et des limites de sécurité. L’automate devra utiliser un flux de contreparties réel avant toute injection.',
+  },
+];
+
+const gsmLoadGroupedDrafts = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const data = JSON.parse(window.localStorage.getItem(GSM_GROUPED_ORDERS_KEY) || '[]');
+    return Array.isArray(data) ? data.filter((x) => x && Array.isArray(x.lignes)) : [];
+  } catch {
+    return [];
+  }
+};
+
+const gsmPersistGroupedDrafts = (drafts) => {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(GSM_GROUPED_ORDERS_KEY, JSON.stringify(drafts));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const gsmGroupedCsv = (draft) => {
+  const rows = [
+    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction'],
+    ...draft.lignes.map((line) => [
+      draft.id, GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || draft.mode,
+      draft.mode === 'valorix999' ? '999' : '',
+      line.client, line.clientId, line.marche, line.titre, line.sens, line.quantite,
+      line.bornePrix, line.devise, 'Brouillon non routé', line.id,
+    ]),
+  ];
+  const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  exportDownloadBlob(
+    new Blob(['\uFEFF', rows.map((row) => row.map(escape).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }),
+    `ordres-groupes-${exportSafeFileName(draft.id)}.csv`
+  );
+};
+
+const gsmEstimatedCash = (client) => {
+  const explicit = Number(
+    client?.liquiditeDisponibleNette ?? client?.liquiditeDisponible ??
+    client?.availableCash ?? client?.compteEspeces
+  );
+  if (Number.isFinite(explicit) && explicit >= 0 && (
+    client?.liquiditeDisponibleNette != null || client?.liquiditeDisponible != null ||
+    client?.availableCash != null || client?.compteEspeces != null
+  )) return { amount: explicit, source: 'Donnée portefeuille (à confirmer)' };
+  const pct = Number(client?.alloc?.Liquidité);
+  if (Number.isFinite(pct) && pct >= 0) {
+    return { amount: Math.max(0, Number(client?.encours || 0) * pct / 100), source: 'Estimation encours × poids de liquidité' };
+  }
+  return { amount: null, source: 'Liquidité non renseignée' };
+};
+
+function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
+  const [mode, setMode] = useState('simple');
+  const [selectedClients, setSelectedClients] = useState([]);
+  const [selectedTitles, setSelectedTitles] = useState([]);
+  const [searchClients, setSearchClients] = useState('');
+  const [searchTitles, setSearchTitles] = useState('');
+  const [market, setMarket] = useState('Tous');
+  const [sens, setSens] = useState('Achat');
+  const [titleSettings, setTitleSettings] = useState({});
+  const [allocations, setAllocations] = useState({});
+  const [individualLimits, setIndividualLimits] = useState({});
+  const [globalQuantity, setGlobalQuantity] = useState('');
+  const [negotiatorSettings, setNegotiatorSettings] = useState({ sliceSize: '200', participation: '15', minDelay: '5', supervisor: '', remarks: '' });
+  const [preview, setPreview] = useState(false);
+  const [saveMessage, setSaveMessage] = useState('');
+  const [draftExpanded, setDraftExpanded] = useState(false);
+
+  // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
+  const clients = Array.isArray(CLIENTS) ? CLIENTS : [];
+  const instruments = CLIENT_TRADABLE_MARKETS;
+  const selectedInstrumentObjects = selectedTitles.map((name) =>
+    instruments.find((item) => item.nom === name)
+  ).filter(Boolean);
+  const selectedClientObjects = selectedClients.map((id) =>
+    clients.find((client) => String(client.id) === id)
+  ).filter(Boolean);
+  const filteredClients = clients.filter((client) =>
+    `${client.nom} ${client.id} ${client.marche} ${client.pays}`.toLocaleLowerCase('fr').includes(searchClients.toLocaleLowerCase('fr'))
+  );
+  const filteredInstruments = instruments.filter((item) =>
+    (market === 'Tous' || item.marche === market) &&
+    `${item.nom} ${item.marche} ${item.type}`.toLocaleLowerCase('fr').includes(searchTitles.toLocaleLowerCase('fr'))
+  );
+  const settingsFor = (titre) => titleSettings[titre] || { tranches: [{ id: 'A', prix: '', part: 100 }] };
+  const selectionKey = (clientId, title) => `${clientId}::${title}`;
+  const setSettings = (titre, setting) => {
+    setTitleSettings((current) => ({ ...current, [titre]: setting }));
+    setPreview(false); setSaveMessage('');
+  };
+  const changeMode = (next) => {
+    setMode(next);
+    if (next === 'simple') setSelectedTitles((previous) => previous.slice(0, 1));
+    setPreview(false); setSaveMessage('');
+  };
+  const toggleTitle = (titre) => {
+    setSelectedTitles((current) => current.includes(titre)
+      ? current.filter((name) => name !== titre)
+      : mode === 'simple' ? [titre] : [...current, titre]);
+    setPreview(false); setSaveMessage('');
+  };
+  const toggleClient = (id) => {
+    setSelectedClients((current) => current.includes(id)
+      ? current.filter((item) => item !== id) : [...current, id]);
+    setPreview(false); setSaveMessage('');
+  };
+  const addTranche = (titre) => {
+    const setting = settingsFor(titre);
+    if (setting.tranches.length >= 5) return;
+    setSettings(titre, {
+      ...setting,
+      tranches: [...setting.tranches, { id: `T${Date.now()}-${setting.tranches.length}`, prix: '', part: 0 }],
+    });
+  };
+  const updateTranche = (titre, trancheId, key, value) => {
+    const setting = settingsFor(titre);
+    setSettings(titre, { ...setting, tranches: setting.tranches.map((t) =>
+      t.id === trancheId ? { ...t, [key]: value } : t
+    ) });
+  };
+  const removeTranche = (titre, id) => {
+    const setting = settingsFor(titre);
+    if (setting.tranches.length <= 1) return;
+    setSettings(titre, { ...setting, tranches: setting.tranches.filter((t) => t.id !== id) });
+  };
+  const applyQuantity = () => {
+    const n = Math.floor(Number(globalQuantity));
+    if (!Number.isInteger(n) || n <= 0) return;
+    const next = {};
+    selectedClients.forEach((id) => selectedTitles.forEach((titre) => { next[selectionKey(id, titre)] = String(n); }));
+    setAllocations((current) => ({ ...current, ...next }));
+    setPreview(false); setSaveMessage('');
+  };
+
+  const errors = [];
+  const warnings = [];
+  const proposed = [];
+  const perClientCash = {};
+  if (!selectedClients.length) errors.push('Sélectionnez au moins un portefeuille client.');
+  if (!selectedTitles.length) errors.push('Sélectionnez au moins un titre.');
+  if (mode === 'simple' && selectedTitles.length > 1) errors.push('Le circuit direct simple accepte un seul titre.');
+  if (mode === 'valorix999') {
+    if (!Number.isInteger(Number(negotiatorSettings.sliceSize)) || Number(negotiatorSettings.sliceSize) <= 0) errors.push('Le volume maximal par injection doit être un entier positif.');
+    if (!(Number(negotiatorSettings.participation) > 0 && Number(negotiatorSettings.participation) <= 100)) errors.push('La participation maximale doit être entre 0 et 100 %.');
+    if (!(Number(negotiatorSettings.minDelay) >= 1)) errors.push('La temporisation doit être au moins d’une seconde.');
+  }
+  selectedInstrumentObjects.forEach((instrument) => {
+    const tranches = mode === 'multi' ? settingsFor(instrument.nom).tranches : settingsFor(instrument.nom).tranches.slice(0, 1);
+    if (tranches.some((tranche) => !(Number(tranche.prix) > 0))) {
+      errors.push(`Renseignez un prix limite${mode === 'valorix999' ? ' de sécurité' : ''} pour ${instrument.nom}.`);
+      return;
+    }
+    const parts = mode === 'multi' ? tranches.map((t) => Number(t.part)) : [100];
+    if (mode === 'multi' && (
+      parts.some((p) => !Number.isFinite(p) || p < 0 || p > 100) ||
+      Math.abs(parts.reduce((sum, p) => sum + p, 0) - 100) > 0.01
+    )) errors.push(`Les répartitions des tranches de ${instrument.nom} doivent totaliser 100 %.`);
+    selectedClientObjects.forEach((client) => {
+      const key = selectionKey(String(client.id), instrument.nom);
+      const quantity = Number(allocations[key] ?? 0);
+      if (!Number.isInteger(quantity) || quantity < 0) {
+        errors.push(`Quantité invalide : ${client.nom} / ${instrument.nom}.`);
+        return;
+      }
+      if (quantity === 0) return;
+      const userLimit = individualLimits[key] === '' || individualLimits[key] == null
+        ? null : Number(individualLimits[key]);
+      if (userLimit != null && !(userLimit > 0)) {
+        errors.push(`Borne individuelle invalide : ${client.nom} / ${instrument.nom}.`);
+        return;
+      }
+      let remainder = quantity;
+      tranches.forEach((tranche, index) => {
+        const unitPrice = Number(tranche.prix);
+        const part = mode === 'multi' ? Number(tranche.part) : 100;
+        if (!(unitPrice > 0) || !Number.isFinite(part) || part < 0 || part > 100) return;
+        const qty = index === tranches.length - 1 ? remainder : Math.min(remainder, Math.floor(quantity * part / 100));
+        remainder -= qty;
+        if (qty <= 0) return;
+        if (userLimit != null && (sens === 'Achat' ? unitPrice > userLimit : unitPrice < userLimit)) {
+          errors.push(`Prix hors limite individuelle : ${client.nom} / ${instrument.nom} (${fmtPrice(unitPrice)} ${instrument.devise}).`);
+        }
+        proposed.push({
+          clientId: String(client.id), client: client.nom, titre: instrument.nom,
+          marche: instrument.marche, devise: instrument.devise, sens,
+          quantite: qty, bornePrix: unitPrice, tranche: tranche.id,
+          code: mode === 'valorix999' ? '999' : '',
+          montantEstime: qty * unitPrice,
+        });
+      });
+    });
+  });
+  if (!proposed.length) errors.push('Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
+  if (sens === 'Vente' && proposed.length) warnings.push('Les quantités détenues et disponibles à la vente ne sont pas contrôlées dans cette maquette : vérification obligatoire avant routage.');
+  if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
+  const buyAmountsByClient = {};
+  if (sens === 'Achat') {
+    proposed.forEach((row) => {
+      const client = clients.find((c) => String(c.id) === row.clientId);
+      if (!client) return;
+      const fx = Number(FX[row.devise]);
+      const fxClient = Number(FX[client.devise]);
+      const equivalent = fx > 0 && fxClient > 0 ? row.montantEstime * fx / fxClient : null;
+      if (equivalent == null) {
+        errors.push(`Conversion indicative indisponible : ${row.devise} → ${client.devise}.`);
+      } else {
+        buyAmountsByClient[row.clientId] = (buyAmountsByClient[row.clientId] || 0) + equivalent;
+      }
+    });
+    selectedClientObjects.forEach((client) => {
+      const estimation = gsmEstimatedCash(client);
+      const exposure = buyAmountsByClient[String(client.id)] || 0;
+      perClientCash[String(client.id)] = { ...estimation, exposure };
+      if (exposure > 0 && estimation.amount == null) {
+        warnings.push(`${client.nom} : liquidité non documentée, contrôle manuel requis.`);
+      } else if (exposure > estimation.amount + 0.01) {
+        errors.push(`${client.nom} : engagement estimé ${fmt(exposure)} ${client.devise} supérieur à la liquidité indicative ${fmt(estimation.amount)} ${client.devise} (hors frais).`);
+      }
+    });
+    if (proposed.length) warnings.push('Prix de référence, cours, devises et liquidités peuvent provenir de données de démonstration. Contrôler les soldes et frais réels avant tout ordre.');
+  }
+  const groupsByMarket = proposed.reduce((acc, row) => {
+    acc[row.marche] = (acc[row.marche] || 0) + 1;
+    return acc;
+  }, {});
+  const isReady = errors.length === 0 && proposed.length > 0;
+
+  const save = () => {
+    setPreview(true);
+    setSaveMessage('');
+    if (!isReady) return;
+    const now = new Date();
+    const id = `OG-${now.getTime()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const batch = {
+      id, mode, sens, createdAt: now.toISOString(), statut: 'Brouillon non routé',
+      clients: [...selectedClients], titres: [...selectedTitles],
+      avertissements: [...warnings],
+      negociateur: mode === 'valorix999' ? { ...negotiatorSettings } : null,
+      lignes: proposed.map((row, index) => ({ ...row, id: `${id}-${String(index + 1).padStart(3, '0')}`, statut: 'Brouillon non routé' })),
+    };
+    const result = onSaveDraft?.(batch);
+    if (result === false) setSaveMessage('Le stockage local est indisponible ; le brouillon n’a pas été enregistré.');
+    else { setSaveMessage(`Brouillon ${id} enregistré localement — aucun ordre transmis.`); setDraftExpanded(true); }
+  };
+
+  const panel = { borderColor: C.line, background: '#fff' };
+  const inputStyle = { borderColor: C.line, color: C.ink, background: '#fff', ...F_BODY };
+  return (
+    <div className="space-y-5">
+      <Breadcrumb items={['Accueil', 'Ordre groupé']} />
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <Eyebrow>Gestion sous mandat · Négociation</Eyebrow>
+          <h2 className="text-2xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Ordre groupé</h2>
+          <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Sélectionnez le circuit, les clients et les titres. Préparez les prix et les quantités,
+            contrôlez les engagements puis enregistrez un carnet en brouillon.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge tone="gold">Simulation / brouillon</Badge>
+          <Btn tone="ghost" onClick={() => go('carnet')}>Voir le carnet d’ordres</Btn>
+        </div>
+      </div>
+      <Card className="p-4" style={{ borderColor: C.gold, background: '#FFFCF5' }}>
+        <p className="text-xs" style={{ color: '#75540C' }}>
+          <b>Important :</b> ce composant ne route aucun ordre sur le marché et n’écrit pas dans Valorix.
+          Les cours et liquidités de la maquette sont indicatifs. Les contrôles réels (espèces par devise,
+          positions à la vente, frais, risques, conformité, droits et synchronisation OMS) restent à raccorder.
+        </p>
+      </Card>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+        {GSM_GROUPED_OPTIONS.map((option) => (
+          <button key={option.id} type="button" onClick={() => changeMode(option.id)}
+            className="rounded-2xl border p-4 text-left transition-all hover:shadow-sm"
+            style={{ borderColor: mode === option.id ? C.gold : C.line, background: mode === option.id ? '#FFF9ED' : '#fff', borderWidth: mode === option.id ? 2 : 1 }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold" style={{ color: C.ink, ...F_DISPLAY }}>{option.title}</span>
+              {mode === option.id && <Badge tone="gold">Sélectionné</Badge>}
+            </div>
+            <div className="text-xs font-semibold mt-2" style={{ color: C.indigo }}>{option.subtitle}</div>
+            <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.sub }}>{option.description}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Card className="p-4 space-y-3" style={panel}>
+          <div className="flex justify-between items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-bold" style={{ color: C.ink }}>1. Portefeuilles clients</h3>
+            <Badge tone="navy">{selectedClients.length} sélectionné(s)</Badge>
+          </div>
+          <input value={searchClients} onChange={(e) => setSearchClients(e.target.value)}
+            placeholder="Rechercher client, pays, marché…" className="w-full px-3 py-2 border rounded-xl text-sm" style={inputStyle} />
+          <div className="flex gap-3 text-xs">
+            <button type="button" onClick={() => { setSelectedClients((current) => [...new Set([...current, ...filteredClients.map((c) => String(c.id))])]); setPreview(false); }}
+              className="font-semibold" style={{ color: C.indigo }}>Tout sélectionner (filtre)</button>
+            <button type="button" onClick={() => { setSelectedClients((current) => current.filter((id) => !filteredClients.some((c) => String(c.id) === id))); setPreview(false); }}
+              className="font-semibold" style={{ color: C.sub }}>Désélectionner (filtre)</button>
+          </div>
+          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: 252 }}>
+            {filteredClients.map((client) => {
+              const checked = selectedClients.includes(String(client.id));
+              const cash = gsmEstimatedCash(client);
+              return (
+                <label key={client.id} className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer" style={{ background: checked ? '#EEF4FF' : '#FAFAFC' }}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleClient(String(client.id))} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold truncate" style={{ color: C.ink }}>{client.nom}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>{client.marche} · {client.profilRisque || client.risque || 'Profil non renseigné'} · {client.devise}</div>
+                  </div>
+                  <span className="text-[10px] text-right shrink-0" style={{ color: C.sub }}>
+                    {cash.amount == null ? 'Espèces : ?' : `Liquidité ≈ ${fmt(cash.amount)}`}
+                  </span>
+                </label>
+              );
+            })}
+            {!filteredClients.length && <p className="text-xs" style={{ color: C.sub }}>Aucun portefeuille correspondant.</p>}
+          </div>
+        </Card>
+
+        <Card className="p-4 space-y-3" style={panel}>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-bold" style={{ color: C.ink }}>2. Sélection des titres</h3>
+            <Badge tone="navy">{selectedTitles.length} titre(s)</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <input value={searchTitles} onChange={(e) => setSearchTitles(e.target.value)}
+              placeholder="Rechercher un instrument…" className="w-full px-3 py-2 border rounded-xl text-sm" style={inputStyle} />
+            <select value={market} onChange={(e) => setMarket(e.target.value)} className="px-2 py-2 border rounded-xl text-xs" style={inputStyle}>
+              {['Tous','BRVM','NGX','GSE'].map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          </div>
+          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: 284 }}>
+            {filteredInstruments.map((instrument) => {
+              const checked = selectedTitles.includes(instrument.nom);
+              return (
+                <label key={`${instrument.marche}-${instrument.nom}`} className="flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer"
+                  style={{ background: checked ? '#EEF4FF' : '#FAFAFC' }}>
+                  <input type={mode === 'simple' ? 'radio' : 'checkbox'} name={mode === 'simple' ? 'gsm-simple-instrument' : undefined}
+                    checked={checked} onChange={() => toggleTitle(instrument.nom)} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-semibold truncate" style={{ color: C.ink }}>{instrument.nom}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>{instrument.marche} · {instrument.type}</div>
+                  </div>
+                  <span className="text-[10px] shrink-0" style={{ color: C.sub }}>Réf. maquette : {fmtPrice(instrument.cours)} {instrument.devise}</span>
+                </label>
+              );
+            })}
+          </div>
+          {mode === 'simple' && <p className="text-[10px]" style={{ color: C.sub }}>Le circuit simple autorise un seul titre, mais plusieurs portefeuilles.</p>}
+        </Card>
+      </div>
+
+      <Card className="p-4 space-y-4" style={panel}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et quantités</h3>
+          <div className="flex items-center gap-2">
+            <label className="text-xs" style={{ color: C.sub }}>Sens</label>
+            <select value={sens} onChange={(e) => { setSens(e.target.value); setPreview(false); }} className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
+              <option>Achat</option><option>Vente</option>
+            </select>
+          </div>
+        </div>
+        {selectedInstrumentObjects.length === 0 ? (
+          <p className="text-xs" style={{ color: C.sub }}>Sélectionnez au moins un titre pour afficher le paramétrage.</p>
+        ) : selectedInstrumentObjects.map((instrument) => {
+          const setting = settingsFor(instrument.nom);
+          const tranches = mode === 'multi' ? setting.tranches : setting.tranches.slice(0, 1);
+          return (
+            <div key={instrument.nom} className="p-3 rounded-xl border space-y-3" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <div className="text-sm font-bold" style={{ color: C.ink }}>{instrument.nom} <span className="text-[11px] font-normal" style={{ color: C.sub }}>({instrument.marche}, {instrument.devise})</span></div>
+                {mode === 'multi' && <button type="button" onClick={() => addTranche(instrument.nom)} disabled={tranches.length >= 5}
+                  className="text-xs font-semibold disabled:opacity-50" style={{ color: C.indigo }}>+ Ajouter un palier (max. 5)</button>}
+              </div>
+              {tranches.map((tranche, idx) => (
+                <div key={tranche.id} className="grid grid-cols-12 gap-2 items-end">
+                  <label className="col-span-12 sm:col-span-5 text-[11px]" style={{ color: C.sub }}>
+                    {mode === 'valorix999' ? 'Borne limite de sécurité' : `Prix limite ${idx + 1}`} ({instrument.devise})
+                    <input type="number" min="0.0001" step="any" value={tranche.prix}
+                      onChange={(e) => updateTranche(instrument.nom, tranche.id, 'prix', e.target.value)}
+                      className="mt-1 w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle} placeholder="Prix à saisir" />
+                  </label>
+                  {mode === 'multi' && (
+                    <label className="col-span-8 sm:col-span-5 text-[11px]" style={{ color: C.sub }}>
+                      Répartition de la quantité (%)
+                      <input type="number" min="0" max="100" step="0.01" value={tranche.part}
+                        onChange={(e) => updateTranche(instrument.nom, tranche.id, 'part', e.target.value)}
+                        className="mt-1 w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle} />
+                    </label>
+                  )}
+                  {mode === 'multi' && tranches.length > 1 && (
+                    <button type="button" onClick={() => removeTranche(instrument.nom, tranche.id)} className="col-span-4 sm:col-span-2 px-2 py-2 border rounded-lg text-xs" style={{ borderColor: C.line, color: C.coral }} aria-label="Retirer ce palier">Retirer</button>
+                  )}
+                </div>
+              ))}
+              {mode === 'multi' && <p className="text-[10px]" style={{ color: C.sub }}>Les pourcentages de paliers doivent totaliser 100 %. L'arrondi des titres entiers est attribué au dernier palier ; aucune exécution n'est supposée.</p>}
+              {mode === 'valorix999' && <p className="text-[10px]" style={{ color: C.sub }}>La borne limite encadre le futur pricing : aucun prix de contrepartie n’est inventé par l’interface.</p>}
+            </div>
+          );
+        })}
+        <div className="flex gap-2 items-end flex-wrap">
+          <label className="text-xs" style={{ color: C.sub }}>Quantité commune (optionnelle)
+            <input type="number" min="1" step="1" value={globalQuantity} onChange={(e) => setGlobalQuantity(e.target.value)}
+              className="block mt-1 w-44 px-3 py-2 border rounded-xl text-sm" style={inputStyle} placeholder="Ex. 100" />
+          </label>
+          <Btn tone="ghost" onClick={applyQuantity}>Appliquer aux lignes sélectionnées</Btn>
+          <span className="text-[10px]" style={{ color: C.sub }}>Vous pouvez modifier chaque ligne ensuite.</span>
+        </div>
+        {selectedClients.length > 0 && selectedTitles.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line }}>
+            <table className="w-full" style={{ minWidth: 720 }}>
+              <thead style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
+              <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
+                const key = selectionKey(String(client.id), instrument.nom);
+                return (
+                  <tr key={key} className="border-t" style={{ borderColor: C.line }}>
+                    <Td>{client.nom}</Td><Td>{instrument.nom}</Td>
+                    <Td><input aria-label={`Quantité ${client.nom} ${instrument.nom}`} type="number" min="0" step="1"
+                      value={allocations[key] ?? ''} onChange={(e) => { setAllocations((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
+                      className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="0" /></Td>
+                    <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
+                      value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
+                      className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
+                    <Td>{instrument.devise}</Td>
+                  </tr>
+                );
+              }))}</tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {mode === 'valorix999' && (
+        <Card className="p-4 space-y-3" style={{ borderColor: C.gold }}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-sm font-bold" style={{ color: C.ink }}>4. Paramètres du futur automate · Valorix 999</h3>
+            <Badge tone="gold">Supervision du négociateur requise</Badge>
+          </div>
+          <p className="text-xs" style={{ color: C.sub }}>Ces paramètres sont joints au brouillon 999. Ils ne déclenchent ni pricing ni injection.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            {[
+              ['sliceSize','Qté max / injection','number'],
+              ['participation','Participation max (%)','number'],
+              ['minDelay','Délai min (sec.)','number'],
+              ['supervisor','Négociateur / superviseur','text'],
+            ].map(([key, label, type]) => (
+              <label key={key} className="text-xs" style={{ color: C.sub }}>{label}
+                <input type={type} min={type === 'number' ? '1' : undefined} value={negotiatorSettings[key]}
+                  onChange={(e) => { setNegotiatorSettings((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
+                  className="mt-1 w-full px-3 py-2 border rounded-xl text-sm" style={inputStyle} />
+              </label>
+            ))}
+          </div>
+          <label className="block text-xs" style={{ color: C.sub }}>Consignes au négociateur
+            <textarea rows={2} value={negotiatorSettings.remarks}
+              onChange={(e) => setNegotiatorSettings((cur) => ({ ...cur, remarks: e.target.value }))}
+              className="mt-1 w-full px-3 py-2 border rounded-xl text-sm" style={inputStyle} placeholder="Contraintes de marché, arrêt d’urgence, conditions d’exécution..." />
+          </label>
+        </Card>
+      )}
+
+      <Card className="p-4 space-y-3" style={panel}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-bold" style={{ color: C.ink }}>{mode === 'valorix999' ? '5' : '4'}. Vérification et préparation du carnet</h3>
+          <div className="flex gap-2"><Badge tone="navy">{proposed.length} instruction(s)</Badge><Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles de saisie OK'}</Badge></div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            ['Portefeuilles', selectedClients.length], ['Titres', selectedTitles.length],
+            ['Lignes préparées', proposed.length], ['Marchés', Object.keys(groupsByMarket).length],
+          ].map(([label, value]) => (
+            <div key={label} className="p-3 rounded-xl" style={{ background: '#F5F6F9' }}>
+              <div className="text-[10px]" style={{ color: C.sub }}>{label}</div>
+              <div className="text-lg font-bold" style={{ ...F_MONO, color: C.ink }}>{value}</div>
+            </div>
+          ))}
+        </div>
+        {errors.length > 0 && <div className="p-3 rounded-xl space-y-1" style={{ background: '#FBE9E7' }}>
+          {Array.from(new Set(errors)).slice(0, 18).map((err, idx) => <p key={idx} className="text-xs" style={{ color: C.coral }}>• {err}</p>)}
+        </div>}
+        {warnings.length > 0 && <div className="p-3 rounded-xl space-y-1" style={{ background: '#FBF1DD' }}>
+          {Array.from(new Set(warnings)).map((warning, idx) => <p key={idx} className="text-xs" style={{ color: '#75540C' }}>• {warning}</p>)}
+        </div>}
+        {sens === 'Achat' && selectedClientObjects.length > 0 && proposed.length > 0 && (
+          <div className="overflow-x-auto"><table className="w-full" style={{ minWidth: 680 }}>
+            <thead><tr><Th>Client</Th><Th>Engagement estimé (devise compte)</Th><Th>Liquidité indicative</Th><Th>Vérification</Th></tr></thead>
+            <tbody>{selectedClientObjects.filter((c) => perClientCash[String(c.id)]?.exposure > 0).map((client) => {
+              const balance = perClientCash[String(client.id)];
+              const enough = balance.amount == null ? null : balance.exposure <= balance.amount;
+              return <tr key={client.id} className="border-t" style={{ borderColor: C.line }}><Td>{client.nom}</Td>
+                <Td mono>{fmt(balance.exposure)} {client.devise}</Td><Td mono>{balance.amount == null ? 'Non connue' : `${fmt(balance.amount)} ${client.devise}`}</Td>
+                <Td><Badge tone={enough === false ? 'coral' : 'gold'}>{enough === false ? 'Dépassement' : 'À confirmer'}</Badge></Td></tr>;
+            })}</tbody>
+          </table></div>
+        )}
+        <div className="flex gap-2 flex-wrap">
+          <Btn tone="ghost" onClick={() => setPreview((state) => !state)}>{preview ? 'Masquer les instructions' : 'Prévisualiser les instructions'}</Btn>
+          <button type="button" disabled={!isReady} onClick={save}
+            className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: '#fff', background: C.navy }}>Enregistrer le brouillon (sans routage)</button>
+        </div>
+        {saveMessage && <div role="status" className="text-xs font-semibold" style={{ color: saveMessage.startsWith('Brouillon') ? C.teal : C.coral }}>{saveMessage}</div>}
+        {preview && proposed.length > 0 && (
+          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 330, overflowY: 'auto' }}>
+            <table className="w-full" style={{ minWidth: 820 }}><thead className="sticky top-0" style={{ background: '#F2F4F8' }}>
+              <tr><Th>Client</Th><Th>Titre</Th><Th>Marché</Th><Th>Sens</Th><Th>Qté</Th><Th>{mode === 'valorix999' ? 'Borne de sécurité' : 'Prix limite'}</Th><Th>Code</Th></tr>
+            </thead><tbody>{proposed.map((row, index) => <tr key={index} className="border-t" style={{ borderColor: C.line }}>
+              <Td>{row.client}</Td><Td>{row.titre}</Td><Td>{row.marche}</Td><Td>{row.sens}</Td>
+              <Td mono>{fmt(row.quantite)}</Td><Td mono>{fmtPrice(row.bornePrix)} {row.devise}</Td><Td>{row.code || 'Direct'}</Td>
+            </tr>)}</tbody></table>
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-bold" style={{ color: C.ink }}>Brouillons d’ordres groupés ({drafts.length})</h3>
+          <button type="button" className="text-xs font-semibold" style={{ color: C.indigo }} onClick={() => setDraftExpanded((v) => !v)}>{draftExpanded ? 'Masquer' : 'Afficher les brouillons'}</button>
+        </div>
+        {draftExpanded && (
+          <div className="space-y-2">
+            {drafts.length === 0 && <p className="text-xs" style={{ color: C.sub }}>Aucun brouillon enregistré.</p>}
+            {drafts.map((draft) => <div key={draft.id} className="p-3 rounded-xl border flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.line }}>
+              <div><div className="text-xs font-bold" style={{ color: C.ink }}>{draft.id}</div>
+                <div className="text-[11px]" style={{ color: C.sub }}>{GSM_GROUPED_OPTIONS.find((o) => o.id === draft.mode)?.title || draft.mode} · {draft.lignes.length} instruction(s) · {new Date(draft.createdAt).toLocaleString('fr-FR')}</div>
+                <div className="text-[10px] mt-1" style={{ color: C.gold }}>Brouillon uniquement — aucun routage Valorix / marché</div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Btn tone="ghost" onClick={() => gsmGroupedCsv(draft)}>Exporter CSV</Btn>
+                <Btn tone="ghost" onClick={() => go('carnet')}>Consulter le carnet</Btn>
+                <button type="button" className="px-3 py-2 rounded-xl border text-xs" style={{ color: C.coral, borderColor: C.line }}
+                  onClick={() => { if (typeof window === 'undefined' || window.confirm(`Supprimer le brouillon ${draft.id} ?`)) onDeleteDraft?.(draft.id); }}>Supprimer</button>
+              </div>
+            </div>)}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function Carnet({ initial, go, groupedDrafts = [] }) {
   const [f, setF] = useState(initial?.marche || 'Tous');
   const [instrumentFilter, setInstrumentFilter] = useState(
     initial?.instrument || null
@@ -13356,7 +13936,15 @@ function Carnet({ initial }) {
     ? initial.cessionOrders
     : [];
   const cessionA4 = initial?.cessionA4 || null;
-  const sourceRows = [...cessionRows, ...ORDERS];
+  const groupedRows = groupedDrafts.flatMap((draft) => draft.lignes.map((line) => ({
+    id: line.id, sens: line.sens, titre: line.titre, marche: line.marche,
+    devise: line.devise, qte: line.quantite,
+    prix: draft.mode === 'valorix999' ? null : line.bornePrix,
+    prixSecurite: draft.mode === 'valorix999' ? line.bornePrix : null,
+    statut: 'Brouillon', pf: line.client,
+    origine: draft.mode === 'valorix999' ? 'Préparation Valorix 999' : 'Ordre groupé',
+  })));
+  const sourceRows = [...groupedRows, ...cessionRows, ...ORDERS];
   const rows = sourceRows.filter(
     (o) =>
       (f === 'Tous' || o.marche === f) &&
@@ -13372,7 +13960,8 @@ function Carnet({ initial }) {
         >
           Carnet d'ordres
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Btn tone="navy" onClick={() => go?.('ordres-groupes')}>+ Ordre groupé</Btn>
           {instrumentFilter && (
             <button
               onClick={() => setInstrumentFilter(null)}
@@ -13399,6 +13988,15 @@ function Carnet({ initial }) {
           </div>
         </div>
       </div>
+      {groupedRows.length > 0 && (
+        <Card className="p-4" style={{ borderColor: C.indigo, background: '#F5F7FF' }}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div><div className="text-sm font-bold" style={{ color: C.ink }}>Préparations d’ordres groupés</div>
+              <p className="text-xs mt-1" style={{ color: C.sub }}>Ces lignes sont des brouillons locaux, pas des ordres transmis au marché ni enregistrés dans Valorix.</p></div>
+            <Badge tone="navy">{groupedRows.length} instruction(s) non routée(s)</Badge>
+          </div>
+        </Card>
+      )}
       {cessionRows.length > 0 && (
         <Card
           className="p-4"
@@ -13454,9 +14052,10 @@ function Carnet({ initial }) {
               <Th>Titre</Th>
               <Th>Marché</Th>
               <Th>Qté</Th>
-              <Th>Prix</Th>
+              <Th>Prix / borne</Th>
               <Th>Portefeuille</Th>
               <Th>Statut</Th>
+              <Th>Origine</Th>
             </tr>
           </thead>
           <tbody>
@@ -13480,7 +14079,9 @@ function Carnet({ initial }) {
                 </Td>
                 <Td mono>{o.qte}</Td>
                 <Td mono>
-                  {o.prix} {o.devise}
+                  {o.prixSecurite != null
+                    ? `Limite 999 : ${fmtPrice(o.prixSecurite)} ${o.devise}`
+                    : `${o.prix == null ? '—' : fmtPrice(o.prix)} ${o.devise || ''}`}
                 </Td>
                 <Td>{o.pf}</Td>
                 <Td>
@@ -13496,6 +14097,7 @@ function Carnet({ initial }) {
                     {o.statut}
                   </Badge>
                 </Td>
+                <Td><span className="text-xs" style={{ color: C.sub }}>{o.origine || 'Ordre existant'}</span></Td>
               </tr>
             ))}
           </tbody>
@@ -36358,6 +36960,19 @@ export default function App() {
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
+  const [groupedDrafts, setGroupedDrafts] = useState(gsmLoadGroupedDrafts);
+  const saveGroupedDraft = (batch) => {
+    const next = [batch, ...groupedDrafts];
+    if (!gsmPersistGroupedDrafts(next)) return false;
+    setGroupedDrafts(next);
+    return true;
+  };
+  const deleteGroupedDraft = (id) => {
+    const next = groupedDrafts.filter((draft) => draft.id !== id);
+    if (!gsmPersistGroupedDrafts(next)) return false;
+    setGroupedDrafts(next);
+    return true;
+  };
   const [cessionRetraitEtats, setCessionRetraitEtats] = useState(
     CESSION_RETRAIT_ETATS_DEMO
   );
@@ -37187,7 +37802,15 @@ export default function App() {
                     onGenerateReport={report}
                   />
                 )}
-                {screen === 'carnet' && <Carnet initial={ctx} />}
+                {screen === 'ordres-groupes' && (
+                  <OrdresGroupes
+                    go={go}
+                    drafts={groupedDrafts}
+                    onSaveDraft={saveGroupedDraft}
+                    onDeleteDraft={deleteGroupedDraft}
+                  />
+                )}
+                {screen === 'carnet' && <Carnet initial={ctx} go={go} groupedDrafts={groupedDrafts} />}
                 {screen === 'profondeur' && (
                   <ProfondeurMarche ctx={ctx} go={go} />
                 )}
