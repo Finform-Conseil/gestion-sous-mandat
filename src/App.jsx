@@ -13444,6 +13444,47 @@ const gsmEstimatedCash = (client) => {
   return { amount: null, source: 'Liquidité non renseignée' };
 };
 
+// Solde titres : priorité à la position/quantité réellement renseignée.
+// L'estimation par exposition n'est utilisée que pour animer la maquette ;
+// elle ne doit jamais être présentée comme un solde-titres certifié.
+const gsmGroupedAvailableHolding = (client, instrument) => {
+  const titre = instrument?.nom;
+  const positions = Array.isArray(client?.positions) ? client.positions
+    : Array.isArray(client?.lignesTitres) ? client.lignesTitres
+    : Array.isArray(client?.holdings) ? client.holdings : null;
+  const position = positions?.find((item) =>
+    [item?.instrument?.nom, item?.instrument, item?.titre, item?.nom, item?.symbol]
+      .some((value) => typeof value === 'string' && value === titre)
+  );
+  if (positions) {
+    if (!position) return { amount: 0, source: 'Aucune position enregistrée', indicative: false };
+    const availableRaw = position.quantiteDisponible ?? position.qteDisponible ??
+      position.availableQuantity ?? position.quantityAvailable ?? position.available;
+    const totalRaw = position.quantite ?? position.quantité ?? position.quantity ??
+      position.qte ?? position.titres;
+    const reservedRaw = position.quantiteBloquee ?? position.qteBloquee ??
+      position.reservedQuantity ?? position.quantiteReservee ?? 0;
+    const knownAvailable = availableRaw != null && availableRaw !== '';
+    const knownTotal = totalRaw != null && totalRaw !== '';
+    const amount = knownAvailable ? Number(availableRaw)
+      : knownTotal ? Number(totalRaw) - Math.max(0, Number(reservedRaw) || 0) : null;
+    return Number.isFinite(amount) && amount >= 0
+      ? { amount: Math.floor(amount), source: 'Position portefeuille', indicative: false }
+      : { amount: null, source: 'Quantité disponible non renseignée', indicative: false };
+  }
+  const price = Number(instrument?.cours);
+  const exposure = Number(exposureOf(client?.id, titre));
+  if (Number.isFinite(price) && price > 0 && Number.isFinite(exposure) && exposure >= 0 &&
+      Number.isFinite(Number(client?.encours)) && Number(client?.encours) >= 0 &&
+      client?.devise === instrument?.devise) {
+    return {
+      amount: Math.max(0, Math.floor(Number(client.encours) * exposure / 100 / price)),
+      source: 'Estimation par exposition (démo)', indicative: true,
+    };
+  }
+  return { amount: null, source: 'Position non documentée', indicative: false };
+};
+
 function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [mode, setMode] = useState('simple');
   const [selectedClients, setSelectedClients] = useState([]);
@@ -13545,6 +13586,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const warnings = [];
   const proposed = [];
   const perClientCash = {};
+  const perClientHoldings = {};
   if (!selectedClients.length) errors.push('Sélectionnez au moins un portefeuille client.');
   if (!selectedTitles.length) errors.push('Sélectionnez au moins un titre.');
   if (mode === 'simple' && selectedTitles.length > 1) errors.push('Le circuit direct simple accepte un seul titre.');
@@ -13600,7 +13642,6 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     });
   });
   if (!proposed.length) errors.push('Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
-  if (sens === 'Vente' && proposed.length) warnings.push('Les quantités détenues et disponibles à la vente ne sont pas contrôlées dans cette maquette : vérification obligatoire avant routage.');
   if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
   const buyAmountsByClient = {};
   if (sens === 'Achat') {
@@ -13619,7 +13660,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     selectedClientObjects.forEach((client) => {
       const estimation = gsmEstimatedCash(client);
       const exposure = buyAmountsByClient[String(client.id)] || 0;
-      perClientCash[String(client.id)] = { ...estimation, exposure };
+      perClientCash[String(client.id)] = {
+        ...estimation, exposure,
+        remaining: estimation.amount == null ? null : estimation.amount - exposure,
+      };
       if (exposure > 0 && estimation.amount == null) {
         warnings.push(`${client.nom} : liquidité non documentée, contrôle manuel requis.`);
       } else if (exposure > estimation.amount + 0.01) {
@@ -13628,6 +13672,51 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     });
     if (proposed.length) warnings.push('Prix de référence, cours, devises et liquidités peuvent provenir de données de démonstration. Contrôler les soldes et frais réels avant tout ordre.');
   }
+  // Une vente peut être ventilée entre plusieurs paliers. Le contrôle se
+  // fait sur la SOMME des quantités du même client / même titre.
+  if (sens === 'Vente') {
+    selectedClientObjects.forEach((client) => {
+      selectedInstrumentObjects.forEach((instrument) => {
+        const key = selectionKey(String(client.id), instrument.nom);
+        const stock = gsmGroupedAvailableHolding(client, instrument);
+        const requested = proposed
+          .filter((line) => line.clientId === String(client.id) && line.titre === instrument.nom)
+          .reduce((sum, line) => sum + line.quantite, 0);
+        const remaining = stock.amount == null ? null : stock.amount - requested;
+        perClientHoldings[key] = { ...stock, requested, remaining };
+        if (requested > 0 && stock.amount == null) {
+          warnings.push(`${client.nom} / ${instrument.nom} : quantité disponible inconnue, contrôle manuel indispensable.`);
+        } else if (requested > 0 && remaining < 0) {
+          errors.push(`${client.nom} / ${instrument.nom} : vente de ${fmt(requested)} titre(s) supérieure aux ${fmt(stock.amount)} disponibles (${stock.source}).`);
+        }
+      });
+    });
+    if (proposed.length) warnings.push('Les positions sans quantité explicite utilisent une estimation de démonstration. Confirmer les quantités détenues, bloquées et déjà engagées avant tout ordre.');
+  }
+  // Vue instantanée client / titre recalculée à chaque frappe, sans réserver
+  // les fonds ni les titres (ces ordres sont seulement des brouillons).
+  const liveBalanceFor = (client, instrument) => {
+    if (sens === 'Achat') {
+      const cash = perClientCash[String(client.id)] || {
+        ...gsmEstimatedCash(client), exposure: 0,
+      };
+      const remaining = cash.amount == null ? null : cash.amount - cash.exposure;
+      return {
+        available: cash.amount, remaining, source: cash.source,
+        blocked: remaining != null && remaining < -0.01,
+        unknown: cash.amount == null, unit: client.devise,
+      };
+    }
+    const holding = perClientHoldings[selectionKey(String(client.id), instrument.nom)] ||
+      { ...gsmGroupedAvailableHolding(client, instrument), requested: 0 };
+    const remaining = holding.amount == null ? null : holding.amount - holding.requested;
+    return {
+      available: holding.amount, remaining, source: holding.source,
+      blocked: remaining != null && remaining < 0,
+      unknown: holding.amount == null, unit: 'titres',
+      indicative: holding.indicative,
+    };
+  };
   const groupsByMarket = proposed.reduce((acc, row) => {
     acc[row.marche] = (acc[row.marche] || 0) + 1;
     return acc;
@@ -13655,6 +13744,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           })),
       })),
       avertissements: [...warnings],
+      soldesAvantSimulation: selectedClientObjects.flatMap((client) =>
+        selectedInstrumentObjects.map((instrument) => ({
+          clientId: String(client.id), titre: instrument.nom, sens,
+          ...liveBalanceFor(client, instrument),
+          nature: 'Projection indicative de brouillon, sans réservation ni exécution',
+        }))
+      ),
       negociateur: mode === 'valorix999' ? { ...negotiatorSettings } : null,
       lignes: proposed.map((row, index) => ({ ...row, id: `${id}-${String(index + 1).padStart(3, '0')}`, statut: 'Brouillon non routé' })),
     };
@@ -13922,28 +14018,76 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <span className="text-[10px]" style={{ color: C.sub }}>Vous pouvez modifier chaque ligne ensuite.</span>
         </div>
         {selectedClients.length > 0 && selectedTitles.length > 0 && (
-          <div className="overflow-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 'min(40vh, 365px)' }}>
-            <table className="w-full" style={{ minWidth: 850 }}>
-              <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
-              <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
-                const key = selectionKey(String(client.id), instrument.nom);
-                return (
-                  <tr key={key} className="border-t" style={{ borderColor: C.line }}>
-                    <Td>{client.nom}</Td><Td>{instrument.nom}</Td>
-                    <Td><input aria-label={`Quantité ${client.nom} ${instrument.nom}`} type="number" min="0" step="1"
-                      value={allocations[key] ?? ''} onChange={(e) => { setAllocations((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
-                      className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="0" /></Td>
-                    <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
-                      ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${mode === 'multi' && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
-                      : 'À définir'}</Td>
-                    <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
-                      value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
-                      className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
-                    <Td>{instrument.devise}</Td>
-                  </tr>
-                );
-              }))}</tbody>
-            </table>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap justify-between">
+              <p className="text-[11px] font-semibold" style={{ color: C.ink }}>
+                Disponibilités recalculées en direct par client et par actif
+              </p>
+              <span className="text-[10px]" style={{ color: C.sub }}>
+                {sens === 'Achat' ? 'Le solde projeté cumule tous les achats du client, tous titres confondus (hors frais).' : 'Le solde titres projeté cumule les paliers du même client et du même titre.'}
+              </span>
+            </div>
+            <div className="overflow-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 'min(40vh, 365px)' }}>
+              <table className="w-full" style={{ minWidth: 1190 }}>
+                <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
+                  <Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th>
+                  <Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th>
+                  <Th>{sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
+                  <Th>{sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
+                  <Th>Contrôle</Th>
+                </tr></thead>
+                <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
+                  const key = selectionKey(String(client.id), instrument.nom);
+                  const quantityRaw = allocations[key] ?? '';
+                  const quantity = Number(quantityRaw || 0);
+                  const invalidQuantity = !Number.isInteger(quantity) || quantity < 0;
+                  const balance = liveBalanceFor(client, instrument);
+                  const rowActive = quantity > 0 && !invalidQuantity;
+                  const alert = rowActive && (balance.blocked || balance.unknown);
+                  const badgeTone = invalidQuantity || (rowActive && balance.blocked) ? 'coral' :
+                    rowActive && balance.unknown ? 'gold' : rowActive ? 'teal' : 'slate';
+                  const badgeText = invalidQuantity ? 'Qté invalide' :
+                    rowActive && balance.blocked ? (sens === 'Achat' ? 'Liquidité insuffisante' : 'Titres insuffisants') :
+                    rowActive && balance.unknown ? 'Solde inconnu' : rowActive ? 'Capacité indicative OK' : 'Non saisi';
+                  return (
+                    <tr key={key} className="border-t" style={{ borderColor: C.line, background: alert ? '#FFF6F3' : 'transparent' }}>
+                      <Td>{client.nom}</Td><Td>{instrument.nom}</Td>
+                      <Td>
+                        <input aria-label={`Quantité ${client.nom} ${instrument.nom}`} type="number" min="0" step="1"
+                          aria-invalid={invalidQuantity || (rowActive && balance.blocked)}
+                          value={quantityRaw} onChange={(e) => { setAllocations((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
+                          className="w-24 px-2 py-1.5 border rounded-lg text-xs"
+                          style={{ ...inputStyle, borderColor: alert || invalidQuantity ? C.coral : C.line }} placeholder="0" />
+                      </Td>
+                      <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
+                        ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${mode === 'multi' && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
+                        : 'À définir'}</Td>
+                      <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
+                        value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
+                        className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
+                      <Td><div className="text-xs font-semibold whitespace-nowrap" style={{ color: C.ink, ...F_MONO }}>
+                        {balance.available == null ? 'Non connu' : `${fmt(balance.available)} ${balance.unit}`}
+                      </div><div className="text-[9px]" style={{ color: C.sub }}>{balance.source}</div></Td>
+                      <Td><div aria-live="polite" className="text-xs font-bold whitespace-nowrap"
+                        style={{ color: balance.blocked ? C.coral : balance.unknown ? C.gold : C.teal, ...F_MONO }}>
+                        {balance.remaining == null ? 'Non calculable' : `${fmt(balance.remaining)} ${balance.unit}`}
+                      </div><span className="text-[9px]" style={{ color: C.sub }}>Projection du lot complet</span></Td>
+                      <Td><Badge tone={badgeTone}>{badgeText}</Badge></Td>
+                    </tr>
+                  );
+                }))}</tbody>
+              </table>
+            </div>
+            {(sens === 'Achat' ? selectedClientObjects.some((client) => perClientCash[String(client.id)]?.remaining < -0.01) :
+              Object.values(perClientHoldings).some((position) => position.remaining != null && position.remaining < 0)) && (
+              <div role="alert" className="p-2 rounded-xl text-xs font-semibold" style={{ background: '#FBE9E7', color: C.coral }}>
+                Opération impossible avec les disponibilités indiquées : diminuez les quantités ou corrigez les prix.
+                L'enregistrement du brouillon est bloqué tant que le dépassement persiste.
+              </div>
+            )}
+            <p className="text-[10px]" style={{ color: C.sub }}>
+              Calculs indicatifs et non réservés. Les espèces et positions issues des données de démonstration doivent être confirmées dans Valorix / la base de portefeuille ; commissions, taxes et ordres déjà engagés ne sont pas déduits.
+            </p>
           </div>
         )}
       </Card>
@@ -14006,16 +14150,31 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         {warnings.length > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBF1DD', maxHeight: 108 }}>
           {Array.from(new Set(warnings)).map((warning, idx) => <p key={idx} className="text-xs" style={{ color: '#75540C' }}>• {warning}</p>)}
         </div>}
-        {sens === 'Achat' && selectedClientObjects.length > 0 && proposed.length > 0 && (
-          <div className="overflow-auto" style={{ maxHeight: 210 }}><table className="w-full" style={{ minWidth: 680 }}>
-            <thead><tr><Th>Client</Th><Th>Engagement estimé (devise compte)</Th><Th>Liquidité indicative</Th><Th>Vérification</Th></tr></thead>
-            <tbody>{selectedClientObjects.filter((c) => perClientCash[String(c.id)]?.exposure > 0).map((client) => {
+        {selectedClientObjects.length > 0 && proposed.length > 0 && (
+          <div className="overflow-auto" style={{ maxHeight: 210 }}><table className="w-full" style={{ minWidth: 700 }}>
+            <thead><tr><Th>Client</Th><Th>{sens === 'Achat' ? 'Engagement estimé' : 'Titre'}</Th>
+              <Th>{sens === 'Achat' ? 'Disponible avant lot' : 'Titres disponibles'}</Th>
+              <Th>{sens === 'Achat' ? 'Liquidité restante' : 'Titres restants'}</Th><Th>Vérification</Th></tr></thead>
+            <tbody>{sens === 'Achat' ? selectedClientObjects.filter((c) => perClientCash[String(c.id)]?.exposure > 0).map((client) => {
               const balance = perClientCash[String(client.id)];
-              const enough = balance.amount == null ? null : balance.exposure <= balance.amount;
+              const enough = balance.remaining == null ? null : balance.remaining >= -0.01;
               return <tr key={client.id} className="border-t" style={{ borderColor: C.line }}><Td>{client.nom}</Td>
-                <Td mono>{fmt(balance.exposure)} {client.devise}</Td><Td mono>{balance.amount == null ? 'Non connue' : `${fmt(balance.amount)} ${client.devise}`}</Td>
-                <Td><Badge tone={enough === false ? 'coral' : 'gold'}>{enough === false ? 'Dépassement' : 'À confirmer'}</Badge></Td></tr>;
-            })}</tbody>
+                <Td mono>{fmt(balance.exposure)} {client.devise}</Td>
+                <Td mono>{balance.amount == null ? 'Non connue' : `${fmt(balance.amount)} ${client.devise}`}</Td>
+                <Td mono><span style={{ color: enough === false ? C.coral : C.teal }}>{balance.remaining == null ? '—' : `${fmt(balance.remaining)} ${client.devise}`}</span></Td>
+                <Td><Badge tone={enough === false ? 'coral' : enough == null ? 'gold' : 'teal'}>{enough === false ? 'Insuffisant' : enough == null ? 'À vérifier' : 'Indicatif OK'}</Badge></Td></tr>;
+            }) : selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
+              const position = perClientHoldings[selectionKey(String(client.id), instrument.nom)];
+              if (!position?.requested) return null;
+              return <tr key={`${client.id}-${instrument.nom}`} className="border-t" style={{ borderColor: C.line }}>
+                <Td>{client.nom}</Td><Td>{instrument.nom} · {fmt(position.requested)} à vendre</Td>
+                <Td mono>{position.amount == null ? 'Inconnu' : `${fmt(position.amount)} titres`}</Td>
+                <Td mono><span style={{ color: position.remaining < 0 ? C.coral : C.teal }}>{position.remaining == null ? '—' : `${fmt(position.remaining)} titres`}</span></Td>
+                <Td><Badge tone={position.remaining == null ? 'gold' : position.remaining < 0 ? 'coral' : 'teal'}>
+                  {position.remaining == null ? 'À vérifier' : position.remaining < 0 ? 'Insuffisant' : 'Indicatif OK'}
+                </Badge></Td>
+              </tr>;
+            }))}</tbody>
           </table></div>
         )}
         <div className="flex gap-2 flex-wrap">
