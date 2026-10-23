@@ -13645,13 +13645,6 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <Btn tone="ghost" onClick={() => go('carnet')}>Voir le carnet d’ordres</Btn>
         </div>
       </div>
-      <Card className="p-4" style={{ borderColor: C.gold, background: '#FFFCF5' }}>
-        <p className="text-xs" style={{ color: '#75540C' }}>
-          <b>Important :</b> ce composant ne route aucun ordre sur le marché et n’écrit pas dans Valorix.
-          Les cours et liquidités de la maquette sont indicatifs. Les contrôles réels (espèces par devise,
-          positions à la vente, frais, risques, conformité, droits et synchronisation OMS) restent à raccorder.
-        </p>
-      </Card>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
         {GSM_GROUPED_OPTIONS.map((option) => (
