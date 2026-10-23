@@ -13416,6 +13416,18 @@ const gsmGroupedCsv = (draft) => {
   );
 };
 
+// Valeur indicative pour préremplir un prix limite à la sélection du titre.
+// L'univers CLIENT_TRADABLE_MARKETS actuel provient de la maquette :
+// ce n'est PAS un prix limite réglementaire ni une cotation de marché live.
+const gsmGroupedReferencePrice = (instrument, field = 'cours') => {
+  const value = Number(instrument?.[field]);
+  return Number.isFinite(value) && value > 0 ? String(value) : '';
+};
+
+const gsmGroupedInitialTitleSettings = (instrument) => ({
+  tranches: [{ id: 'A', prix: gsmGroupedReferencePrice(instrument), part: 100 }],
+});
+
 const gsmEstimatedCash = (client) => {
   const explicit = Number(
     client?.liquiditeDisponibleNette ?? client?.liquiditeDisponible ??
@@ -13465,7 +13477,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     (market === 'Tous' || item.marche === market) &&
     `${item.nom} ${item.marche} ${item.type}`.toLocaleLowerCase('fr').includes(searchTitles.toLocaleLowerCase('fr'))
   );
-  const settingsFor = (titre) => titleSettings[titre] || { tranches: [{ id: 'A', prix: '', part: 100 }] };
+  const settingsFor = (titre) => titleSettings[titre] ||
+    gsmGroupedInitialTitleSettings(instruments.find((instrument) => instrument.nom === titre));
   const selectionKey = (clientId, title) => `${clientId}::${title}`;
   const setSettings = (titre, setting) => {
     setTitleSettings((current) => ({ ...current, [titre]: setting }));
@@ -13477,6 +13490,16 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     setPreview(false); setSaveMessage('');
   };
   const toggleTitle = (titre) => {
+    const alreadySelected = selectedTitles.includes(titre);
+    // On préremplit UNE FOIS au moment de la sélection : une modification
+    // ultérieure du cours de référence n'écrase jamais le choix du gestionnaire.
+    if (!alreadySelected) {
+      const instrument = instruments.find((item) => item.nom === titre);
+      setTitleSettings((current) => current[titre] ? current : {
+        ...current,
+        [titre]: gsmGroupedInitialTitleSettings(instrument),
+      });
+    }
     setSelectedTitles((current) => current.includes(titre)
       ? current.filter((name) => name !== titre)
       : mode === 'simple' ? [titre] : [...current, titre]);
@@ -13617,6 +13640,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     const batch = {
       id, mode, sens, createdAt: now.toISOString(), statut: 'Brouillon non routé',
       clients: [...selectedClients], titres: [...selectedTitles],
+      // Instantané des limites retenues pour chaque titre du lot.
+      // Les lignes individuelles conservent aussi leur propre bornePrix.
+      limitesTitres: selectedInstrumentObjects.map((instrument) => ({
+        titre: instrument.nom, marche: instrument.marche, devise: instrument.devise,
+        coursReferenceIndicatif: Number(instrument.cours) || null,
+        tranches: (mode === 'multi' ? settingsFor(instrument.nom).tranches
+          : settingsFor(instrument.nom).tranches.slice(0, 1)).map((tranche) => ({
+            prixLimite: Number(tranche.prix),
+            repartition: mode === 'multi' ? Number(tranche.part) : 100,
+          })),
+      })),
       avertissements: [...warnings],
       negociateur: mode === 'valorix999' ? { ...negotiatorSettings } : null,
       lignes: proposed.map((row, index) => ({ ...row, id: `${id}-${String(index + 1).padStart(3, '0')}`, statut: 'Brouillon non routé' })),
@@ -13720,12 +13754,87 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     <div className="text-xs font-semibold truncate" style={{ color: C.ink }}>{instrument.nom}</div>
                     <div className="text-[10px]" style={{ color: C.sub }}>{instrument.marche} · {instrument.type}</div>
                   </div>
-                  <span className="text-[10px] shrink-0" style={{ color: C.sub }}>Réf. maquette : {fmtPrice(instrument.cours)} {instrument.devise}</span>
+                  <span className="text-[10px] shrink-0" style={{ color: C.sub }}>Cours actuel : {fmtPrice(instrument.cours)} {instrument.devise}</span>
                 </label>
               );
             })}
           </div>
           {mode === 'simple' && <p className="text-[10px]" style={{ color: C.sub }}>Le circuit simple autorise un seul titre, mais plusieurs portefeuilles.</p>}
+          {selectedInstrumentObjects.length > 0 && (
+            <div className="pt-3 mt-2 space-y-2 border-t" style={{ borderColor: C.line }}>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h4 className="text-xs font-bold" style={{ color: C.ink }}>Prix limites des titres sélectionnés</h4>
+                <Badge tone="gold">{selectedInstrumentObjects.length} titre(s) à paramétrer</Badge>
+              </div>
+              <p className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
+                Un prix est proposé à partir du cours de référence de la maquette dès la sélection.
+                Modifiez-le ici : la valeur est reprise automatiquement à l’étape 3, dans les contrôles et dans les brouillons.
+              </p>
+              <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 330 }}>
+                {selectedInstrumentObjects.map((instrument) => {
+                  const setting = settingsFor(instrument.nom);
+                  const first = setting.tranches[0];
+                  const reference = gsmGroupedReferencePrice(instrument);
+                  const low = gsmGroupedReferencePrice(instrument, 'coursMin');
+                  const high = gsmGroupedReferencePrice(instrument, 'coursMax');
+                  const p = Number(first?.prix);
+                  const pct = Number(reference) > 0 && p > 0
+                    ? (p / Number(reference) - 1) * 100 : null;
+                  const applyReference = (price) => {
+                    if (first && price) updateTranche(instrument.nom, first.id, 'prix', price);
+                  };
+                  return (
+                    <div key={`limite-${instrument.nom}`} className="rounded-xl border p-3 space-y-2"
+                      style={{ borderColor: C.line, background: '#FAFAFC' }}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <div className="text-xs font-bold" style={{ color: C.ink }}>{instrument.nom}</div>
+                          <div className="text-[10px]" style={{ color: C.sub }}>
+                            {instrument.marche} · {instrument.devise} · Cours réf. indicatif : {reference ? fmtPrice(Number(reference)) : '—'}
+                          </div>
+                        </div>
+                        <button type="button" onClick={() => toggleTitle(instrument.nom)}
+                          className="text-[10px] font-semibold" style={{ color: C.coral }}>Retirer</button>
+                      </div>
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <label className="text-[11px] min-w-[150px] flex-1" style={{ color: C.sub }}>
+                          {mode === 'valorix999' ? 'Borne limite de sécurité' : 'Prix limite principal'} ({instrument.devise})
+                          <input type="number" min="0.0001" step="any" value={first?.prix ?? ''}
+                            aria-label={`Prix limite sélection ${instrument.nom}`}
+                            onChange={(e) => first && updateTranche(instrument.nom, first.id, 'prix', e.target.value)}
+                            className="mt-1 w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle}
+                            placeholder="Renseigner un prix limite" />
+                        </label>
+                        <button type="button" disabled={!reference} onClick={() => applyReference(reference)}
+                          className="px-2.5 py-2 border rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                          style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>Cours réf.</button>
+                        <button type="button" disabled={!low} onClick={() => applyReference(low)}
+                          className="px-2.5 py-2 border rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                          style={{ borderColor: C.line, color: C.sub, background: '#fff' }}>Bas indicatif</button>
+                        <button type="button" disabled={!high} onClick={() => applyReference(high)}
+                          className="px-2.5 py-2 border rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                          style={{ borderColor: C.line, color: C.sub, background: '#fff' }}>Haut indicatif</button>
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-[10px]" style={{ color: pct == null ? C.sub : pct > 0 ? C.coral : C.teal }}>
+                          {pct == null ? 'Prix à définir' : `Écart au cours réf. : ${pct > 0 ? '+' : ''}${pct.toFixed(2)} %`}
+                        </span>
+                        {mode === 'multi' && setting.tranches.length > 1 && (
+                          <span className="text-[10px]" style={{ color: C.indigo }}>
+                            {setting.tranches.length} paliers · autres limites paramétrables à l’étape 3
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px]" style={{ color: C.coral }}>
+                Les prix préremplis et les niveaux bas/haut sont indicatifs et simulés, non des cotations live,
+                des limites de fluctuation officielles ou des contreparties garanties. Le gestionnaire doit les valider.
+              </p>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -13787,8 +13896,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
         {selectedClients.length > 0 && selectedTitles.length > 0 && (
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line }}>
-            <table className="w-full" style={{ minWidth: 720 }}>
-              <thead style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
+            <table className="w-full" style={{ minWidth: 850 }}>
+              <thead style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
               <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
                 const key = selectionKey(String(client.id), instrument.nom);
                 return (
@@ -13797,6 +13906,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     <Td><input aria-label={`Quantité ${client.nom} ${instrument.nom}`} type="number" min="0" step="1"
                       value={allocations[key] ?? ''} onChange={(e) => { setAllocations((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
                       className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="0" /></Td>
+                    <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
+                      ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${mode === 'multi' && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
+                      : 'À définir'}</Td>
                     <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
                       value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
                       className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
