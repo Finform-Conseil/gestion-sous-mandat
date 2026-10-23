@@ -13460,6 +13460,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [preview, setPreview] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [draftExpanded, setDraftExpanded] = useState(false);
+  // Parcours en trois vues : on conserve les états lors des changements d’onglet.
+  const [activeStep, setActiveStep] = useState(1);
 
   // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
   const clients = Array.isArray(CLIENTS) ? CLIENTS : [];
@@ -13486,6 +13488,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   };
   const changeMode = (next) => {
     setMode(next);
+    setActiveStep(1);
     if (next === 'simple') setSelectedTitles((previous) => previous.slice(0, 1));
     setPreview(false); setSaveMessage('');
   };
@@ -13663,16 +13666,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const panel = { borderColor: C.line, background: '#fff' };
   const inputStyle = { borderColor: C.line, color: C.ink, background: '#fff', ...F_BODY };
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <Breadcrumb items={['Accueil', 'Ordre groupé']} />
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <Eyebrow>Gestion sous mandat · Négociation</Eyebrow>
-          <h2 className="text-2xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Ordre groupé</h2>
-          <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-            Sélectionnez le circuit, les clients et les titres. Préparez les prix et les quantités,
-            contrôlez les engagements puis enregistrez un carnet en brouillon.
-          </p>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Ordre groupé</h2>
+          <p className="text-[11px] mt-0.5" style={{ color: C.sub }}>Sélection · Prix limites et quantités · Validation du brouillon</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge tone="gold">Simulation / brouillon</Badge>
@@ -13680,23 +13680,39 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="group" aria-label="Circuit d'exécution">
         {GSM_GROUPED_OPTIONS.map((option) => (
           <button key={option.id} type="button" onClick={() => changeMode(option.id)}
-            className="rounded-2xl border p-4 text-left transition-all hover:shadow-sm"
+            aria-pressed={mode === option.id}
+            className="rounded-xl border px-3 py-2 text-left transition-all"
             style={{ borderColor: mode === option.id ? C.gold : C.line, background: mode === option.id ? '#FFF9ED' : '#fff', borderWidth: mode === option.id ? 2 : 1 }}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-bold" style={{ color: C.ink, ...F_DISPLAY }}>{option.title}</span>
-              {mode === option.id && <Badge tone="gold">Sélectionné</Badge>}
-            </div>
-            <div className="text-xs font-semibold mt-2" style={{ color: C.indigo }}>{option.subtitle}</div>
-            <p className="text-[11px] leading-relaxed mt-2" style={{ color: C.sub }}>{option.description}</p>
+            <div className="text-xs font-bold" style={{ color: C.ink }}>{option.title}</div>
+            <div className="text-[10px] truncate mt-0.5" style={{ color: C.sub }}>{option.subtitle}</div>
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card className="p-4 space-y-3" style={panel}>
+      <div className="rounded-xl border bg-white p-2 flex items-center gap-2 flex-wrap" style={{ borderColor: C.line }}>
+        {[
+          { id: 1, title: 'Sélection', detail: `${selectedClients.length} clients · ${selectedTitles.length} titres` },
+          { id: 2, title: 'Prix & quantités', detail: 'Limites et paliers' },
+          { id: 3, title: 'Contrôle & brouillons', detail: `${proposed.length} instructions` },
+        ].map((step) => (
+          <button key={step.id} type="button" onClick={() => setActiveStep(step.id)}
+            aria-current={activeStep === step.id ? 'step' : undefined}
+            className="flex-1 min-w-[145px] rounded-lg px-3 py-2 text-left transition-colors"
+            style={{ background: activeStep === step.id ? C.navy : '#F5F6F9', color: activeStep === step.id ? '#fff' : C.ink }}>
+            <span className="text-xs font-bold">{step.id}. {step.title}</span>
+            <span className="block text-[10px] opacity-80">{step.detail}</span>
+          </button>
+        ))}
+        <Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles OK'}</Badge>
+      </div>
+
+      {activeStep === 1 && (
+        <div className="space-y-2">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
+        <Card className="p-3 space-y-2" style={panel}>
           <div className="flex justify-between items-center gap-2 flex-wrap">
             <h3 className="text-sm font-bold" style={{ color: C.ink }}>1. Portefeuilles clients</h3>
             <Badge tone="navy">{selectedClients.length} sélectionné(s)</Badge>
@@ -13709,7 +13725,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <button type="button" onClick={() => { setSelectedClients((current) => current.filter((id) => !filteredClients.some((c) => String(c.id) === id))); setPreview(false); }}
               className="font-semibold" style={{ color: C.sub }}>Désélectionner (filtre)</button>
           </div>
-          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: 252 }}>
+          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: "min(48vh, 380px)" }}>
             {filteredClients.map((client) => {
               const checked = selectedClients.includes(String(client.id));
               const cash = gsmEstimatedCash(client);
@@ -13730,7 +13746,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         </Card>
 
-        <Card className="p-4 space-y-3" style={panel}>
+        <Card className="p-3 space-y-2" style={panel}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-sm font-bold" style={{ color: C.ink }}>2. Sélection des titres</h3>
             <Badge tone="navy">{selectedTitles.length} titre(s)</Badge>
@@ -13742,7 +13758,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               {['Tous','BRVM','NGX','GSE'].map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </div>
-          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: 284 }}>
+          <div className="overflow-y-auto space-y-1 pr-1" style={{ maxHeight: 156 }}>
             {filteredInstruments.map((instrument) => {
               const checked = selectedTitles.includes(instrument.nom);
               return (
@@ -13766,11 +13782,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 <h4 className="text-xs font-bold" style={{ color: C.ink }}>Prix limites des titres sélectionnés</h4>
                 <Badge tone="gold">{selectedInstrumentObjects.length} titre(s) à paramétrer</Badge>
               </div>
-              <p className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
-                Un prix est proposé à partir du cours de référence de la maquette dès la sélection.
-                Modifiez-le ici : la valeur est reprise automatiquement à l’étape 3, dans les contrôles et dans les brouillons.
+              <p className="text-[10px]" style={{ color: C.sub }}>
+                Modifiez ici les limites préremplies ; elles sont conservées dans les étapes suivantes.
               </p>
-              <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 330 }}>
+              <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 180 }}>
                 {selectedInstrumentObjects.map((instrument) => {
                   const setting = settingsFor(instrument.nom);
                   const first = setting.tranches[0];
@@ -13784,7 +13799,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     if (first && price) updateTranche(instrument.nom, first.id, 'prix', price);
                   };
                   return (
-                    <div key={`limite-${instrument.nom}`} className="rounded-xl border p-3 space-y-2"
+                    <div key={`limite-${instrument.nom}`} className="rounded-xl border p-2 space-y-1"
                       style={{ borderColor: C.line, background: '#FAFAFC' }}>
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         <div>
@@ -13830,15 +13845,23 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 })}
               </div>
               <p className="text-[10px]" style={{ color: C.coral }}>
-                Les prix préremplis et les niveaux bas/haut sont indicatifs et simulés, non des cotations live,
-                des limites de fluctuation officielles ou des contreparties garanties. Le gestionnaire doit les valider.
+                Prix et bornes indicatifs (simulation), à vérifier avant tout ordre réel.
               </p>
             </div>
           )}
         </Card>
       </div>
+      <div className="flex justify-end">
+        <button type="button" onClick={() => setActiveStep(2)} className="px-4 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+          Suivant · Prix & quantités →
+        </button>
+      </div>
+        </div>
+      )}
 
-      <Card className="p-4 space-y-4" style={panel}>
+      {activeStep === 2 && (
+        <div className="space-y-2">
+      <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et quantités</h3>
           <div className="flex items-center gap-2">
@@ -13850,7 +13873,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
         {selectedInstrumentObjects.length === 0 ? (
           <p className="text-xs" style={{ color: C.sub }}>Sélectionnez au moins un titre pour afficher le paramétrage.</p>
-        ) : selectedInstrumentObjects.map((instrument) => {
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 overflow-y-auto pr-1" style={{ maxHeight: 'min(32vh, 320px)' }}>
+          {selectedInstrumentObjects.map((instrument) => {
           const setting = settingsFor(instrument.nom);
           const tranches = mode === 'multi' ? setting.tranches : setting.tranches.slice(0, 1);
           return (
@@ -13886,6 +13911,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             </div>
           );
         })}
+          </div>
+        )}
         <div className="flex gap-2 items-end flex-wrap">
           <label className="text-xs" style={{ color: C.sub }}>Quantité commune (optionnelle)
             <input type="number" min="1" step="1" value={globalQuantity} onChange={(e) => setGlobalQuantity(e.target.value)}
@@ -13895,9 +13922,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <span className="text-[10px]" style={{ color: C.sub }}>Vous pouvez modifier chaque ligne ensuite.</span>
         </div>
         {selectedClients.length > 0 && selectedTitles.length > 0 && (
-          <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line }}>
+          <div className="overflow-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 'min(40vh, 365px)' }}>
             <table className="w-full" style={{ minWidth: 850 }}>
-              <thead style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
+              <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr><Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th><Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th><Th>Devise</Th></tr></thead>
               <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
                 const key = selectionKey(String(client.id), instrument.nom);
                 return (
@@ -13920,9 +13947,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
       </Card>
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" onClick={() => setActiveStep(1)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: C.line, color: C.indigo }}>← Sélection</button>
+        <button type="button" onClick={() => setActiveStep(3)} className="px-4 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>Suivant · Contrôles →</button>
+      </div>
+        </div>
+      )}
 
+      {activeStep === 3 && (
+        <div className="space-y-2">
       {mode === 'valorix999' && (
-        <Card className="p-4 space-y-3" style={{ borderColor: C.gold }}>
+        <Card className="p-3 space-y-2" style={{ borderColor: C.gold }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-sm font-bold" style={{ color: C.ink }}>4. Paramètres du futur automate · Valorix 999</h3>
             <Badge tone="gold">Supervision du négociateur requise</Badge>
@@ -13950,30 +13985,29 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </Card>
       )}
 
-      <Card className="p-4 space-y-3" style={panel}>
+      <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-bold" style={{ color: C.ink }}>{mode === 'valorix999' ? '5' : '4'}. Vérification et préparation du carnet</h3>
           <div className="flex gap-2"><Badge tone="navy">{proposed.length} instruction(s)</Badge><Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles de saisie OK'}</Badge></div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="flex flex-wrap gap-2">
           {[
             ['Portefeuilles', selectedClients.length], ['Titres', selectedTitles.length],
-            ['Lignes préparées', proposed.length], ['Marchés', Object.keys(groupsByMarket).length],
+            ['Instructions', proposed.length], ['Marchés', Object.keys(groupsByMarket).length],
           ].map(([label, value]) => (
-            <div key={label} className="p-3 rounded-xl" style={{ background: '#F5F6F9' }}>
-              <div className="text-[10px]" style={{ color: C.sub }}>{label}</div>
-              <div className="text-lg font-bold" style={{ ...F_MONO, color: C.ink }}>{value}</div>
-            </div>
+            <span key={label} className="px-3 py-1.5 rounded-lg text-[11px]" style={{ background: '#F5F6F9', color: C.ink }}>
+              {label} <b style={F_MONO}>{value}</b>
+            </span>
           ))}
         </div>
-        {errors.length > 0 && <div className="p-3 rounded-xl space-y-1" style={{ background: '#FBE9E7' }}>
+        {errors.length > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBE9E7', maxHeight: 138 }}>
           {Array.from(new Set(errors)).slice(0, 18).map((err, idx) => <p key={idx} className="text-xs" style={{ color: C.coral }}>• {err}</p>)}
         </div>}
-        {warnings.length > 0 && <div className="p-3 rounded-xl space-y-1" style={{ background: '#FBF1DD' }}>
+        {warnings.length > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBF1DD', maxHeight: 108 }}>
           {Array.from(new Set(warnings)).map((warning, idx) => <p key={idx} className="text-xs" style={{ color: '#75540C' }}>• {warning}</p>)}
         </div>}
         {sens === 'Achat' && selectedClientObjects.length > 0 && proposed.length > 0 && (
-          <div className="overflow-x-auto"><table className="w-full" style={{ minWidth: 680 }}>
+          <div className="overflow-auto" style={{ maxHeight: 210 }}><table className="w-full" style={{ minWidth: 680 }}>
             <thead><tr><Th>Client</Th><Th>Engagement estimé (devise compte)</Th><Th>Liquidité indicative</Th><Th>Vérification</Th></tr></thead>
             <tbody>{selectedClientObjects.filter((c) => perClientCash[String(c.id)]?.exposure > 0).map((client) => {
               const balance = perClientCash[String(client.id)];
@@ -14026,6 +14060,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
       </Card>
+      <div className="flex justify-start">
+        <button type="button" onClick={() => setActiveStep(2)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: C.line, color: C.indigo }}>← Prix & quantités</button>
+      </div>
+        </div>
+      )}
     </div>
   );
 }
