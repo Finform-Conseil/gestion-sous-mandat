@@ -13349,11 +13349,13 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
 
 /* -------------------- GSM · ORDRES GROUPÉS (PRÉPARATION) -------------------- */
 /*
- * Trois circuits de préparation, sans envoi simulé comme réel :
+ * Quatre circuits de préparation, sans envoi simulé comme réel :
  * 1) Direct simple : plusieurs clients, un titre, un prix limite commun.
  * 2) Direct multicritère : plusieurs clients/titres, tranches de prix par titre,
  *    enveloppes et plafonds individuels.
- * 3) Valorix 999 : grand volume, paramètres d'un automate supervisé, mais
+ * 3) Pré-carnet : regroupement par marché/titre/sens/prix, références,
+ *    validation interne, simulation de routage/exécutions et allocation au prorata.
+ * 4) Valorix 999 : grand volume, paramètres d'un automate supervisé, mais
  *    aucune interface Valorix, flux de carnet temps réel ni routeur réel ici.
  * Les lignes sont des BROUILLONS, pas des ordres exécutés/routés.
  */
@@ -13370,6 +13372,12 @@ const GSM_GROUPED_OPTIONS = [
     title: 'Option 1 améliorée · Direct multicritère',
     subtitle: 'Plusieurs titres, plusieurs prix, plusieurs clients',
     description: 'Une seule préparation génère des instructions distinctes par portefeuille, titre et tranche de prix.',
+  },
+  {
+    id: 'precarnet',
+    title: 'Option 2 · Pré-carnet & routage groupé',
+    subtitle: 'Consolider par titre et prix · références · allocation',
+    description: 'Les instructions restent individuelles ; les ordres de marché sont regroupés par titre, prix, sens et marché. Validation et affectation traçables.',
   },
   {
     id: 'valorix999',
@@ -13406,7 +13414,7 @@ const gsmGroupedCsv = (draft) => {
       draft.id, GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || draft.mode,
       draft.mode === 'valorix999' ? '999' : '',
       line.client, line.clientId, line.marche, line.titre, line.sens, line.quantite,
-      line.bornePrix, line.devise, 'Brouillon non routé', line.id,
+      line.bornePrix, line.devise, draft.statut || 'Brouillon non routé', line.id,
     ]),
   ];
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13414,6 +13422,150 @@ const gsmGroupedCsv = (draft) => {
     new Blob(['\uFEFF', rows.map((row) => row.map(escape).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }),
     `ordres-groupes-${exportSafeFileName(draft.id)}.csv`
   );
+};
+
+
+// OPTION 2 : le pré-carnet est une simulation locale explicite ; les références
+// sont internes. Aucun ordre n'est routé, exécuté ou affecté dans Valorix.
+// Les regroupements respectent marché + titre + sens + devise + prix limite
+// + validité : des instructions incompatibles ne sont jamais agrégées.
+const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
+  const groups = [];
+  const byKey = new Map();
+  lines.forEach((line) => {
+    const price = Number(line.bornePrix);
+    const key = JSON.stringify([line.marche, line.titre, line.sens, line.devise, price, validite]);
+    let group = byKey.get(key);
+    if (!group) {
+      const index = groups.length + 1;
+      group = {
+        id: `${batchId}-GRP-${String(index).padStart(3, '0')}`,
+        marche: line.marche, titre: line.titre, sens: line.sens,
+        devise: line.devise, prixLimite: price, validite,
+        quantiteDemandee: 0, instructions: [], executions: [],
+      };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.quantiteDemandee += Number(line.quantite);
+    group.instructions.push({
+      referenceInstruction: line.id, clientId: line.clientId,
+      client: line.client, quantiteDemandee: Number(line.quantite),
+      prixLimite: price,
+    });
+  });
+  return {
+    id: `PRC-${batchId}`, statut: 'En préparation',
+    validite, controle: null, routageSimuleAt: null, groupes: groups,
+    journal: [{ at: new Date().toISOString(), action: 'Pré-carnet créé (local)' }],
+  };
+};
+
+const gsmPreCarnetGroupFilled = (group) => (group.executions || [])
+  .reduce((total, execution) => total + Number(execution.quantite || 0), 0);
+
+// Allocation progressive par prorata des besoins ENCORE ouverts. Le calcul
+// en nombres entiers conserve exactement le volume exécuté et n'alloue
+// jamais au-delà de la quantité demandée pour une instruction client.
+const gsmAllocatePreCarnetExecution = (group, quantity) => {
+  const already = {};
+  (group.executions || []).forEach((execution) =>
+    (execution.allocations || []).forEach((a) => {
+      already[a.referenceInstruction] = (already[a.referenceInstruction] || 0) + a.quantite;
+    })
+  );
+  const demand = group.instructions.map((inst) => ({
+    ...inst, remaining: Math.max(0, inst.quantiteDemandee - (already[inst.referenceInstruction] || 0)),
+  }));
+  const total = demand.reduce((sum, inst) => sum + inst.remaining, 0);
+  if (!Number.isInteger(quantity) || quantity <= 0 || quantity > total) throw new Error('Quantité exécutée invalide.');
+  const distributed = demand.map((inst) => {
+    const exact = quantity * inst.remaining / total;
+    const taken = Math.min(inst.remaining, Math.floor(exact));
+    return { ...inst, taken, fraction: exact - taken };
+  });
+  let left = quantity - distributed.reduce((sum, inst) => sum + inst.taken, 0);
+  const candidates = [...distributed].sort((a, b) =>
+    b.fraction - a.fraction || String(a.referenceInstruction).localeCompare(String(b.referenceInstruction)));
+  while (left > 0) {
+    let advanced = false;
+    for (const inst of candidates) {
+      if (left <= 0) break;
+      if (inst.taken < inst.remaining) { inst.taken += 1; left -= 1; advanced = true; }
+    }
+    if (!advanced) throw new Error('Répartition impossible avec les quantités disponibles.');
+  }
+  return distributed.filter((inst) => inst.taken > 0).map((inst) => ({
+    referenceInstruction: inst.referenceInstruction, clientId: inst.clientId,
+    client: inst.client, quantite: inst.taken,
+  }));
+};
+
+const gsmSimulatePreCarnetFill = (draft, groupId, rawQuantity, rawPrice) => {
+  if (draft?.mode !== 'precarnet' || !draft?.precarnet?.routageSimuleAt) {
+    throw new Error('Validez le pré-carnet et lancez la simulation de routage avant une exécution.');
+  }
+  const group = draft.precarnet.groupes.find((g) => g.id === groupId);
+  if (!group) throw new Error('Ordre groupé introuvable.');
+  const quantity = Number(rawQuantity);
+  const price = Number(rawPrice);
+  const remaining = group.quantiteDemandee - gsmPreCarnetGroupFilled(group);
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining) {
+    throw new Error(`La quantité doit être un entier compris entre 1 et ${remaining}.`);
+  }
+  if (!Number.isFinite(price) || price <= 0) throw new Error('Prix exécuté simulé invalide.');
+  if (group.sens === 'Achat' ? price > group.prixLimite : price < group.prixLimite) {
+    throw new Error('Le prix simulé est incompatible avec la limite du groupe.');
+  }
+  const executionId = `${group.id}-EX-${String(group.executions.length + 1).padStart(3, '0')}`;
+  const allocation = gsmAllocatePreCarnetExecution(group, quantity);
+  const execution = {
+    id: executionId, quantite: quantity, prix: price,
+    at: new Date().toISOString(), statut: 'Exécution simulée — non réelle',
+    allocations: allocation.map((a) => ({ ...a,
+      referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
+      statut: 'Affectation simulée — non transmise à Valorix',
+    })),
+  };
+  const groupes = draft.precarnet.groupes.map((g) =>
+    g.id === groupId ? { ...g, executions: [...g.executions, execution] } : g);
+  const allComplete = groupes.every((g) => gsmPreCarnetGroupFilled(g) === g.quantiteDemandee);
+  return { ...draft,
+    statut: allComplete ? 'Exécution complète (simulation)' : 'Exécution partielle (simulation)',
+    precarnet: { ...draft.precarnet,
+      statut: allComplete ? 'Exécution complète (simulation)' : 'Exécution partielle (simulation)',
+      groupes,
+      journal: [...draft.precarnet.journal, {
+        at: execution.at, action: `${executionId} · ${quantity} titre(s) à ${price} · allocation simulée`,
+      }],
+    },
+  };
+};
+
+const gsmExportPreCarnetCsv = (draft) => {
+  const pc = draft?.precarnet;
+  if (!pc) return;
+  const rows = [['Nature','Référence pré-carnet','Référence groupe','Référence instruction','Référence exécution',
+    'Référence affectation','Compte','Client','Marché','Titre','Sens','Prix limite','Prix exécuté simulé',
+    'Qté demandée','Qté exécutée/affectée','Devise','Validité','Statut']];
+  pc.groupes.forEach((group) => {
+    rows.push(['GROUPE', pc.id, group.id, '', '', '', '', '', group.marche, group.titre,
+      group.sens, group.prixLimite, '', group.quantiteDemandee, gsmPreCarnetGroupFilled(group),
+      group.devise, group.validite, pc.statut]);
+    group.instructions.forEach((inst) => rows.push(['INSTRUCTION', pc.id, group.id,
+      inst.referenceInstruction, '', '', inst.clientId, inst.client, group.marche, group.titre,
+      group.sens, inst.prixLimite, '', inst.quantiteDemandee, '', group.devise, group.validite,
+      'Instruction pré-carnet']));
+    group.executions.forEach((exec) => exec.allocations.forEach((a) => rows.push([
+      'AFFECTATION_SIMULÉE', pc.id, group.id, a.referenceInstruction, exec.id,
+      a.referenceAffectation, a.clientId, a.client, group.marche, group.titre,
+      group.sens, group.prixLimite, exec.prix, '', a.quantite, group.devise,
+      group.validite, a.statut,
+    ])));
+  });
+  const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  exportDownloadBlob(new Blob(['\uFEFF', rows.map((r) => r.map(escapeCsv).join(';')).join('\r\n')],
+    { type: 'text/csv;charset=utf-8' }), `precarnet-${exportSafeFileName(pc.id)}.csv`);
 };
 
 // Valeur indicative pour préremplir un prix limite à la sélection du titre.
@@ -13503,6 +13655,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [draftExpanded, setDraftExpanded] = useState(false);
   // Parcours en trois vues : on conserve les états lors des changements d’onglet.
   const [activeStep, setActiveStep] = useState(1);
+  const [preCarnetValidity, setPreCarnetValidity] = useState('Jour');
+  const [preCarnetValidator, setPreCarnetValidator] = useState('');
+  const [preCarnetConfirm, setPreCarnetConfirm] = useState(false);
+  const [preCarnetSelectedId, setPreCarnetSelectedId] = useState(null);
+  const [preCarnetFills, setPreCarnetFills] = useState({});
+  const [preCarnetMessage, setPreCarnetMessage] = useState('');
 
   // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
   const clients = Array.isArray(CLIENTS) ? CLIENTS : [];
@@ -13596,13 +13754,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     if (!(Number(negotiatorSettings.minDelay) >= 1)) errors.push('La temporisation doit être au moins d’une seconde.');
   }
   selectedInstrumentObjects.forEach((instrument) => {
-    const tranches = mode === 'multi' ? settingsFor(instrument.nom).tranches : settingsFor(instrument.nom).tranches.slice(0, 1);
+    const tranches = (mode === 'multi' || mode === 'precarnet') ? settingsFor(instrument.nom).tranches : settingsFor(instrument.nom).tranches.slice(0, 1);
     if (tranches.some((tranche) => !(Number(tranche.prix) > 0))) {
       errors.push(`Renseignez un prix limite${mode === 'valorix999' ? ' de sécurité' : ''} pour ${instrument.nom}.`);
       return;
     }
-    const parts = mode === 'multi' ? tranches.map((t) => Number(t.part)) : [100];
-    if (mode === 'multi' && (
+    const parts = (mode === 'multi' || mode === 'precarnet') ? tranches.map((t) => Number(t.part)) : [100];
+    if ((mode === 'multi' || mode === 'precarnet') && (
       parts.some((p) => !Number.isFinite(p) || p < 0 || p > 100) ||
       Math.abs(parts.reduce((sum, p) => sum + p, 0) - 100) > 0.01
     )) errors.push(`Les répartitions des tranches de ${instrument.nom} doivent totaliser 100 %.`);
@@ -13623,7 +13781,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       let remainder = quantity;
       tranches.forEach((tranche, index) => {
         const unitPrice = Number(tranche.prix);
-        const part = mode === 'multi' ? Number(tranche.part) : 100;
+        const part = (mode === 'multi' || mode === 'precarnet') ? Number(tranche.part) : 100;
         if (!(unitPrice > 0) || !Number.isFinite(part) || part < 0 || part > 100) return;
         const qty = index === tranches.length - 1 ? remainder : Math.min(remainder, Math.floor(quantity * part / 100));
         remainder -= qty;
@@ -13642,6 +13800,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     });
   });
   if (!proposed.length) errors.push('Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
+  if (mode === 'precarnet' && proposed.length) warnings.push('Pré-carnet préparé localement : le routage, les exécutions et les affectations dans Valorix ne sont PAS connectés. Les simulations sont purement illustratives.');
   if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
   const buyAmountsByClient = {};
   if (sens === 'Achat') {
@@ -13737,10 +13896,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       limitesTitres: selectedInstrumentObjects.map((instrument) => ({
         titre: instrument.nom, marche: instrument.marche, devise: instrument.devise,
         coursReferenceIndicatif: Number(instrument.cours) || null,
-        tranches: (mode === 'multi' ? settingsFor(instrument.nom).tranches
+        tranches: ((mode === 'multi' || mode === 'precarnet') ? settingsFor(instrument.nom).tranches
           : settingsFor(instrument.nom).tranches.slice(0, 1)).map((tranche) => ({
             prixLimite: Number(tranche.prix),
-            repartition: mode === 'multi' ? Number(tranche.part) : 100,
+            repartition: (mode === 'multi' || mode === 'precarnet') ? Number(tranche.part) : 100,
           })),
       })),
       avertissements: [...warnings],
@@ -13754,9 +13913,73 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       negociateur: mode === 'valorix999' ? { ...negotiatorSettings } : null,
       lignes: proposed.map((row, index) => ({ ...row, id: `${id}-${String(index + 1).padStart(3, '0')}`, statut: 'Brouillon non routé' })),
     };
+    if (mode === 'precarnet') {
+      batch.precarnet = gsmBuildPreCarnet(batch.lignes, id, preCarnetValidity);
+      batch.statut = 'Pré-carnet · En préparation';
+    }
     const result = onSaveDraft?.(batch);
     if (result === false) setSaveMessage('Le stockage local est indisponible ; le brouillon n’a pas été enregistré.');
-    else { setSaveMessage(`Brouillon ${id} enregistré localement — aucun ordre transmis.`); setDraftExpanded(true); }
+    else {
+      setSaveMessage(mode === 'precarnet'
+        ? `Pré-carnet ${batch.precarnet.id} enregistré localement, en attente de validation.`
+        : `Brouillon ${id} enregistré localement — aucun ordre transmis.`);
+      if (mode === 'precarnet') setPreCarnetSelectedId(id);
+      setDraftExpanded(true);
+    }
+  };
+
+
+  const preCarnetDrafts = drafts.filter((draft) => draft.mode === 'precarnet' && draft.precarnet);
+  const selectedPreCarnet = preCarnetDrafts.find((draft) => draft.id === preCarnetSelectedId)
+    || preCarnetDrafts[0] || null;
+  const preCarnetPreview = mode === 'precarnet' && proposed.length
+    ? gsmBuildPreCarnet(proposed.map((line, index) => ({ ...line, id: `APERCU-${index + 1}` })), 'APERCU', preCarnetValidity)
+    : null;
+
+  const setPreCarnetDraft = (updated, successMessage) => {
+    const saved = onSaveDraft?.(updated);
+    if (saved === false) {
+      setPreCarnetMessage('Enregistrement local impossible : aucune modification conservée.');
+      return;
+    }
+    setPreCarnetMessage(successMessage);
+  };
+  const validatePreCarnet = (draft) => {
+    if (!preCarnetValidator.trim() || !preCarnetConfirm) {
+      setPreCarnetMessage('Indiquez le responsable du contrôle et cochez la confirmation des vérifications.');
+      return;
+    }
+    if (draft.precarnet.controle) return;
+    const at = new Date().toISOString();
+    setPreCarnetDraft({ ...draft, statut: 'Pré-carnet validé localement', precarnet: {
+      ...draft.precarnet, statut: 'Validé localement',
+      controle: { responsable: preCarnetValidator.trim(), at, nature: 'Attestation locale non authentifiée' },
+      journal: [...draft.precarnet.journal, { at, action: `Contrôlé par ${preCarnetValidator.trim()} (déclaratif)` }],
+    } }, 'Pré-carnet validé localement. Aucune transmission vers le marché.');
+  };
+  const simulatePreCarnetRoute = (draft) => {
+    if (!draft.precarnet.controle || draft.precarnet.routageSimuleAt) return;
+    const at = new Date().toISOString();
+    setPreCarnetDraft({ ...draft, statut: 'Routage simulé (aucun envoi)', precarnet: {
+      ...draft.precarnet, statut: 'Routage simulé (aucun envoi)', routageSimuleAt: at,
+      journal: [...draft.precarnet.journal, { at, action: 'Routage SIMULÉ (aucun ordre envoyé)' }],
+    } }, 'Routage simulé enregistré : aucune connexion marché ou Valorix sollicitée.');
+  };
+  const simulatePreCarnetFill = (draft, group) => {
+    try {
+      const inputs = preCarnetFills[group.id] || {};
+      const updated = gsmSimulatePreCarnetFill(draft, group.id, inputs.quantite, inputs.prix);
+      setPreCarnetDraft(updated, 'Exécution et affectation au prorata simulées, sans mouvement de compte.');
+      setPreCarnetFills((before) => ({ ...before, [group.id]: { quantite: '', prix: String(group.prixLimite) } }));
+    } catch (error) {
+      setPreCarnetMessage(error.message || 'Erreur de simulation.');
+    }
+  };
+  const setFillField = (groupId, field, value) => {
+    setPreCarnetFills((before) => ({ ...before,
+      [groupId]: { ...(before[groupId] || {}), [field]: value },
+    }));
+    setPreCarnetMessage('');
   };
 
   const panel = { borderColor: C.line, background: '#fff' };
@@ -13768,7 +13991,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         <div>
           <Eyebrow>Gestion sous mandat · Négociation</Eyebrow>
           <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Ordre groupé</h2>
-          <p className="text-[11px] mt-0.5" style={{ color: C.sub }}>Sélection · Prix limites et quantités · Validation du brouillon</p>
+          <p className="text-[11px] mt-0.5" style={{ color: C.sub }}>Sélection · Prix limites · Pré-carnet / contrôle · Suivi des affectations</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge tone="gold">Simulation / brouillon</Badge>
@@ -13776,7 +13999,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2" role="group" aria-label="Circuit d'exécution">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2" role="group" aria-label="Circuit d'exécution">
         {GSM_GROUPED_OPTIONS.map((option) => (
           <button key={option.id} type="button" onClick={() => changeMode(option.id)}
             aria-pressed={mode === option.id}
@@ -13930,7 +14153,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                         <span className="text-[10px]" style={{ color: pct == null ? C.sub : pct > 0 ? C.coral : C.teal }}>
                           {pct == null ? 'Prix à définir' : `Écart au cours réf. : ${pct > 0 ? '+' : ''}${pct.toFixed(2)} %`}
                         </span>
-                        {mode === 'multi' && setting.tranches.length > 1 && (
+                        {(mode === 'multi' || mode === 'precarnet') && setting.tranches.length > 1 && (
                           <span className="text-[10px]" style={{ color: C.indigo }}>
                             {setting.tranches.length} paliers · autres limites paramétrables à l’étape 3
                           </span>
@@ -13973,12 +14196,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 overflow-y-auto pr-1" style={{ maxHeight: 'min(32vh, 320px)' }}>
           {selectedInstrumentObjects.map((instrument) => {
           const setting = settingsFor(instrument.nom);
-          const tranches = mode === 'multi' ? setting.tranches : setting.tranches.slice(0, 1);
+          const tranches = (mode === 'multi' || mode === 'precarnet') ? setting.tranches : setting.tranches.slice(0, 1);
           return (
             <div key={instrument.nom} className="p-3 rounded-xl border space-y-3" style={{ borderColor: C.line, background: '#FAFAFC' }}>
               <div className="flex justify-between items-center flex-wrap gap-2">
                 <div className="text-sm font-bold" style={{ color: C.ink }}>{instrument.nom} <span className="text-[11px] font-normal" style={{ color: C.sub }}>({instrument.marche}, {instrument.devise})</span></div>
-                {mode === 'multi' && <button type="button" onClick={() => addTranche(instrument.nom)} disabled={tranches.length >= 5}
+                {(mode === 'multi' || mode === 'precarnet') && <button type="button" onClick={() => addTranche(instrument.nom)} disabled={tranches.length >= 5}
                   className="text-xs font-semibold disabled:opacity-50" style={{ color: C.indigo }}>+ Ajouter un palier (max. 5)</button>}
               </div>
               {tranches.map((tranche, idx) => (
@@ -13989,7 +14212,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                       onChange={(e) => updateTranche(instrument.nom, tranche.id, 'prix', e.target.value)}
                       className="mt-1 w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle} placeholder="Prix à saisir" />
                   </label>
-                  {mode === 'multi' && (
+                  {(mode === 'multi' || mode === 'precarnet') && (
                     <label className="col-span-8 sm:col-span-5 text-[11px]" style={{ color: C.sub }}>
                       Répartition de la quantité (%)
                       <input type="number" min="0" max="100" step="0.01" value={tranche.part}
@@ -13997,12 +14220,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                         className="mt-1 w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle} />
                     </label>
                   )}
-                  {mode === 'multi' && tranches.length > 1 && (
+                  {(mode === 'multi' || mode === 'precarnet') && tranches.length > 1 && (
                     <button type="button" onClick={() => removeTranche(instrument.nom, tranche.id)} className="col-span-4 sm:col-span-2 px-2 py-2 border rounded-lg text-xs" style={{ borderColor: C.line, color: C.coral }} aria-label="Retirer ce palier">Retirer</button>
                   )}
                 </div>
               ))}
-              {mode === 'multi' && <p className="text-[10px]" style={{ color: C.sub }}>Les pourcentages de paliers doivent totaliser 100 %. L'arrondi des titres entiers est attribué au dernier palier ; aucune exécution n'est supposée.</p>}
+              {(mode === 'multi' || mode === 'precarnet') && <p className="text-[10px]" style={{ color: C.sub }}>Les pourcentages de paliers doivent totaliser 100 %. L'arrondi des titres entiers est attribué au dernier palier ; aucune exécution n'est supposée.</p>}
               {mode === 'valorix999' && <p className="text-[10px]" style={{ color: C.sub }}>La borne limite encadre le futur pricing : aucun prix de contrepartie n’est inventé par l’interface.</p>}
             </div>
           );
@@ -14060,7 +14283,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                           style={{ ...inputStyle, borderColor: alert || invalidQuantity ? C.coral : C.line }} placeholder="0" />
                       </Td>
                       <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
-                        ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${mode === 'multi' && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
+                        ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${(mode === 'multi' || mode === 'precarnet') && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
                         : 'À définir'}</Td>
                       <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
                         value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
@@ -14129,6 +14352,46 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </Card>
       )}
 
+      {mode === 'precarnet' && (
+        <Card className="p-3 space-y-2" style={{ borderColor: C.gold }}>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h3 className="text-sm font-bold" style={{ color: C.ink }}>Option 2 · Pré-carnet avant routage</h3>
+            <Badge tone="gold">Références et regroupements internes</Badge>
+          </div>
+          <p className="text-[11px]" style={{ color: C.sub }}>
+            Les ordres clients restent individuels. Le système consolide seulement les instructions compatibles
+            (marché, titre, sens, prix limite, devise et validité). La validation précède toute simulation de routage.
+          </p>
+          <label className="inline-flex items-center gap-3 text-xs" style={{ color: C.sub }}>
+            Validité des instructions
+            <select value={preCarnetValidity} onChange={(e) => { setPreCarnetValidity(e.target.value); setPreview(false); }}
+              className="px-3 py-2 rounded-lg border" style={inputStyle}>
+              <option value="Jour">Jour (séance)</option>
+              <option value="Jusqu’à annulation">Jusqu’à annulation (si autorisé sur le marché)</option>
+            </select>
+          </label>
+          {preCarnetPreview && <div className="overflow-auto border rounded-xl" style={{ maxHeight: 225, borderColor: C.line }}>
+            <table className="w-full" style={{ minWidth: 780 }}>
+              <thead className="sticky top-0" style={{ background: '#F2F4F8' }}><tr>
+                <Th>Référence (aperçu)</Th><Th>Marché</Th><Th>Titre</Th><Th>Sens</Th>
+                <Th>Prix limite</Th><Th>Quantité groupée</Th><Th>Clients</Th>
+              </tr></thead>
+              <tbody>{preCarnetPreview.groupes.map((group) => <tr key={group.id} className="border-t" style={{ borderColor: C.line }}>
+                <Td mono>{group.id.replace('PRC-APERCU-', '')}</Td><Td>{group.marche}</Td>
+                <Td>{group.titre}</Td><Td>{group.sens}</Td>
+                <Td mono>{fmtPrice(group.prixLimite)} {group.devise}</Td>
+                <Td mono>{fmt(group.quantiteDemandee)}</Td>
+                <Td>{new Set(group.instructions.map((inst) => inst.clientId)).size}</Td>
+              </tr>)}</tbody>
+            </table>
+          </div>}
+          <div className="text-[10px]" style={{ color: C.sub }}>
+            {preCarnetPreview?.groupes.length || 0} ordre(s) consolidé(s) pour {proposed.length} instruction(s) client(s).
+            L'enregistrement générera les références permanentes du pré-carnet et des groupes.
+          </div>
+        </Card>
+      )}
+
       <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-bold" style={{ color: C.ink }}>{mode === 'valorix999' ? '5' : '4'}. Vérification et préparation du carnet</h3>
@@ -14190,7 +14453,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               <tr><Th>Client</Th><Th>Titre</Th><Th>Marché</Th><Th>Sens</Th><Th>Qté</Th><Th>{mode === 'valorix999' ? 'Borne de sécurité' : 'Prix limite'}</Th><Th>Code</Th></tr>
             </thead><tbody>{proposed.map((row, index) => <tr key={index} className="border-t" style={{ borderColor: C.line }}>
               <Td>{row.client}</Td><Td>{row.titre}</Td><Td>{row.marche}</Td><Td>{row.sens}</Td>
-              <Td mono>{fmt(row.quantite)}</Td><Td mono>{fmtPrice(row.bornePrix)} {row.devise}</Td><Td>{row.code || 'Direct'}</Td>
+              <Td mono>{fmt(row.quantite)}</Td><Td mono>{fmtPrice(row.bornePrix)} {row.devise}</Td><Td>{mode === 'precarnet' ? 'Pré-carnet' : (row.code || 'Direct')}</Td>
             </tr>)}</tbody></table>
           </div>
         )}
@@ -14207,10 +14470,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             {drafts.map((draft) => <div key={draft.id} className="p-3 rounded-xl border flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.line }}>
               <div><div className="text-xs font-bold" style={{ color: C.ink }}>{draft.id}</div>
                 <div className="text-[11px]" style={{ color: C.sub }}>{GSM_GROUPED_OPTIONS.find((o) => o.id === draft.mode)?.title || draft.mode} · {draft.lignes.length} instruction(s) · {new Date(draft.createdAt).toLocaleString('fr-FR')}</div>
-                <div className="text-[10px] mt-1" style={{ color: C.gold }}>Brouillon uniquement — aucun routage Valorix / marché</div>
+                <div className="text-[10px] mt-1" style={{ color: C.gold }}>{draft.statut || 'Brouillon'} — aucun routage réel vers Valorix / marché</div>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <Btn tone="ghost" onClick={() => gsmGroupedCsv(draft)}>Exporter CSV</Btn>
+                {draft.precarnet && <Btn tone="ghost" onClick={() => {
+                  setMode('precarnet'); setActiveStep(3); setPreCarnetSelectedId(draft.id); setPreCarnetMessage('');
+                }}>Ouvrir pré-carnet</Btn>}
+                <Btn tone="ghost" onClick={() => draft.precarnet ? gsmExportPreCarnetCsv(draft) : gsmGroupedCsv(draft)}>Exporter CSV</Btn>
                 <Btn tone="ghost" onClick={() => go('carnet')}>Consulter le carnet</Btn>
                 <button type="button" className="px-3 py-2 rounded-xl border text-xs" style={{ color: C.coral, borderColor: C.line }}
                   onClick={() => { if (typeof window === 'undefined' || window.confirm(`Supprimer le brouillon ${draft.id} ?`)) onDeleteDraft?.(draft.id); }}>Supprimer</button>
@@ -14219,6 +14485,134 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
       </Card>
+      {selectedPreCarnet && mode === 'precarnet' && (
+        <Card className="p-3 space-y-3" style={{ borderColor: C.indigo }}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <h3 className="text-sm font-bold" style={{ color: C.ink }}>Suivi du pré-carnet · {selectedPreCarnet.precarnet.id}</h3>
+              <p className="text-[10px]" style={{ color: C.sub }}>
+                {selectedPreCarnet.precarnet.groupes.length} groupes · {selectedPreCarnet.lignes.length} instructions individuelles
+              </p>
+            </div>
+            <Badge tone="navy">{selectedPreCarnet.precarnet.statut}</Badge>
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <select value={selectedPreCarnet.id} onChange={(e) => { setPreCarnetSelectedId(e.target.value); setPreCarnetMessage(''); }}
+              className="px-2 py-2 border rounded-xl text-xs" style={inputStyle}>
+              {preCarnetDrafts.map((d) => <option key={d.id} value={d.id}>{d.precarnet.id} · {d.precarnet.statut}</option>)}
+            </select>
+            <Btn tone="ghost" onClick={() => gsmExportPreCarnetCsv(selectedPreCarnet)}>Exporter pré-carnet + allocations CSV</Btn>
+          </div>
+          {!selectedPreCarnet.precarnet.controle && (
+            <div className="rounded-xl p-3 space-y-2" style={{ background: '#FAFAFC' }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>1. Contrôle et validation du pré-carnet</div>
+              <label className="block text-xs" style={{ color: C.sub }}>Responsable de la vérification (déclaratif)
+                <input value={preCarnetValidator} onChange={(e) => setPreCarnetValidator(e.target.value)}
+                  placeholder="Identité du contrôleur" className="w-full sm:w-80 block px-3 py-2 border rounded-lg mt-1" style={inputStyle} />
+              </label>
+              <label className="flex gap-2 items-start text-xs" style={{ color: C.ink }}>
+                <input type="checkbox" checked={preCarnetConfirm} onChange={(e) => setPreCarnetConfirm(e.target.checked)} />
+                J'atteste avoir contrôlé les prix, quantités, comptes, liquidités/titres et règles de regroupement.
+                La validation enregistrée est locale et ne constitue pas une autorisation réelle de marché.
+              </label>
+              <button type="button" disabled={!preCarnetValidator.trim() || !preCarnetConfirm}
+                onClick={() => validatePreCarnet(selectedPreCarnet)}
+                className="px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-40"
+                style={{ background: C.navy, color: '#fff' }}>Valider le pré-carnet (local)</button>
+            </div>
+          )}
+          {selectedPreCarnet.precarnet.controle && (
+            <div className="flex items-center justify-between flex-wrap gap-2 text-xs rounded-lg p-2" style={{ background: '#EAF8F3', color: C.ink }}>
+              <span>Contrôlé par {selectedPreCarnet.precarnet.controle.responsable} · {new Date(selectedPreCarnet.precarnet.controle.at).toLocaleString('fr-FR')} (déclaratif)</span>
+              {!selectedPreCarnet.precarnet.routageSimuleAt && <button type="button"
+                onClick={() => simulatePreCarnetRoute(selectedPreCarnet)}
+                className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+                2. Simuler le routage des groupes
+              </button>}
+            </div>
+          )}
+          {selectedPreCarnet.precarnet.routageSimuleAt && <p className="text-xs font-semibold" style={{ color: C.gold }}>
+            Routage simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')}.
+            Aucun ordre envoyé au marché. Aucun compte Valorix modifié.
+          </p>}
+          {preCarnetMessage && <p role="status" className="text-xs font-semibold" style={{ color: C.indigo }}>{preCarnetMessage}</p>}
+          <div className="overflow-auto rounded-xl border" style={{ maxHeight: 355, borderColor: C.line }}>
+            <table className="w-full" style={{ minWidth: 1040 }}>
+              <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
+                <Th>Référence groupée</Th><Th>Instrument</Th><Th>Sens</Th><Th>Limite</Th>
+                <Th>Demandé</Th><Th>Exécuté simulé</Th><Th>Reste</Th><Th>Clients</Th><Th>Simulation d'exécution</Th>
+              </tr></thead>
+              <tbody>{selectedPreCarnet.precarnet.groupes.map((group) => {
+                const done = gsmPreCarnetGroupFilled(group);
+                const left = group.quantiteDemandee - done;
+                const fill = preCarnetFills[group.id] || {};
+                return (
+                  <tr key={group.id} className="border-t" style={{ borderColor: C.line }}>
+                    <Td mono><span className="text-[10px]">{group.id}</span></Td>
+                    <Td>{group.titre}<div className="text-[10px]" style={{ color: C.sub }}>{group.marche} · {group.devise}</div></Td>
+                    <Td>{group.sens}</Td><Td mono>{fmtPrice(group.prixLimite)}</Td>
+                    <Td mono>{fmt(group.quantiteDemandee)}</Td><Td mono>{fmt(done)}</Td>
+                    <Td mono>{fmt(left)}</Td><Td>{group.instructions.length} instructions</Td>
+                    <Td><div className="flex items-center gap-1">
+                      <input type="number" min="1" step="1" max={left} value={fill.quantite ?? ''}
+                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                        onChange={(e) => setFillField(group.id, 'quantite', e.target.value)}
+                        placeholder="Qté" aria-label={`Quantité simulée ${group.id}`}
+                        className="w-20 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
+                      <input type="number" min="0.0001" step="any" value={fill.prix ?? String(group.prixLimite)}
+                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                        onChange={(e) => setFillField(group.id, 'prix', e.target.value)}
+                        aria-label={`Prix simulé ${group.id}`}
+                        className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
+                      <button type="button" disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                        onClick={() => simulatePreCarnetFill(selectedPreCarnet, group)}
+                        className="px-2 py-1.5 rounded-lg text-[10px] font-semibold disabled:opacity-40"
+                        style={{ background: C.indigo, color: '#fff' }}>Simuler</button>
+                    </div></Td>
+                  </tr>
+                );
+              })}</tbody>
+            </table>
+          </div>
+          <div className="rounded-xl p-3 space-y-2" style={{ background: '#FAFAFC' }}>
+            <div className="text-xs font-bold" style={{ color: C.ink }}>3. Réconciliation et affectation aux comptes (simulation)</div>
+            <div className="overflow-auto" style={{ maxHeight: 210 }}><table className="w-full" style={{ minWidth: 760 }}>
+              <thead><tr><Th>Groupe</Th><Th>Référence instruction</Th><Th>Client</Th>
+                <Th>Demandé</Th><Th>Affecté simulé</Th><Th>Reste client</Th><Th>Statut</Th></tr></thead>
+              <tbody>{selectedPreCarnet.precarnet.groupes.flatMap((group) => group.instructions.map((inst) => {
+                const allocated = group.executions.reduce((sum, e) => sum + e.allocations
+                  .filter((a) => a.referenceInstruction === inst.referenceInstruction)
+                  .reduce((inner, a) => inner + a.quantite, 0), 0);
+                return <tr key={inst.referenceInstruction} className="border-t" style={{ borderColor: C.line }}>
+                  <Td><span className="text-[10px]">{group.id}</span></Td><Td mono>{inst.referenceInstruction}</Td>
+                  <Td>{inst.client}</Td><Td mono>{fmt(inst.quantiteDemandee)}</Td><Td mono>{fmt(allocated)}</Td>
+                  <Td mono>{fmt(inst.quantiteDemandee - allocated)}</Td>
+                  <Td><Badge tone={allocated === inst.quantiteDemandee ? 'teal' : allocated ? 'gold' : 'slate'}>
+                    {allocated === inst.quantiteDemandee ? 'Complet · simulé' : allocated ? 'Partiel · simulé' : 'En attente'}
+                  </Badge></Td>
+                </tr>;
+              }))}</tbody>
+            </table></div>
+            <p className="text-[10px]" style={{ color: C.sub }}>
+              Chaque exécution simulée reçoit sa propre référence et des références d'affectation par instruction client.
+              Répartition automatique au prorata des quantités restantes, sans dépassement ni modification de Valorix.
+              Les identifiants réels du marché et les confirmations de règlement/livraison restent à intégrer.
+            </p>
+          </div>
+          <details className="text-xs" style={{ color: C.sub }}>
+            <summary className="cursor-pointer font-semibold">Journal des étapes et références d'exécution</summary>
+            <div className="mt-2 overflow-auto" style={{ maxHeight: 135 }}>
+              {selectedPreCarnet.precarnet.journal.map((entry, idx) => <div key={idx} className="py-1 border-b" style={{ borderColor: C.line }}>
+                {new Date(entry.at).toLocaleString('fr-FR')} · {entry.action}
+              </div>)}
+              {selectedPreCarnet.precarnet.groupes.flatMap((group) => group.executions.map((e) =>
+                <div key={e.id} className="py-1" style={{ color: C.indigo }}>{e.id} · {fmt(e.quantite)} à {fmtPrice(e.prix)} ({e.allocations.length} affectation(s))</div>
+              ))}
+            </div>
+          </details>
+        </Card>
+      )}
+
       <div className="flex justify-start">
         <button type="button" onClick={() => setActiveStep(2)} className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: C.line, color: C.indigo }}>← Prix & quantités</button>
       </div>
@@ -14239,14 +14633,22 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
     ? initial.cessionOrders
     : [];
   const cessionA4 = initial?.cessionA4 || null;
-  const groupedRows = groupedDrafts.flatMap((draft) => draft.lignes.map((line) => ({
-    id: line.id, sens: line.sens, titre: line.titre, marche: line.marche,
-    devise: line.devise, qte: line.quantite,
-    prix: draft.mode === 'valorix999' ? null : line.bornePrix,
-    prixSecurite: draft.mode === 'valorix999' ? line.bornePrix : null,
-    statut: 'Brouillon', pf: line.client,
-    origine: draft.mode === 'valorix999' ? 'Préparation Valorix 999' : 'Ordre groupé',
-  })));
+  const groupedRows = groupedDrafts.flatMap((draft) => draft.mode === 'precarnet' && draft.precarnet
+    ? draft.precarnet.groupes.map((group) => ({
+        id: group.id, sens: group.sens, titre: group.titre, marche: group.marche,
+        devise: group.devise, qte: group.quantiteDemandee,
+        prix: group.prixLimite, prixSecurite: null,
+        statut: draft.precarnet.statut, pf: `${new Set(group.instructions.map((inst) => inst.clientId)).size} client(s)`,
+        origine: `Pré-carnet ${draft.precarnet.id} · ${fmt(gsmPreCarnetGroupFilled(group))} exéc. simulées`,
+      }))
+    : draft.lignes.map((line) => ({
+        id: line.id, sens: line.sens, titre: line.titre, marche: line.marche,
+        devise: line.devise, qte: line.quantite,
+        prix: draft.mode === 'valorix999' ? null : line.bornePrix,
+        prixSecurite: draft.mode === 'valorix999' ? line.bornePrix : null,
+        statut: 'Brouillon', pf: line.client,
+        origine: draft.mode === 'valorix999' ? 'Préparation Valorix 999' : 'Ordre groupé',
+      })));
   const sourceRows = [...groupedRows, ...cessionRows, ...ORDERS];
   const rows = sourceRows.filter(
     (o) =>
@@ -14295,8 +14697,8 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
         <Card className="p-4" style={{ borderColor: C.indigo, background: '#F5F7FF' }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div><div className="text-sm font-bold" style={{ color: C.ink }}>Préparations d’ordres groupés</div>
-              <p className="text-xs mt-1" style={{ color: C.sub }}>Ces lignes sont des brouillons locaux, pas des ordres transmis au marché ni enregistrés dans Valorix.</p></div>
-            <Badge tone="navy">{groupedRows.length} instruction(s) non routée(s)</Badge>
+              <p className="text-xs mt-1" style={{ color: C.sub }}>Ordres préparés localement (dont pré-carnets consolidés). Les exécutions et routages éventuellement indiqués sont uniquement simulés, jamais transmis au marché ou à Valorix.</p></div>
+            <Badge tone="navy">{groupedRows.length} ligne(s) préparée(s) / simulée(s)</Badge>
           </div>
         </Card>
       )}
@@ -37265,7 +37667,8 @@ export default function App() {
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
   const [groupedDrafts, setGroupedDrafts] = useState(gsmLoadGroupedDrafts);
   const saveGroupedDraft = (batch) => {
-    const next = [batch, ...groupedDrafts];
+    // Conserve une seule version de chaque pré-carnet lors des transitions.
+    const next = [batch, ...groupedDrafts.filter((draft) => draft.id !== batch.id)];
     if (!gsmPersistGroupedDrafts(next)) return false;
     setGroupedDrafts(next);
     return true;
