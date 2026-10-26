@@ -13409,12 +13409,14 @@ const gsmPersistGroupedDrafts = (drafts) => {
 
 const gsmGroupedCsv = (draft) => {
   const rows = [
-    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction'],
+    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction','Mode d’ordre commun','% de liquidité (titre)','Budget cible (palier, devise client)','Devise client'],
     ...draft.lignes.map((line) => [
       draft.id, GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || draft.mode,
       draft.mode === 'valorix999' ? '999' : '',
       line.client, line.clientId, line.marche, line.titre, line.sens, line.quantite,
       line.bornePrix, line.devise, draft.statut || 'Brouillon non routé', line.id,
+      draft.modeOrdreCommun || line.modeSaisie || 'quantite',
+      line.pourcentageLiquidite ?? '', line.budgetCiblePalier ?? '', line.deviseClient ?? '',
     ]),
   ];
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13451,7 +13453,10 @@ const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
     group.instructions.push({
       referenceInstruction: line.id, clientId: line.clientId,
       client: line.client, quantiteDemandee: Number(line.quantite),
-      prixLimite: price,
+      prixLimite: price, modeSaisie: line.modeSaisie || 'quantite',
+      pourcentageLiquidite: line.pourcentageLiquidite ?? null,
+      budgetCiblePalier: line.budgetCiblePalier ?? null,
+      deviseClient: line.deviseClient ?? null,
     });
   });
   return {
@@ -13547,20 +13552,26 @@ const gsmExportPreCarnetCsv = (draft) => {
   if (!pc) return;
   const rows = [['Nature','Référence pré-carnet','Référence groupe','Référence instruction','Référence exécution',
     'Référence affectation','Compte','Client','Marché','Titre','Sens','Prix limite','Prix exécuté simulé',
-    'Qté demandée','Qté exécutée/affectée','Devise','Validité','Statut']];
+    'Qté demandée','Qté exécutée/affectée','Devise','Validité','Statut',
+    'Mode d’ordre commun','% liquidité (titre)','Budget cible palier','Devise client']];
   pc.groupes.forEach((group) => {
     rows.push(['GROUPE', pc.id, group.id, '', '', '', '', '', group.marche, group.titre,
       group.sens, group.prixLimite, '', group.quantiteDemandee, gsmPreCarnetGroupFilled(group),
-      group.devise, group.validite, pc.statut]);
+      group.devise, group.validite, pc.statut, draft.modeOrdreCommun || 'quantite', '', '', '']);
     group.instructions.forEach((inst) => rows.push(['INSTRUCTION', pc.id, group.id,
       inst.referenceInstruction, '', '', inst.clientId, inst.client, group.marche, group.titre,
       group.sens, inst.prixLimite, '', inst.quantiteDemandee, '', group.devise, group.validite,
-      'Instruction pré-carnet']));
+      'Instruction pré-carnet', inst.modeSaisie, inst.pourcentageLiquidite ?? '',
+      inst.budgetCiblePalier ?? '', inst.deviseClient ?? '']));
     group.executions.forEach((exec) => exec.allocations.forEach((a) => rows.push([
       'AFFECTATION_SIMULÉE', pc.id, group.id, a.referenceInstruction, exec.id,
       a.referenceAffectation, a.clientId, a.client, group.marche, group.titre,
       group.sens, group.prixLimite, exec.prix, '', a.quantite, group.devise,
       group.validite, a.statut,
+      draft.modeOrdreCommun || 'quantite',
+      group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.pourcentageLiquidite ?? '',
+      group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.budgetCiblePalier ?? '',
+      group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.deviseClient ?? '',
     ])));
   });
   const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13579,6 +13590,40 @@ const gsmGroupedReferencePrice = (instrument, field = 'cours') => {
 const gsmGroupedInitialTitleSettings = (instrument) => ({
   tranches: [{ id: 'A', prix: gsmGroupedReferencePrice(instrument), part: 100 }],
 });
+
+// Un pourcentage porte sur la liquidité de DÉPART de chaque portefeuille,
+// avant tous les achats du lot. Les budgets de chaque titre s'additionnent.
+// Les tranches partagent ce budget ; chaque prix est exprimé dans la devise
+// du titre, alors que les disponibilités sont dans la devise du client.
+// Ne jamais convertir un manque de liquidité en quantité négative ou arrondie
+// au supérieur : les quantités calculées sont des entiers inférieurs au budget.
+const gsmGroupedPercentBreakdown = ({ cash, pourcentage, tranches, deviseClient, deviseTitre }) => {
+  const fxClient = Number(FX[deviseClient]);
+  const fxTitre = Number(FX[deviseTitre]);
+  if (!Number.isFinite(cash) || cash < 0 ||
+      !Number.isFinite(pourcentage) || pourcentage < 0 || pourcentage > 100 ||
+      !Number.isFinite(fxClient) || fxClient <= 0 ||
+      !Number.isFinite(fxTitre) || fxTitre <= 0) return null;
+  const budgetClient = cash * pourcentage / 100;
+  const conversion = fxTitre / fxClient;
+  const lignes = tranches.map((tranche) => {
+    const prix = Number(tranche.prix);
+    const part = Number(tranche.part);
+    if (!(prix > 0) || !Number.isFinite(part) || part < 0 || part > 100) return null;
+    const budgetCiblePalier = budgetClient * part / 100;
+    const prixClient = prix * conversion;
+    const quantiteCandidate = Math.max(0, Math.floor((budgetCiblePalier + 1e-9) / prixClient));
+    const quantite = quantiteCandidate * prixClient <= budgetCiblePalier + 1e-8
+      ? quantiteCandidate : Math.max(0, quantiteCandidate - 1);
+    return { quantite, budgetCiblePalier, montantEngageClient: quantite * prixClient };
+  });
+  if (lignes.some((ligne) => ligne == null)) return null;
+  return {
+    budgetClient, lignes,
+    quantite: lignes.reduce((total, ligne) => total + ligne.quantite, 0),
+    montantEngageClient: lignes.reduce((total, ligne) => total + ligne.montantEngageClient, 0),
+  };
+};
 
 const gsmEstimatedCash = (client) => {
   const explicit = Number(
@@ -13647,8 +13692,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [sens, setSens] = useState('Achat');
   const [titleSettings, setTitleSettings] = useState({});
   const [allocations, setAllocations] = useState({});
+  const [liquidityPercentages, setLiquidityPercentages] = useState({});
+  const [commonOrderMode, setCommonOrderMode] = useState('quantite');
   const [individualLimits, setIndividualLimits] = useState({});
   const [globalQuantity, setGlobalQuantity] = useState('');
+  const [globalPercent, setGlobalPercent] = useState('');
   const [negotiatorSettings, setNegotiatorSettings] = useState({ sliceSize: '200', participation: '15', minDelay: '5', supervisor: '', remarks: '' });
   const [preview, setPreview] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -13731,14 +13779,38 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     if (setting.tranches.length <= 1) return;
     setSettings(titre, { ...setting, tranches: setting.tranches.filter((t) => t.id !== id) });
   };
-  const applyQuantity = () => {
-    const n = Math.floor(Number(globalQuantity));
-    if (!Number.isInteger(n) || n <= 0) return;
+  const percentageMode = sens === 'Achat' && commonOrderMode === 'pourcentage';
+  const applyCommonValue = () => {
+    const value = percentageMode ? Number(globalPercent) : Number(globalQuantity);
+    if (percentageMode ? !(value > 0 && value <= 100) : !Number.isInteger(value) || value <= 0) return;
     const next = {};
-    selectedClients.forEach((id) => selectedTitles.forEach((titre) => { next[selectionKey(id, titre)] = String(n); }));
-    setAllocations((current) => ({ ...current, ...next }));
+    selectedClients.forEach((id) => selectedTitles.forEach((titre) => {
+      next[selectionKey(id, titre)] = String(value);
+    }));
+    if (percentageMode) setLiquidityPercentages((current) => ({ ...current, ...next }));
+    else setAllocations((current) => ({ ...current, ...next }));
     setPreview(false); setSaveMessage('');
   };
+
+  // Le contrôle des pourcentages porte sur la somme des TITRES et non
+  // seulement sur les paliers. Une ligne de 60 % + une ligne de 50 %
+  // est refusée, même si les arrondis réduisent le montant effectivement investi.
+  const percentTargetsByClient = {};
+  const percentRowValues = {};
+  if (percentageMode) {
+    selectedClientObjects.forEach((client) => {
+      const clientId = String(client.id);
+      let total = 0;
+      selectedInstrumentObjects.forEach((instrument) => {
+        const key = selectionKey(clientId, instrument.nom);
+        const raw = liquidityPercentages[key];
+        const pct = raw == null || raw === '' ? 0 : Number(raw);
+        percentRowValues[key] = pct;
+        if (Number.isFinite(pct) && pct >= 0 && pct <= 100) total += pct;
+      });
+      percentTargetsByClient[clientId] = total;
+    });
+  }
 
   const errors = [];
   const warnings = [];
@@ -13747,6 +13819,20 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const perClientHoldings = {};
   if (!selectedClients.length) errors.push('Sélectionnez au moins un portefeuille client.');
   if (!selectedTitles.length) errors.push('Sélectionnez au moins un titre.');
+  if (percentageMode) {
+    selectedClientObjects.forEach((client) => {
+      selectedInstrumentObjects.forEach((instrument) => {
+        const key = selectionKey(String(client.id), instrument.nom);
+        const pct = percentRowValues[key];
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          errors.push(`Pourcentage invalide (0 à 100 %) : ${client.nom} / ${instrument.nom}.`);
+        }
+      });
+      if ((percentTargetsByClient[String(client.id)] || 0) > 100 + 1e-8) {
+        errors.push(`${client.nom} : ${fmtPrice(percentTargetsByClient[String(client.id)])} % de liquidité demandés sur le lot, au-delà des 100 % disponibles.`);
+      }
+    });
+  }
   if (mode === 'simple' && selectedTitles.length > 1) errors.push('Le circuit direct simple accepte un seul titre.');
   if (mode === 'valorix999') {
     if (!Number.isInteger(Number(negotiatorSettings.sliceSize)) || Number(negotiatorSettings.sliceSize) <= 0) errors.push('Le volume maximal par injection doit être un entier positif.');
@@ -13766,10 +13852,30 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     )) errors.push(`Les répartitions des tranches de ${instrument.nom} doivent totaliser 100 %.`);
     selectedClientObjects.forEach((client) => {
       const key = selectionKey(String(client.id), instrument.nom);
-      const quantity = Number(allocations[key] ?? 0);
+      const percent = percentageMode ? Number(percentRowValues[key] || 0) : null;
+      const cashInfo = percentageMode ? gsmEstimatedCash(client) : null;
+      if (percentageMode && !(percent >= 0 && percent <= 100 && Number.isFinite(percent))) return;
+      if (percentageMode && percent > 0 && cashInfo.amount == null) {
+        errors.push(`${client.nom} : espèces disponibles inconnues ; calcul du pourcentage impossible pour ${instrument.nom}.`);
+        return;
+      }
+      const percentBreakdown = percentageMode && percent > 0
+        ? gsmGroupedPercentBreakdown({
+            cash: cashInfo.amount, pourcentage: percent,
+            tranches: tranches.map((t, index) => ({ ...t, part: parts[index] })),
+            deviseClient: client.devise, deviseTitre: instrument.devise,
+          }) : null;
+      if (percentageMode && percent > 0 && !percentBreakdown) {
+        errors.push(`Calcul impossible pour ${client.nom} / ${instrument.nom} : vérifiez les cours, paliers et devises.`);
+        return;
+      }
+      const quantity = percentageMode ? (percentBreakdown?.quantite || 0) : Number(allocations[key] ?? 0);
       if (!Number.isInteger(quantity) || quantity < 0) {
         errors.push(`Quantité invalide : ${client.nom} / ${instrument.nom}.`);
         return;
+      }
+      if (percentageMode && percent > 0 && quantity === 0) {
+        errors.push(`${client.nom} / ${instrument.nom} : le budget de ${fmtPrice(percent)} % ne permet pas l'achat d'un titre entier aux prix limites indiqués.`);
       }
       if (quantity === 0) return;
       const userLimit = individualLimits[key] === '' || individualLimits[key] == null
@@ -13783,7 +13889,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         const unitPrice = Number(tranche.prix);
         const part = (mode === 'multi' || mode === 'precarnet') ? Number(tranche.part) : 100;
         if (!(unitPrice > 0) || !Number.isFinite(part) || part < 0 || part > 100) return;
-        const qty = index === tranches.length - 1 ? remainder : Math.min(remainder, Math.floor(quantity * part / 100));
+        const qty = percentageMode ? (percentBreakdown?.lignes[index]?.quantite || 0)
+          : index === tranches.length - 1 ? remainder : Math.min(remainder, Math.floor(quantity * part / 100));
         remainder -= qty;
         if (qty <= 0) return;
         if (userLimit != null && (sens === 'Achat' ? unitPrice > userLimit : unitPrice < userLimit)) {
@@ -13795,11 +13902,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           quantite: qty, bornePrix: unitPrice, tranche: tranche.id,
           code: mode === 'valorix999' ? '999' : '',
           montantEstime: qty * unitPrice,
+          modeSaisie: percentageMode ? 'pourcentage' : 'quantite',
+          pourcentageLiquidite: percentageMode ? percent : null,
+          budgetCiblePalier: percentageMode ? percentBreakdown?.lignes[index]?.budgetCiblePalier : null,
+          deviseClient: client.devise,
         });
       });
     });
   });
-  if (!proposed.length) errors.push('Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
+  if (!proposed.length) errors.push(percentageMode
+    ? 'Renseignez un pourcentage permettant l’achat d’au moins un titre entier.'
+    : 'Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
   if (mode === 'precarnet' && proposed.length) warnings.push('Pré-carnet préparé localement : le routage, les exécutions et les affectations dans Valorix ne sont PAS connectés. Les simulations sont purement illustratives.');
   if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
   const buyAmountsByClient = {};
@@ -13821,6 +13934,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       const exposure = buyAmountsByClient[String(client.id)] || 0;
       perClientCash[String(client.id)] = {
         ...estimation, exposure,
+        requestedPercent: percentageMode ? (percentTargetsByClient[String(client.id)] || 0) : null,
         remaining: estimation.amount == null ? null : estimation.amount - exposure,
       };
       if (exposure > 0 && estimation.amount == null) {
@@ -13862,7 +13976,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       const remaining = cash.amount == null ? null : cash.amount - cash.exposure;
       return {
         available: cash.amount, remaining, source: cash.source,
-        blocked: remaining != null && remaining < -0.01,
+        spent: cash.exposure || 0,
+        requestedPercent: cash.requestedPercent ?? null,
+        remainingPercent: cash.amount > 0 ? remaining / cash.amount * 100
+          : cash.amount === 0 && remaining === 0 ? 100 : null,
+        blocked: (remaining != null && remaining < -0.01) ||
+          (percentageMode && (cash.requestedPercent || 0) > 100 + 1e-8),
         unknown: cash.amount == null, unit: client.devise,
       };
     }
@@ -13890,6 +14009,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     const id = `OG-${now.getTime()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const batch = {
       id, mode, sens, createdAt: now.toISOString(), statut: 'Brouillon non routé',
+      modeOrdreCommun: percentageMode ? 'pourcentage' : 'quantite',
+      pourcentagesLiquidite: percentageMode ? { ...liquidityPercentages } : null,
       clients: [...selectedClients], titres: [...selectedTitles],
       // Instantané des limites retenues pour chaque titre du lot.
       // Les lignes individuelles conservent aussi leur propre bornePrix.
@@ -13906,6 +14027,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       soldesAvantSimulation: selectedClientObjects.flatMap((client) =>
         selectedInstrumentObjects.map((instrument) => ({
           clientId: String(client.id), titre: instrument.nom, sens,
+          modeOrdreCommun: percentageMode ? 'pourcentage' : 'quantite',
           ...liveBalanceFor(client, instrument),
           nature: 'Projection indicative de brouillon, sans réservation ni exécution',
         }))
@@ -14182,14 +14304,35 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         <div className="space-y-2">
       <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et quantités</h3>
-          <div className="flex items-center gap-2">
-            <label className="text-xs" style={{ color: C.sub }}>Sens</label>
-            <select value={sens} onChange={(e) => { setSens(e.target.value); setPreview(false); }} className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
-              <option>Achat</option><option>Vente</option>
-            </select>
+          <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et {percentageMode ? 'budgets en %' : 'quantités'}</h3>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="text-xs flex items-center gap-1.5" style={{ color: C.sub }}>Sens
+              <select value={sens} onChange={(e) => {
+                  setSens(e.target.value);
+                  if (e.target.value === 'Vente') setCommonOrderMode('quantite');
+                  setPreview(false); setSaveMessage('');
+                }} className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
+                <option>Achat</option><option>Vente</option>
+              </select>
+            </label>
+            <label className="text-xs flex items-center gap-1.5 font-semibold" style={{ color: C.ink }}>
+              Mode d'ordre commun
+              <select aria-label="Mode d'ordre commun" value={commonOrderMode}
+                onChange={(e) => { setCommonOrderMode(e.target.value); setPreview(false); setSaveMessage(''); }}
+                className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
+                <option value="quantite">Quantité</option>
+                <option value="pourcentage" disabled={sens === 'Vente'}>Pourcentage de liquidité</option>
+              </select>
+            </label>
           </div>
         </div>
+        <p className="text-[10px]" style={{ color: C.sub }}>
+          {percentageMode
+            ? 'Le pourcentage est appliqué aux espèces disponibles AVANT ce lot, pour chaque client. Les pourcentages de tous les titres du client sont additionnés (maximum 100 %). Quantités calculées par palier aux prix limites, arrondies à l’entier inférieur.'
+            : sens === 'Vente'
+            ? 'Pour une vente, la quantité de titres est saisie directement ; le mode pourcentage de liquidité ne s’applique pas aux titres à céder.'
+            : 'Renseignez les quantités par client et par titre. Les trois colonnes de disponibilité affichent les soldes en espèces et les contrôles du lot.'}
+        </p>
         {selectedInstrumentObjects.length === 0 ? (
           <p className="text-xs" style={{ color: C.sub }}>Sélectionnez au moins un titre pour afficher le paramétrage.</p>
         ) : (
@@ -14233,12 +14376,19 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
         <div className="flex gap-2 items-end flex-wrap">
-          <label className="text-xs" style={{ color: C.sub }}>Quantité commune (optionnelle)
-            <input type="number" min="1" step="1" value={globalQuantity} onChange={(e) => setGlobalQuantity(e.target.value)}
-              className="block mt-1 w-44 px-3 py-2 border rounded-xl text-sm" style={inputStyle} placeholder="Ex. 100" />
+          <label className="text-xs" style={{ color: C.sub }}>
+            {percentageMode ? 'Pourcentage commun (optionnel)' : 'Quantité commune (optionnelle)'}
+            <input type="number" min={percentageMode ? '0.01' : '1'} max={percentageMode ? '100' : undefined}
+              step={percentageMode ? '0.01' : '1'}
+              value={percentageMode ? globalPercent : globalQuantity}
+              onChange={(e) => percentageMode ? setGlobalPercent(e.target.value) : setGlobalQuantity(e.target.value)}
+              className="block mt-1 w-44 px-3 py-2 border rounded-xl text-sm" style={inputStyle}
+              placeholder={percentageMode ? 'Ex. 20 %' : 'Ex. 100'} />
           </label>
-          <Btn tone="ghost" onClick={applyQuantity}>Appliquer aux lignes sélectionnées</Btn>
-          <span className="text-[10px]" style={{ color: C.sub }}>Vous pouvez modifier chaque ligne ensuite.</span>
+          <Btn tone="ghost" onClick={applyCommonValue}>Appliquer aux lignes sélectionnées</Btn>
+          <span className="text-[10px]" style={{ color: C.sub }}>
+            {percentageMode ? 'L’application concerne chaque titre ; vérifiez que le total des titres par client ne dépasse pas 100 %.' : 'Vous pouvez modifier chaque ligne ensuite.'}
+          </span>
         </div>
         {selectedClients.length > 0 && selectedTitles.length > 0 && (
           <div className="space-y-2">
@@ -14247,40 +14397,76 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 Disponibilités recalculées en direct par client et par actif
               </p>
               <span className="text-[10px]" style={{ color: C.sub }}>
-                {sens === 'Achat' ? 'Le solde projeté cumule tous les achats du client, tous titres confondus (hors frais).' : 'Le solde titres projeté cumule les paliers du même client et du même titre.'}
+                {percentageMode
+                  ? 'Pour chaque client : 100 % = espèces disponibles initiales. Le solde projeté cumule tous les titres du lot (hors frais).'
+                  : sens === 'Achat'
+                    ? 'Le solde projeté cumule tous les achats du client, tous titres confondus (hors frais).'
+                    : 'Le solde titres projeté cumule les paliers du même client et du même titre.'}
               </span>
             </div>
             <div className="overflow-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 'min(40vh, 365px)' }}>
               <table className="w-full" style={{ minWidth: 1190 }}>
                 <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
-                  <Th>Client</Th><Th>Instrument</Th><Th>Qté</Th><Th>Prix limite titre</Th>
+                  <Th>Client</Th><Th>Instrument</Th><Th>{percentageMode ? '% liquidité / Qté calculée' : 'Qté'}</Th><Th>Prix limite titre</Th>
                   <Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th>
-                  <Th>{sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
-                  <Th>{sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
-                  <Th>Contrôle</Th>
+                  <Th>{percentageMode ? 'Liquidité de référence (100 %)' : sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
+                  <Th>{percentageMode ? 'Solde après lot (% + espèces)' : sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
+                  <Th>{percentageMode ? 'Contrôle de liquidité (%)' : 'Contrôle'}</Th>
                 </tr></thead>
                 <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
                   const key = selectionKey(String(client.id), instrument.nom);
-                  const quantityRaw = allocations[key] ?? '';
-                  const quantity = Number(quantityRaw || 0);
-                  const invalidQuantity = !Number.isInteger(quantity) || quantity < 0;
+                  const rawValue = percentageMode ? (liquidityPercentages[key] ?? '') : (allocations[key] ?? '');
+                  const entered = rawValue === '' ? 0 : Number(rawValue);
+                  const invalidInput = percentageMode
+                    ? !Number.isFinite(entered) || entered < 0 || entered > 100
+                    : !Number.isInteger(entered) || entered < 0;
+                  const trancheSet = (mode === 'multi' || mode === 'precarnet')
+                    ? settingsFor(instrument.nom).tranches
+                    : settingsFor(instrument.nom).tranches.slice(0, 1);
+                  const cashInfo = gsmEstimatedCash(client);
+                  const calculated = percentageMode && !invalidInput && cashInfo.amount != null
+                    ? gsmGroupedPercentBreakdown({
+                        cash: cashInfo.amount, pourcentage: entered,
+                        tranches: trancheSet.map((t) => ({ ...t, part: (mode === 'multi' || mode === 'precarnet') ? Number(t.part) : 100 })),
+                        deviseClient: client.devise, deviseTitre: instrument.devise,
+                      }) : null;
+                  const quantity = percentageMode ? (calculated?.quantite || 0) : entered;
                   const balance = liveBalanceFor(client, instrument);
-                  const rowActive = quantity > 0 && !invalidQuantity;
-                  const alert = rowActive && (balance.blocked || balance.unknown);
-                  const badgeTone = invalidQuantity || (rowActive && balance.blocked) ? 'coral' :
+                  const rowActive = entered > 0 && !invalidInput;
+                  const budgetTooSmall = percentageMode && rowActive && !!calculated && calculated.quantite === 0;
+                  const percentOverflow = percentageMode && (balance.requestedPercent || 0) > 100 + 1e-8;
+                  const alert = invalidInput || (rowActive && (balance.blocked || balance.unknown || budgetTooSmall));
+                  const badgeTone = invalidInput || percentOverflow || budgetTooSmall || (rowActive && balance.blocked) ? 'coral' :
                     rowActive && balance.unknown ? 'gold' : rowActive ? 'teal' : 'slate';
-                  const badgeText = invalidQuantity ? 'Qté invalide' :
+                  const badgeText = invalidInput ? (percentageMode ? '% invalide' : 'Qté invalide') :
+                    percentOverflow ? 'Plus de 100 % sur le lot' :
+                    budgetTooSmall ? 'Budget trop faible' :
                     rowActive && balance.blocked ? (sens === 'Achat' ? 'Liquidité insuffisante' : 'Titres insuffisants') :
-                    rowActive && balance.unknown ? 'Solde inconnu' : rowActive ? 'Capacité indicative OK' : 'Non saisi';
+                    rowActive && balance.unknown ? 'Solde inconnu' :
+                    rowActive && percentageMode ? `${fmtPrice(balance.requestedPercent || 0)} % ciblés · OK` :
+                    rowActive ? 'Capacité indicative OK' : 'Non saisi';
                   return (
                     <tr key={key} className="border-t" style={{ borderColor: C.line, background: alert ? '#FFF6F3' : 'transparent' }}>
                       <Td>{client.nom}</Td><Td>{instrument.nom}</Td>
                       <Td>
-                        <input aria-label={`Quantité ${client.nom} ${instrument.nom}`} type="number" min="0" step="1"
-                          aria-invalid={invalidQuantity || (rowActive && balance.blocked)}
-                          value={quantityRaw} onChange={(e) => { setAllocations((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
+                        <input aria-label={`${percentageMode ? 'Pourcentage de liquidité' : 'Quantité'} ${client.nom} ${instrument.nom}`}
+                          type="number" min="0" max={percentageMode ? '100' : undefined}
+                          step={percentageMode ? '0.01' : '1'}
+                          aria-invalid={invalidInput || (rowActive && balance.blocked) || budgetTooSmall}
+                          value={rawValue} onChange={(e) => {
+                            if (percentageMode) setLiquidityPercentages((cur) => ({ ...cur, [key]: e.target.value }));
+                            else setAllocations((cur) => ({ ...cur, [key]: e.target.value }));
+                            setPreview(false); setSaveMessage('');
+                          }}
                           className="w-24 px-2 py-1.5 border rounded-lg text-xs"
-                          style={{ ...inputStyle, borderColor: alert || invalidQuantity ? C.coral : C.line }} placeholder="0" />
+                          style={{ ...inputStyle, borderColor: alert ? C.coral : C.line }}
+                          placeholder={percentageMode ? '% (ex. 20)' : '0'} />
+                        {percentageMode && <div className="text-[10px] mt-1 whitespace-nowrap" style={{ color: budgetTooSmall ? C.coral : C.sub }}>
+                          {calculated ? `${fmt(calculated.quantite)} titre(s)` : entered > 0 ? 'Calcul indisponible' : '0 titre'}
+                        </div>}
+                        {percentageMode && calculated && <div className="text-[9px] whitespace-nowrap" style={{ color: C.sub }}>
+                          Budget : {fmt(calculated.budgetClient)} {client.devise}
+                        </div>}
                       </Td>
                       <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
                         ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${(mode === 'multi' || mode === 'precarnet') && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
@@ -14288,14 +14474,33 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                       <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
                         value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
                         className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
-                      <Td><div className="text-xs font-semibold whitespace-nowrap" style={{ color: C.ink, ...F_MONO }}>
-                        {balance.available == null ? 'Non connu' : `${fmt(balance.available)} ${balance.unit}`}
-                      </div><div className="text-[9px]" style={{ color: C.sub }}>{balance.source}</div></Td>
-                      <Td><div aria-live="polite" className="text-xs font-bold whitespace-nowrap"
-                        style={{ color: balance.blocked ? C.coral : balance.unknown ? C.gold : C.teal, ...F_MONO }}>
-                        {balance.remaining == null ? 'Non calculable' : `${fmt(balance.remaining)} ${balance.unit}`}
-                      </div><span className="text-[9px]" style={{ color: C.sub }}>Projection du lot complet</span></Td>
-                      <Td><Badge tone={badgeTone}>{badgeText}</Badge></Td>
+                      <Td>
+                        {percentageMode && <div className="text-xs font-bold" style={{ color: C.ink, ...F_MONO }}>
+                          {balance.available == null ? 'Non connu' : '100 %'}
+                        </div>}
+                        <div className="text-xs font-semibold whitespace-nowrap" style={{ color: C.ink, ...F_MONO }}>
+                          {balance.available == null ? 'Non connu' : `${fmt(balance.available)} ${balance.unit}`}
+                        </div>
+                        <div className="text-[9px]" style={{ color: C.sub }}>{balance.source}</div>
+                      </Td>
+                      <Td>
+                        {percentageMode && <div aria-live="polite" className="text-xs font-bold"
+                          style={{ color: balance.blocked ? C.coral : balance.unknown ? C.gold : C.teal, ...F_MONO }}>
+                          {balance.remainingPercent == null ? 'Non calculable' : `${fmtPrice(balance.remainingPercent)} %`}
+                        </div>}
+                        <div aria-live="polite" className="text-xs font-bold whitespace-nowrap"
+                          style={{ color: balance.blocked ? C.coral : balance.unknown ? C.gold : C.teal, ...F_MONO }}>
+                          {balance.remaining == null ? 'Non calculable' : `${fmt(balance.remaining)} ${balance.unit}`}
+                        </div>
+                        <span className="text-[9px]" style={{ color: C.sub }}>
+                          {percentageMode ? `Cible totale : ${fmtPrice(balance.requestedPercent || 0)} % · engagement estimé : ${balance.available > 0 ? fmtPrice(balance.spent / balance.available * 100) : '—'} %` : 'Projection du lot complet'}
+                        </span>
+                      </Td>
+                      <Td><Badge tone={badgeTone}>{badgeText}</Badge>
+                        {percentageMode && rowActive && <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                          {balance.available > 0 ? `${fmtPrice(100 - (balance.requestedPercent || 0))} % non affectés (cible)` : 'Liquidité non disponible'}
+                        </div>}
+                      </Td>
                     </tr>
                   );
                 }))}</tbody>
@@ -14304,12 +14509,16 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             {(sens === 'Achat' ? selectedClientObjects.some((client) => perClientCash[String(client.id)]?.remaining < -0.01) :
               Object.values(perClientHoldings).some((position) => position.remaining != null && position.remaining < 0)) && (
               <div role="alert" className="p-2 rounded-xl text-xs font-semibold" style={{ background: '#FBE9E7', color: C.coral }}>
-                Opération impossible avec les disponibilités indiquées : diminuez les quantités ou corrigez les prix.
+                {percentageMode
+                  ? 'Pourcentage cumulé supérieur à 100 % ou liquidité insuffisante : réduisez les pourcentages par client ou corrigez les prix.'
+                  : 'Opération impossible avec les disponibilités indiquées : diminuez les quantités ou corrigez les prix.'}
                 L'enregistrement du brouillon est bloqué tant que le dépassement persiste.
               </div>
             )}
             <p className="text-[10px]" style={{ color: C.sub }}>
-              Calculs indicatifs et non réservés. Les espèces et positions issues des données de démonstration doivent être confirmées dans Valorix / la base de portefeuille ; commissions, taxes et ordres déjà engagés ne sont pas déduits.
+              Calculs indicatifs et non réservés. {percentageMode
+                ? 'Les pourcentages portent sur le solde espèces initial du client ; le solde restant utilise les montants réellement estimés après arrondi des titres entiers. Les paliers ventilent le budget cible.'
+                : 'Les disponibilités sont recalculées sur l’ensemble du lot.'} Les espèces et positions issues des données de démonstration doivent être confirmées dans Valorix / la base de portefeuille ; commissions, taxes et ordres déjà engagés ne sont pas déduits.
             </p>
           </div>
         )}
@@ -14395,7 +14604,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-sm font-bold" style={{ color: C.ink }}>{mode === 'valorix999' ? '5' : '4'}. Vérification et préparation du carnet</h3>
-          <div className="flex gap-2"><Badge tone="navy">{proposed.length} instruction(s)</Badge><Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles de saisie OK'}</Badge></div>
+          <div className="flex gap-2 flex-wrap">
+            <Badge tone="navy">{proposed.length} instruction(s)</Badge>
+            <Badge tone="gold">Mode : {percentageMode ? 'Pourcentage de liquidité' : 'Quantité'}</Badge>
+            <Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles de saisie OK'}</Badge>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {[
