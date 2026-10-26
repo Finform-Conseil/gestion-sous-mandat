@@ -13466,6 +13466,157 @@ const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
   };
 };
 
+
+// OPTION 2 — contrôles consolidés sur TOUT le pré-carnet avant ajout/validation.
+// Les soldes et les taux de change de la maquette demeurent indicatifs.
+// Les ventes ne financent jamais les achats du même pré-carnet par anticipation.
+const gsmControlerEnsemblePreCarnet = (lignes, clients, instruments) => {
+  const errors = [], warnings = [], liquidites = new Map(), positions = new Map();
+  const pourcentages = new Map();
+  for (const line of lignes) {
+    const client = clients.find((c) => String(c.id) === String(line.clientId));
+    const instrument = instruments.find((i) => i.nom === line.titre && i.marche === line.marche);
+    if (!client || !instrument) {
+      errors.push(`Instruction ${line.id || 'nouvelle'} : client ou instrument indisponible.`);
+      continue;
+    }
+    const quantite = Number(line.quantite);
+    const prix = Number(line.bornePrix);
+    if (!Number.isInteger(quantite) || quantite < 1 || !Number.isFinite(prix) || prix <= 0) {
+      errors.push(`${client.nom} / ${line.titre} : quantité ou prix limite invalide.`);
+      continue;
+    }
+    if (line.sens === 'Achat') {
+      const fxTitre = Number(FX[line.devise]);
+      const fxClient = Number(FX[client.devise]);
+      if (!(fxTitre > 0 && fxClient > 0)) {
+        errors.push(`${client.nom} / ${line.titre} : conversion devise indisponible.`);
+        continue;
+      }
+      const id = String(client.id);
+      liquidites.set(id, (liquidites.get(id) || 0) + quantite * prix * fxTitre / fxClient);
+      // Un pourcentage par couple client/titre/ajout, jamais répété par palier.
+      if (line.modeSaisie === 'pourcentage' && line.pourcentageLiquidite != null) {
+        const key = JSON.stringify([id, line.titre, line.saisieLotId || 'premiere-saisie']);
+        const pct = Number(line.pourcentageLiquidite);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          errors.push(`${client.nom} / ${line.titre} : pourcentage invalide.`);
+        } else if (pourcentages.has(key) && Math.abs(pourcentages.get(key).pct - pct) > 0.00001) {
+          errors.push(`${client.nom} / ${line.titre} : pourcentages contradictoires entre paliers.`);
+        } else {
+          pourcentages.set(key, { clientId: id, pct });
+        }
+      }
+    } else if (line.sens === 'Vente') {
+      const key = JSON.stringify([String(client.id), line.titre, line.marche]);
+      positions.set(key, { client, instrument,
+        quantite: (positions.get(key)?.quantite || 0) + quantite });
+    } else {
+      errors.push(`${client.nom} / ${line.titre} : sens d'ordre inconnu.`);
+    }
+  }
+  const totalPct = new Map();
+  pourcentages.forEach(({ clientId, pct }) =>
+    totalPct.set(clientId, (totalPct.get(clientId) || 0) + pct));
+  totalPct.forEach((total, id) => {
+    if (total > 100 + 1e-8) {
+      const client = clients.find((c) => String(c.id) === id);
+      errors.push(`${client?.nom || id} : ${fmtPrice(total)} % de liquidité engagés dans le pré-carnet complet (maximum 100 %).`);
+    }
+  });
+  const soldes = [];
+  liquidites.forEach((engagement, id) => {
+    const client = clients.find((c) => String(c.id) === id);
+    const disponible = gsmEstimatedCash(client);
+    const restant = disponible.amount == null ? null : disponible.amount - engagement;
+    soldes.push({ clientId: id, client: client.nom, devise: client.devise,
+      disponible: disponible.amount, engagement, restant, source: disponible.source });
+    if (disponible.amount == null) {
+      warnings.push(`${client.nom} : espèces non documentées, contrôle opérationnel requis.`);
+    } else if (restant < -0.01) {
+      errors.push(`${client.nom} : le pré-carnet cumule ${fmt(engagement)} ${client.devise} d'achats pour ${fmt(disponible.amount)} ${client.devise} disponibles (hors frais).`);
+    }
+  });
+  positions.forEach(({ client, instrument, quantite }) => {
+    const solde = gsmGroupedAvailableHolding(client, instrument);
+    if (solde.amount == null) {
+      warnings.push(`${client.nom} / ${instrument.nom} : position non documentée, contrôle manuel requis.`);
+    } else if (quantite > solde.amount) {
+      errors.push(`${client.nom} / ${instrument.nom} : ${fmt(quantite)} titres à vendre dans le pré-carnet, ${fmt(solde.amount)} disponibles (${solde.source}).`);
+    }
+  });
+  return { errors, warnings, soldes };
+};
+
+// Le même pré-carnet peut être alimenté en plusieurs saisies AVANT validation.
+// Une clé identique réutilise le groupe d'origine ; les anciennes références
+// restent intactes et les nouvelles instructions obtiennent des ID distincts.
+const gsmAjouterAuPreCarnet = (draft, nouvellesLignes, clients, instruments) => {
+  const pc = draft?.precarnet;
+  if (draft?.mode !== 'precarnet' || !pc || pc.controle || pc.routageSimuleAt ||
+      pc.statut !== 'En préparation') {
+    throw new Error('Ce pré-carnet est verrouillé : seuls les pré-carnets en préparation acceptent de nouveaux ordres.');
+  }
+  if (!Array.isArray(nouvellesLignes) || !nouvellesLignes.length) {
+    throw new Error('Aucune nouvelle instruction à ajouter.');
+  }
+  const lotId = `${draft.id}-AJ-${draft.lignes.length + 1}`;
+  const ajouts = nouvellesLignes.map((line, index) => ({
+    ...line,
+    id: `${draft.id}-${String(draft.lignes.length + index + 1).padStart(3, '0')}`,
+    saisieLotId: lotId,
+    statut: 'Pré-carnet · En préparation',
+  }));
+  const lignes = [...draft.lignes, ...ajouts];
+  const controle = gsmControlerEnsemblePreCarnet(lignes, clients, instruments);
+  if (controle.errors.length) throw new Error(controle.errors.join(' | '));
+  const groupes = pc.groupes.map((g) => ({ ...g, instructions: [...g.instructions] }));
+  const indexGroupes = new Map(groupes.map((g) => [JSON.stringify([
+    g.marche, g.titre, g.sens, g.devise, Number(g.prixLimite), g.validite,
+  ]), g]));
+  ajouts.forEach((line) => {
+    const prix = Number(line.bornePrix);
+    const key = JSON.stringify([line.marche, line.titre, line.sens, line.devise, prix, pc.validite]);
+    let groupe = indexGroupes.get(key);
+    if (!groupe) {
+      groupe = {
+        id: `${draft.id}-GRP-${String(groupes.length + 1).padStart(3, '0')}`,
+        marche: line.marche, titre: line.titre, sens: line.sens, devise: line.devise,
+        prixLimite: prix, validite: pc.validite,
+        quantiteDemandee: 0, instructions: [], executions: [],
+      };
+      groupes.push(groupe);
+      indexGroupes.set(key, groupe);
+    }
+    groupe.quantiteDemandee += Number(line.quantite);
+    groupe.instructions.push({
+      referenceInstruction: line.id, clientId: line.clientId,
+      client: line.client, quantiteDemandee: Number(line.quantite),
+      prixLimite: prix, modeSaisie: line.modeSaisie || 'quantite',
+      pourcentageLiquidite: line.pourcentageLiquidite ?? null,
+      budgetCiblePalier: line.budgetCiblePalier ?? null,
+      deviseClient: line.deviseClient ?? null,
+    });
+  });
+  const now = new Date().toISOString();
+  const modes = new Set(lignes.map((line) => line.modeSaisie || 'quantite'));
+  const sens = new Set(lignes.map((line) => line.sens));
+  const clientsDistincts = [...new Set(lignes.map((line) => line.clientId))];
+  const titresDistincts = [...new Set(lignes.map((line) => line.titre))];
+  return {
+    ...draft, lignes, clients: clientsDistincts, titres: titresDistincts,
+    sens: sens.size === 1 ? [...sens][0] : 'Mixte',
+    modeOrdreCommun: modes.size === 1 ? [...modes][0] : 'mixte',
+    avertissements: [...new Set([...(draft.avertissements || []), ...controle.warnings])],
+    controleCumulatif: controle.soldes,
+    statut: 'Pré-carnet · En préparation',
+    precarnet: { ...pc, groupes,
+      journal: [...(pc.journal || []), { at: now,
+        action: `Ajout ${lotId} : ${ajouts.length} instruction(s), ${groupes.length} groupe(s) consolidé(s)` }],
+    },
+  };
+};
+
 const gsmPreCarnetGroupFilled = (group) => (group.executions || [])
   .reduce((total, execution) => total + Number(execution.quantite || 0), 0);
 
@@ -13707,6 +13858,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [preCarnetValidator, setPreCarnetValidator] = useState('');
   const [preCarnetConfirm, setPreCarnetConfirm] = useState(false);
   const [preCarnetSelectedId, setPreCarnetSelectedId] = useState(null);
+  // 'new' : créer un pré-carnet. Sinon : ID d'un pré-carnet encore ouvert.
+  const [preCarnetTargetId, setPreCarnetTargetId] = useState('new');
   const [preCarnetFills, setPreCarnetFills] = useState({});
   const [preCarnetMessage, setPreCarnetMessage] = useState('');
 
@@ -13995,16 +14148,65 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       indicative: holding.indicative,
     };
   };
+  const preCarnetDrafts = drafts.filter((draft) => draft.mode === 'precarnet' && draft.precarnet);
+  const preCarnetsOuverts = preCarnetDrafts.filter((draft) =>
+    !draft.precarnet.controle && !draft.precarnet.routageSimuleAt &&
+    draft.precarnet.statut === 'En préparation');
+  const destinationPreCarnet = preCarnetsOuverts.find((d) => d.id === preCarnetTargetId) || null;
+  const selectedPreCarnet = preCarnetDrafts.find((draft) => draft.id === preCarnetSelectedId)
+    || preCarnetDrafts[0] || null;
+  const controleGlobalAjout = mode === 'precarnet' && destinationPreCarnet && proposed.length
+    ? gsmControlerEnsemblePreCarnet([...destinationPreCarnet.lignes, ...proposed], clients, instruments)
+    : null;
+  const erreursAjout = controleGlobalAjout?.errors || [];
+  const nouveauxLotsEnCours = selectedClients.length > 0 || selectedTitles.length > 0;
+  const erreursDePreparationVisibles = mode === 'precarnet' && !nouveauxLotsEnCours ? [] : errors;
+  const nombreBlocagesAffiches = erreursDePreparationVisibles.length + erreursAjout.length;
   const groupsByMarket = proposed.reduce((acc, row) => {
     acc[row.marche] = (acc[row.marche] || 0) + 1;
     return acc;
   }, {});
-  const isReady = errors.length === 0 && proposed.length > 0;
+  const isReady = errors.length === 0 && proposed.length > 0 && erreursAjout.length === 0;
+
+  const resetSaisiePreCarnet = () => {
+    setSelectedClients([]);
+    setSelectedTitles([]);
+    setAllocations({});
+    setLiquidityPercentages({});
+    setIndividualLimits({});
+    setTitleSettings({});
+    setGlobalQuantity('');
+    setGlobalPercent('');
+    setPreview(false);
+    setActiveStep(1);
+  };
 
   const save = () => {
     setPreview(true);
     setSaveMessage('');
     if (!isReady) return;
+    if (mode === 'precarnet' && preCarnetTargetId !== 'new') {
+      const existing = preCarnetsOuverts.find((draft) => draft.id === preCarnetTargetId);
+      if (!existing) {
+        setSaveMessage('Pré-carnet indisponible ou déjà validé. Sélectionnez un pré-carnet ouvert.');
+        return;
+      }
+      try {
+        const updated = gsmAjouterAuPreCarnet(existing, proposed, clients, instruments);
+        if (onSaveDraft?.(updated) === false) {
+          setSaveMessage('Échec de l’enregistrement local : ajout non conservé.');
+          return;
+        }
+        setPreCarnetSelectedId(existing.id);
+        setPreCarnetMessage(`${proposed.length} nouvelle(s) instruction(s) ajoutée(s) à ${existing.precarnet.id}. Il reste modifiable avant validation.`);
+        setSaveMessage('');
+        resetSaisiePreCarnet();
+        return;
+      } catch (error) {
+        setSaveMessage(error.message || 'Impossible d’ajouter ces ordres au pré-carnet.');
+        return;
+      }
+    }
     const now = new Date();
     const id = `OG-${now.getTime()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const batch = {
@@ -14033,11 +14235,19 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         }))
       ),
       negociateur: mode === 'valorix999' ? { ...negotiatorSettings } : null,
-      lignes: proposed.map((row, index) => ({ ...row, id: `${id}-${String(index + 1).padStart(3, '0')}`, statut: 'Brouillon non routé' })),
+      lignes: proposed.map((row, index) => ({ ...row,
+        id: `${id}-${String(index + 1).padStart(3, '0')}`,
+        saisieLotId: `${id}-INITIAL`, statut: 'Brouillon non routé' })),
     };
     if (mode === 'precarnet') {
+      const verification = gsmControlerEnsemblePreCarnet(batch.lignes, clients, instruments);
+      if (verification.errors.length) {
+        setSaveMessage(verification.errors.join(' | '));
+        return;
+      }
       batch.precarnet = gsmBuildPreCarnet(batch.lignes, id, preCarnetValidity);
       batch.statut = 'Pré-carnet · En préparation';
+      batch.controleCumulatif = verification.soldes;
     }
     const result = onSaveDraft?.(batch);
     if (result === false) setSaveMessage('Le stockage local est indisponible ; le brouillon n’a pas été enregistré.');
@@ -14045,17 +14255,26 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       setSaveMessage(mode === 'precarnet'
         ? `Pré-carnet ${batch.precarnet.id} enregistré localement, en attente de validation.`
         : `Brouillon ${id} enregistré localement — aucun ordre transmis.`);
-      if (mode === 'precarnet') setPreCarnetSelectedId(id);
+      if (mode === 'precarnet') {
+        setPreCarnetSelectedId(id);
+        setPreCarnetTargetId(id);
+        setPreCarnetMessage(`Pré-carnet ${batch.precarnet.id} créé. Vous pouvez ajouter d'autres ordres avant de le valider.`);
+        resetSaisiePreCarnet();
+      }
       setDraftExpanded(true);
     }
   };
 
 
-  const preCarnetDrafts = drafts.filter((draft) => draft.mode === 'precarnet' && draft.precarnet);
-  const selectedPreCarnet = preCarnetDrafts.find((draft) => draft.id === preCarnetSelectedId)
-    || preCarnetDrafts[0] || null;
   const preCarnetPreview = mode === 'precarnet' && proposed.length
-    ? gsmBuildPreCarnet(proposed.map((line, index) => ({ ...line, id: `APERCU-${index + 1}` })), 'APERCU', preCarnetValidity)
+    ? (destinationPreCarnet
+        ? { ...destinationPreCarnet.precarnet, groupes: gsmBuildPreCarnet(
+            [...destinationPreCarnet.lignes, ...proposed].map((line, index) => ({
+              ...line, id: line.id || `APERCU-${index + 1}`,
+            })), destinationPreCarnet.id, destinationPreCarnet.precarnet.validite).groupes }
+        : gsmBuildPreCarnet(proposed.map((line, index) => ({
+            ...line, id: `APERCU-${index + 1}`,
+          })), 'APERCU', preCarnetValidity))
     : null;
 
   const setPreCarnetDraft = (updated, successMessage) => {
@@ -14067,12 +14286,22 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     setPreCarnetMessage(successMessage);
   };
   const validatePreCarnet = (draft) => {
+    if (preCarnetTargetId === draft.id && nouveauxLotsEnCours) {
+      setPreCarnetMessage('Terminez ou annulez la saisie en cours avant de valider ce pré-carnet.');
+      return;
+    }
     if (!preCarnetValidator.trim() || !preCarnetConfirm) {
       setPreCarnetMessage('Indiquez le responsable du contrôle et cochez la confirmation des vérifications.');
       return;
     }
     if (draft.precarnet.controle) return;
+    const verification = gsmControlerEnsemblePreCarnet(draft.lignes, clients, instruments);
+    if (verification.errors.length) {
+      setPreCarnetMessage(`Validation bloquée : ${verification.errors.join(' | ')}`);
+      return;
+    }
     const at = new Date().toISOString();
+    if (preCarnetTargetId === draft.id) setPreCarnetTargetId('new');
     setPreCarnetDraft({ ...draft, statut: 'Pré-carnet validé localement', precarnet: {
       ...draft.precarnet, statut: 'Validé localement',
       controle: { responsable: preCarnetValidator.trim(), at, nature: 'Attestation locale non authentifiée' },
@@ -14081,6 +14310,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   };
   const simulatePreCarnetRoute = (draft) => {
     if (!draft.precarnet.controle || draft.precarnet.routageSimuleAt) return;
+    const verification = gsmControlerEnsemblePreCarnet(draft.lignes, clients, instruments);
+    if (verification.errors.length) {
+      setPreCarnetMessage(`Simulation bloquée : ${verification.errors.join(' | ')}`);
+      return;
+    }
     const at = new Date().toISOString();
     setPreCarnetDraft({ ...draft, statut: 'Routage simulé (aucun envoi)', precarnet: {
       ...draft.precarnet, statut: 'Routage simulé (aucun envoi)', routageSimuleAt: at,
@@ -14147,8 +14381,49 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <span className="block text-[10px] opacity-80">{step.detail}</span>
           </button>
         ))}
-        <Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles OK'}</Badge>
+        <Badge tone={nombreBlocagesAffiches ? 'coral' : 'teal'}>
+          {nombreBlocagesAffiches ? `${nombreBlocagesAffiches} blocage(s)` : 'Contrôles de la saisie OK'}
+        </Badge>
       </div>
+
+      {mode === 'precarnet' && (
+        <div className="p-3 rounded-xl border flex flex-wrap items-center justify-between gap-3"
+          style={{ borderColor: C.gold, background: '#FFF9ED' }}>
+          <div className="flex-1 min-w-[210px]">
+            <div className="text-xs font-bold" style={{ color: C.ink }}>Pré-carnet de destination</div>
+            <div className="text-[10px]" style={{ color: C.sub }}>
+              Préparez plusieurs séries d’ordres et réunissez-les avant une seule validation et un routage simulé global.
+            </div>
+            {destinationPreCarnet && <div className="text-[10px] mt-1" style={{ color: C.indigo }}>
+              {destinationPreCarnet.precarnet.id} · {destinationPreCarnet.lignes.length} instruction(s) · {destinationPreCarnet.precarnet.groupes.length} groupe(s) déjà enregistrés.
+              Les pourcentages supplémentaires sont cumulés sur la même liquidité de référence du client.
+            </div>}
+            {preCarnetMessage && <div role="status" className="text-[10px] mt-1 font-semibold" style={{ color: C.teal }}>{preCarnetMessage}</div>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select aria-label="Pré-carnet de destination" value={destinationPreCarnet?.id || 'new'}
+              onChange={(e) => {
+                const id = e.target.value;
+                setPreCarnetTargetId(id);
+                if (id !== 'new') {
+                  const target = preCarnetsOuverts.find((d) => d.id === id);
+                  setPreCarnetSelectedId(id);
+                  if (target) setPreCarnetValidity(target.precarnet.validite);
+                }
+                setPreCarnetMessage(''); setSaveMessage('');
+              }} className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
+              <option value="new">+ Créer un nouveau pré-carnet</option>
+              {preCarnetsOuverts.map((d) => <option key={d.id} value={d.id}>
+                Ajouter à {d.precarnet.id} ({d.lignes.length} instructions)
+              </option>)}
+            </select>
+            {destinationPreCarnet && <button type="button" onClick={() => {
+              setPreCarnetSelectedId(destinationPreCarnet.id); setActiveStep(3);
+            }} className="text-xs font-semibold px-3 py-2 border rounded-lg"
+              style={{ borderColor: C.line, color: C.indigo }}>Voir le pré-carnet</button>}
+          </div>
+        </div>
+      )}
 
       {activeStep === 1 && (
         <div className="space-y-2">
@@ -14572,9 +14847,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             (marché, titre, sens, prix limite, devise et validité). La validation précède toute simulation de routage.
           </p>
           <label className="inline-flex items-center gap-3 text-xs" style={{ color: C.sub }}>
-            Validité des instructions
-            <select value={preCarnetValidity} onChange={(e) => { setPreCarnetValidity(e.target.value); setPreview(false); }}
-              className="px-3 py-2 rounded-lg border" style={inputStyle}>
+            Validité des instructions {destinationPreCarnet ? '(fixée par le pré-carnet)' : ''}
+            <select value={destinationPreCarnet ? destinationPreCarnet.precarnet.validite : preCarnetValidity}
+              disabled={!!destinationPreCarnet}
+              onChange={(e) => { setPreCarnetValidity(e.target.value); setPreview(false); }}
+              className="px-3 py-2 rounded-lg border disabled:opacity-60" style={inputStyle}>
               <option value="Jour">Jour (séance)</option>
               <option value="Jusqu’à annulation">Jusqu’à annulation (si autorisé sur le marché)</option>
             </select>
@@ -14595,9 +14872,15 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             </table>
           </div>}
           <div className="text-[10px]" style={{ color: C.sub }}>
-            {preCarnetPreview?.groupes.length || 0} ordre(s) consolidé(s) pour {proposed.length} instruction(s) client(s).
-            L'enregistrement générera les références permanentes du pré-carnet et des groupes.
+            {preCarnetPreview?.groupes.length || 0} ordre(s) consolidé(s) pour
+            {' '}{(destinationPreCarnet?.lignes.length || 0) + proposed.length} instruction(s) client(s) au total.
+            {destinationPreCarnet
+              ? ' Les nouveaux ordres compatibles seront fusionnés avec les groupes existants, sans changer les anciennes références.'
+              : ' Un nouveau pré-carnet et des références permanentes seront créés.'}
           </div>
+          {erreursAjout.length > 0 && <div className="p-2 rounded-lg space-y-1" style={{ background: '#FBE9E7' }}>
+            {erreursAjout.map((err, index) => <p key={index} className="text-[11px]" style={{ color: C.coral }}>{err}</p>)}
+          </div>}
         </Card>
       )}
 
@@ -14607,7 +14890,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <div className="flex gap-2 flex-wrap">
             <Badge tone="navy">{proposed.length} instruction(s)</Badge>
             <Badge tone="gold">Mode : {percentageMode ? 'Pourcentage de liquidité' : 'Quantité'}</Badge>
-            <Badge tone={errors.length ? 'coral' : 'teal'}>{errors.length ? `${errors.length} blocage(s)` : 'Contrôles de saisie OK'}</Badge>
+            <Badge tone={nombreBlocagesAffiches ? 'coral' : 'teal'}>
+              {nombreBlocagesAffiches ? `${nombreBlocagesAffiches} blocage(s)` : 'Contrôles de saisie OK'}
+            </Badge>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -14620,8 +14905,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             </span>
           ))}
         </div>
-        {errors.length > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBE9E7', maxHeight: 138 }}>
-          {Array.from(new Set(errors)).slice(0, 18).map((err, idx) => <p key={idx} className="text-xs" style={{ color: C.coral }}>• {err}</p>)}
+        {nombreBlocagesAffiches > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBE9E7', maxHeight: 138 }}>
+          {Array.from(new Set([...erreursDePreparationVisibles, ...erreursAjout])).slice(0, 18).map((err, idx) =>
+            <p key={idx} className="text-xs" style={{ color: C.coral }}>• {err}</p>)}
         </div>}
         {warnings.length > 0 && <div className="p-2 rounded-xl space-y-1 overflow-y-auto" style={{ background: '#FBF1DD', maxHeight: 108 }}>
           {Array.from(new Set(warnings)).map((warning, idx) => <p key={idx} className="text-xs" style={{ color: '#75540C' }}>• {warning}</p>)}
@@ -14657,8 +14943,15 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <Btn tone="ghost" onClick={() => setPreview((state) => !state)}>{preview ? 'Masquer les instructions' : 'Prévisualiser les instructions'}</Btn>
           <button type="button" disabled={!isReady} onClick={save}
             className="px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ color: '#fff', background: C.navy }}>Enregistrer le brouillon (sans routage)</button>
+            style={{ color: '#fff', background: C.navy }}>
+            {mode === 'precarnet' ? (destinationPreCarnet ? 'Ajouter ces ordres au pré-carnet' : 'Créer le pré-carnet')
+              : 'Enregistrer le brouillon (sans routage)'}
+          </button>
         </div>
+        {mode === 'precarnet' && <p className="text-[10px]" style={{ color: C.sub }}>
+          L’ajout ne déclenche aucun routage. Recommencez la sélection de clients/titres autant de fois que nécessaire ;
+          validez ensuite le pré-carnet complet, puis lancez sa simulation globale.
+        </p>}
         {saveMessage && <div role="status" className="text-xs font-semibold" style={{ color: saveMessage.startsWith('Brouillon') ? C.teal : C.coral }}>{saveMessage}</div>}
         {preview && proposed.length > 0 && (
           <div className="overflow-x-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 330, overflowY: 'auto' }}>
@@ -14689,6 +14982,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 {draft.precarnet && <Btn tone="ghost" onClick={() => {
                   setMode('precarnet'); setActiveStep(3); setPreCarnetSelectedId(draft.id); setPreCarnetMessage('');
                 }}>Ouvrir pré-carnet</Btn>}
+                {draft.precarnet && !draft.precarnet.controle &&
+                  !draft.precarnet.routageSimuleAt && draft.precarnet.statut === 'En préparation' &&
+                  <Btn tone="ghost" onClick={() => {
+                    setMode('precarnet'); setPreCarnetTargetId(draft.id);
+                    setPreCarnetSelectedId(draft.id); setPreCarnetValidity(draft.precarnet.validite);
+                    resetSaisiePreCarnet(); setSaveMessage(''); setPreCarnetMessage('Nouvelle saisie destinée au pré-carnet sélectionné.');
+                  }}>+ Ajouter des ordres</Btn>}
                 <Btn tone="ghost" onClick={() => draft.precarnet ? gsmExportPreCarnetCsv(draft) : gsmGroupedCsv(draft)}>Exporter CSV</Btn>
                 <Btn tone="ghost" onClick={() => go('carnet')}>Consulter le carnet</Btn>
                 <button type="button" className="px-3 py-2 rounded-xl border text-xs" style={{ color: C.coral, borderColor: C.line }}
@@ -14704,10 +15004,22 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <div>
               <h3 className="text-sm font-bold" style={{ color: C.ink }}>Suivi du pré-carnet · {selectedPreCarnet.precarnet.id}</h3>
               <p className="text-[10px]" style={{ color: C.sub }}>
-                {selectedPreCarnet.precarnet.groupes.length} groupes · {selectedPreCarnet.lignes.length} instructions individuelles
+                {selectedPreCarnet.precarnet.groupes.length} groupes · {selectedPreCarnet.lignes.length} instructions individuelles ·{' '}
+                {selectedPreCarnet.precarnet.journal.filter((e) => /Pré-carnet créé|Ajout /.test(e.action)).length} série(s) de saisie
               </p>
             </div>
-            <Badge tone="navy">{selectedPreCarnet.precarnet.statut}</Badge>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone="navy">{selectedPreCarnet.precarnet.statut}</Badge>
+              {!selectedPreCarnet.precarnet.controle && !selectedPreCarnet.precarnet.routageSimuleAt &&
+                selectedPreCarnet.precarnet.statut === 'En préparation' &&
+                <button type="button" onClick={() => {
+                  setPreCarnetTargetId(selectedPreCarnet.id);
+                  setPreCarnetValidity(selectedPreCarnet.precarnet.validite);
+                  resetSaisiePreCarnet(); setSaveMessage('');
+                  setPreCarnetMessage('Vous pouvez ajouter une nouvelle série d’ordres avant validation.');
+                }} className="px-3 py-2 rounded-xl text-xs font-semibold"
+                  style={{ background: C.navy, color: '#fff' }}>+ Ajouter de nouveaux ordres</button>}
+            </div>
           </div>
           <div className="flex gap-2 items-center flex-wrap">
             <select value={selectedPreCarnet.id} onChange={(e) => { setPreCarnetSelectedId(e.target.value); setPreCarnetMessage(''); }}
@@ -14728,7 +15040,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 J'atteste avoir contrôlé les prix, quantités, comptes, liquidités/titres et règles de regroupement.
                 La validation enregistrée est locale et ne constitue pas une autorisation réelle de marché.
               </label>
-              <button type="button" disabled={!preCarnetValidator.trim() || !preCarnetConfirm}
+              <button type="button" disabled={!preCarnetValidator.trim() || !preCarnetConfirm ||
+                (preCarnetTargetId === selectedPreCarnet.id && nouveauxLotsEnCours)}
                 onClick={() => validatePreCarnet(selectedPreCarnet)}
                 className="px-3 py-2 rounded-xl text-xs font-semibold disabled:opacity-40"
                 style={{ background: C.navy, color: '#fff' }}>Valider le pré-carnet (local)</button>
@@ -14740,12 +15053,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               {!selectedPreCarnet.precarnet.routageSimuleAt && <button type="button"
                 onClick={() => simulatePreCarnetRoute(selectedPreCarnet)}
                 className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
-                2. Simuler le routage des groupes
+                2. Lancer l’ordre général (simulation)
               </button>}
             </div>
           )}
           {selectedPreCarnet.precarnet.routageSimuleAt && <p className="text-xs font-semibold" style={{ color: C.gold }}>
-            Routage simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')}.
+            Ordre général : routage simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')}.
             Aucun ordre envoyé au marché. Aucun compte Valorix modifié.
           </p>}
           {preCarnetMessage && <p role="status" className="text-xs font-semibold" style={{ color: C.indigo }}>{preCarnetMessage}</p>}
