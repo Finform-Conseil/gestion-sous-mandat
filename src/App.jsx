@@ -13409,7 +13409,7 @@ const gsmPersistGroupedDrafts = (drafts) => {
 
 const gsmGroupedCsv = (draft) => {
   const rows = [
-    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction','Mode d’ordre commun','% de liquidité (titre)','Budget cible (palier, devise client)','Devise client'],
+    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction','Mode d’ordre commun','% de liquidité (titre)','Budget cible (palier, devise client)','Devise client','% nombre de titres','Titres disponibles (référence)'],
     ...draft.lignes.map((line) => [
       draft.id, GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || draft.mode,
       draft.mode === 'valorix999' ? '999' : '',
@@ -13417,6 +13417,7 @@ const gsmGroupedCsv = (draft) => {
       line.bornePrix, line.devise, draft.statut || 'Brouillon non routé', line.id,
       draft.modeOrdreCommun || line.modeSaisie || 'quantite',
       line.pourcentageLiquidite ?? '', line.budgetCiblePalier ?? '', line.deviseClient ?? '',
+      line.pourcentageTitres ?? '', line.titresDisponiblesReference ?? '',
     ]),
   ];
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13455,6 +13456,8 @@ const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
       client: line.client, quantiteDemandee: Number(line.quantite),
       prixLimite: price, modeSaisie: line.modeSaisie || 'quantite',
       pourcentageLiquidite: line.pourcentageLiquidite ?? null,
+      pourcentageTitres: line.pourcentageTitres ?? null,
+      titresDisponiblesReference: line.titresDisponiblesReference ?? null,
       budgetCiblePalier: line.budgetCiblePalier ?? null,
       deviseClient: line.deviseClient ?? null,
     });
@@ -13473,6 +13476,7 @@ const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
 const gsmControlerEnsemblePreCarnet = (lignes, clients, instruments) => {
   const errors = [], warnings = [], liquidites = new Map(), positions = new Map();
   const pourcentages = new Map();
+  const pourcentagesTitres = new Map();
   for (const line of lignes) {
     const client = clients.find((c) => String(c.id) === String(line.clientId));
     const instrument = instruments.find((i) => i.nom === line.titre && i.marche === line.marche);
@@ -13508,6 +13512,21 @@ const gsmControlerEnsemblePreCarnet = (lignes, clients, instruments) => {
         }
       }
     } else if (line.sens === 'Vente') {
+      if (line.modeSaisie === 'pourcentageTitres') {
+        const pct = Number(line.pourcentageTitres);
+        const keyPct = JSON.stringify([String(client.id), line.titre, line.marche,
+          line.saisieLotId || 'premiere-saisie']);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          errors.push(`${client.nom} / ${line.titre} : pourcentage de titres invalide.`);
+        } else if (pourcentagesTitres.has(keyPct) &&
+          Math.abs(pourcentagesTitres.get(keyPct).pct - pct) > 0.00001) {
+          errors.push(`${client.nom} / ${line.titre} : pourcentages de titres contradictoires entre paliers.`);
+        } else {
+          pourcentagesTitres.set(keyPct, {
+            clientId: String(client.id), titre: line.titre, marche: line.marche, pct,
+          });
+        }
+      }
       const key = JSON.stringify([String(client.id), line.titre, line.marche]);
       positions.set(key, { client, instrument,
         quantite: (positions.get(key)?.quantite || 0) + quantite });
@@ -13522,6 +13541,18 @@ const gsmControlerEnsemblePreCarnet = (lignes, clients, instruments) => {
     if (total > 100 + 1e-8) {
       const client = clients.find((c) => String(c.id) === id);
       errors.push(`${client?.nom || id} : ${fmtPrice(total)} % de liquidité engagés dans le pré-carnet complet (maximum 100 %).`);
+    }
+  });
+  const totalPourcentageTitres = new Map();
+  pourcentagesTitres.forEach(({ clientId, titre, marche, pct }) => {
+    const key = JSON.stringify([clientId, titre, marche]);
+    totalPourcentageTitres.set(key, (totalPourcentageTitres.get(key) || 0) + pct);
+  });
+  totalPourcentageTitres.forEach((total, key) => {
+    if (total > 100 + 1e-8) {
+      const [clientId, titre] = JSON.parse(key);
+      const client = clients.find((c) => String(c.id) === clientId);
+      errors.push(`${client?.nom || clientId} / ${titre} : ${fmtPrice(total)} % des titres demandés dans le pré-carnet complet (maximum 100 %).`);
     }
   });
   const soldes = [];
@@ -13594,6 +13625,8 @@ const gsmAjouterAuPreCarnet = (draft, nouvellesLignes, clients, instruments) => 
       client: line.client, quantiteDemandee: Number(line.quantite),
       prixLimite: prix, modeSaisie: line.modeSaisie || 'quantite',
       pourcentageLiquidite: line.pourcentageLiquidite ?? null,
+      pourcentageTitres: line.pourcentageTitres ?? null,
+      titresDisponiblesReference: line.titresDisponiblesReference ?? null,
       budgetCiblePalier: line.budgetCiblePalier ?? null,
       deviseClient: line.deviseClient ?? null,
     });
@@ -13704,16 +13737,17 @@ const gsmExportPreCarnetCsv = (draft) => {
   const rows = [['Nature','Référence pré-carnet','Référence groupe','Référence instruction','Référence exécution',
     'Référence affectation','Compte','Client','Marché','Titre','Sens','Prix limite','Prix exécuté simulé',
     'Qté demandée','Qté exécutée/affectée','Devise','Validité','Statut',
-    'Mode d’ordre commun','% liquidité (titre)','Budget cible palier','Devise client']];
+    'Mode d’ordre commun','% liquidité (titre)','Budget cible palier','Devise client','% nombre de titres','Titres disponibles (référence)']];
   pc.groupes.forEach((group) => {
     rows.push(['GROUPE', pc.id, group.id, '', '', '', '', '', group.marche, group.titre,
       group.sens, group.prixLimite, '', group.quantiteDemandee, gsmPreCarnetGroupFilled(group),
-      group.devise, group.validite, pc.statut, draft.modeOrdreCommun || 'quantite', '', '', '']);
+      group.devise, group.validite, pc.statut, draft.modeOrdreCommun || 'quantite', '', '', '', '', '']);
     group.instructions.forEach((inst) => rows.push(['INSTRUCTION', pc.id, group.id,
       inst.referenceInstruction, '', '', inst.clientId, inst.client, group.marche, group.titre,
       group.sens, inst.prixLimite, '', inst.quantiteDemandee, '', group.devise, group.validite,
       'Instruction pré-carnet', inst.modeSaisie, inst.pourcentageLiquidite ?? '',
-      inst.budgetCiblePalier ?? '', inst.deviseClient ?? '']));
+      inst.budgetCiblePalier ?? '', inst.deviseClient ?? '',
+      inst.pourcentageTitres ?? '', inst.titresDisponiblesReference ?? '']));
     group.executions.forEach((exec) => exec.allocations.forEach((a) => rows.push([
       'AFFECTATION_SIMULÉE', pc.id, group.id, a.referenceInstruction, exec.id,
       a.referenceAffectation, a.clientId, a.client, group.marche, group.titre,
@@ -13723,6 +13757,8 @@ const gsmExportPreCarnetCsv = (draft) => {
       group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.pourcentageLiquidite ?? '',
       group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.budgetCiblePalier ?? '',
       group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.deviseClient ?? '',
+      group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.pourcentageTitres ?? '',
+      group.instructions.find((i) => i.referenceInstruction === a.referenceInstruction)?.titresDisponiblesReference ?? '',
     ])));
   });
   const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13774,6 +13810,30 @@ const gsmGroupedPercentBreakdown = ({ cash, pourcentage, tranches, deviseClient,
     quantite: lignes.reduce((total, ligne) => total + ligne.quantite, 0),
     montantEngageClient: lignes.reduce((total, ligne) => total + ligne.montantEngageClient, 0),
   };
+};
+
+// Vente en % du nombre de titres disponibles pour chaque couple client/actif.
+// 40 % de 150 titres disponibles = 60 titres. Le nombre est entier,
+// arrondi à l'inférieur puis ventilé en paliers sans perte d'unités.
+const gsmGroupedHoldingPercentBreakdown = ({ disponibles, pourcentage, tranches }) => {
+  const stock = Number(disponibles);
+  const pct = Number(pourcentage);
+  if (!Number.isInteger(stock) || stock < 0 || !Number.isFinite(pct) || pct < 0 || pct > 100 ||
+      !Array.isArray(tranches) || !tranches.length) return null;
+  const parts = tranches.map((tranche) => Number(tranche.part));
+  if (parts.some((part) => !Number.isFinite(part) || part < 0 || part > 100) ||
+      Math.abs(parts.reduce((sum, part) => sum + part, 0) - 100) > 0.01) return null;
+  const quantite = Math.min(stock, Math.floor(stock * pct / 100 + 1e-9));
+  let reste = quantite;
+  const lignes = tranches.map((tranche, index) => {
+    const q = index === tranches.length - 1 ? reste
+      : Math.min(reste, Math.floor(quantite * parts[index] / 100));
+    reste -= q;
+    return { quantite: q };
+  });
+  return { quantite, lignes, disponibles: stock, pourcentage: pct,
+    restant: stock - quantite,
+    pourcentageReel: stock > 0 ? quantite / stock * 100 : 0 };
 };
 
 const gsmEstimatedCash = (client) => {
@@ -13844,6 +13904,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [titleSettings, setTitleSettings] = useState({});
   const [allocations, setAllocations] = useState({});
   const [liquidityPercentages, setLiquidityPercentages] = useState({});
+  const [holdingPercentages, setHoldingPercentages] = useState({});
   const [commonOrderMode, setCommonOrderMode] = useState('quantite');
   const [individualLimits, setIndividualLimits] = useState({});
   const [globalQuantity, setGlobalQuantity] = useState('');
@@ -13933,14 +13994,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     setSettings(titre, { ...setting, tranches: setting.tranches.filter((t) => t.id !== id) });
   };
   const percentageMode = sens === 'Achat' && commonOrderMode === 'pourcentage';
+  const sellPercentMode = sens === 'Vente' && commonOrderMode === 'pourcentageTitres';
+  const anyPercentMode = percentageMode || sellPercentMode;
   const applyCommonValue = () => {
-    const value = percentageMode ? Number(globalPercent) : Number(globalQuantity);
-    if (percentageMode ? !(value > 0 && value <= 100) : !Number.isInteger(value) || value <= 0) return;
+    const value = anyPercentMode ? Number(globalPercent) : Number(globalQuantity);
+    if (anyPercentMode ? !(value > 0 && value <= 100) : !Number.isInteger(value) || value <= 0) return;
     const next = {};
     selectedClients.forEach((id) => selectedTitles.forEach((titre) => {
       next[selectionKey(id, titre)] = String(value);
     }));
     if (percentageMode) setLiquidityPercentages((current) => ({ ...current, ...next }));
+    else if (sellPercentMode) setHoldingPercentages((current) => ({ ...current, ...next }));
     else setAllocations((current) => ({ ...current, ...next }));
     setPreview(false); setSaveMessage('');
   };
@@ -14005,9 +14069,18 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     )) errors.push(`Les répartitions des tranches de ${instrument.nom} doivent totaliser 100 %.`);
     selectedClientObjects.forEach((client) => {
       const key = selectionKey(String(client.id), instrument.nom);
-      const percent = percentageMode ? Number(percentRowValues[key] || 0) : null;
+      const percent = percentageMode ? Number(percentRowValues[key] || 0)
+        : sellPercentMode ? Number(holdingPercentages[key] || 0) : null;
       const cashInfo = percentageMode ? gsmEstimatedCash(client) : null;
-      if (percentageMode && !(percent >= 0 && percent <= 100 && Number.isFinite(percent))) return;
+      const holdingInfo = sellPercentMode ? gsmGroupedAvailableHolding(client, instrument) : null;
+      if (anyPercentMode && !(percent >= 0 && percent <= 100 && Number.isFinite(percent))) {
+        errors.push(`${client.nom} / ${instrument.nom} : pourcentage invalide (0 à 100 %).`);
+        return;
+      }
+      if (sellPercentMode && percent > 0 && holdingInfo.amount == null) {
+        errors.push(`${client.nom} / ${instrument.nom} : nombre de titres disponibles inconnu ; impossible de calculer un pourcentage de vente.`);
+        return;
+      }
       if (percentageMode && percent > 0 && cashInfo.amount == null) {
         errors.push(`${client.nom} : espèces disponibles inconnues ; calcul du pourcentage impossible pour ${instrument.nom}.`);
         return;
@@ -14022,10 +14095,23 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         errors.push(`Calcul impossible pour ${client.nom} / ${instrument.nom} : vérifiez les cours, paliers et devises.`);
         return;
       }
-      const quantity = percentageMode ? (percentBreakdown?.quantite || 0) : Number(allocations[key] ?? 0);
+      const holdingBreakdown = sellPercentMode && percent > 0
+        ? gsmGroupedHoldingPercentBreakdown({
+            disponibles: holdingInfo.amount, pourcentage: percent,
+            tranches: tranches.map((t, index) => ({ ...t, part: parts[index] })),
+          }) : null;
+      if (sellPercentMode && percent > 0 && !holdingBreakdown) {
+        errors.push(`Calcul de la vente en % impossible : ${client.nom} / ${instrument.nom}.`);
+        return;
+      }
+      const quantity = percentageMode ? (percentBreakdown?.quantite || 0)
+        : sellPercentMode ? (holdingBreakdown?.quantite || 0) : Number(allocations[key] ?? 0);
       if (!Number.isInteger(quantity) || quantity < 0) {
         errors.push(`Quantité invalide : ${client.nom} / ${instrument.nom}.`);
         return;
+      }
+      if (sellPercentMode && percent > 0 && quantity === 0) {
+        errors.push(`${client.nom} / ${instrument.nom} : ${fmtPrice(percent)} % de ${fmt(holdingInfo.amount)} titre(s) ne permet pas de vendre un titre entier.`);
       }
       if (percentageMode && percent > 0 && quantity === 0) {
         errors.push(`${client.nom} / ${instrument.nom} : le budget de ${fmtPrice(percent)} % ne permet pas l'achat d'un titre entier aux prix limites indiqués.`);
@@ -14043,6 +14129,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         const part = (mode === 'multi' || mode === 'precarnet') ? Number(tranche.part) : 100;
         if (!(unitPrice > 0) || !Number.isFinite(part) || part < 0 || part > 100) return;
         const qty = percentageMode ? (percentBreakdown?.lignes[index]?.quantite || 0)
+          : sellPercentMode ? (holdingBreakdown?.lignes[index]?.quantite || 0)
           : index === tranches.length - 1 ? remainder : Math.min(remainder, Math.floor(quantity * part / 100));
         remainder -= qty;
         if (qty <= 0) return;
@@ -14055,8 +14142,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           quantite: qty, bornePrix: unitPrice, tranche: tranche.id,
           code: mode === 'valorix999' ? '999' : '',
           montantEstime: qty * unitPrice,
-          modeSaisie: percentageMode ? 'pourcentage' : 'quantite',
+          modeSaisie: percentageMode ? 'pourcentage' : sellPercentMode ? 'pourcentageTitres' : 'quantite',
           pourcentageLiquidite: percentageMode ? percent : null,
+          pourcentageTitres: sellPercentMode ? percent : null,
+          titresDisponiblesReference: sellPercentMode ? holdingInfo.amount : null,
           budgetCiblePalier: percentageMode ? percentBreakdown?.lignes[index]?.budgetCiblePalier : null,
           deviseClient: client.devise,
         });
@@ -14065,6 +14154,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   });
   if (!proposed.length) errors.push(percentageMode
     ? 'Renseignez un pourcentage permettant l’achat d’au moins un titre entier.'
+    : sellPercentMode ? 'Renseignez un pourcentage permettant de vendre au moins un titre entier.'
     : 'Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
   if (mode === 'precarnet' && proposed.length) warnings.push('Pré-carnet préparé localement : le routage, les exécutions et les affectations dans Valorix ne sont PAS connectés. Les simulations sont purement illustratives.');
   if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
@@ -14145,6 +14235,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       available: holding.amount, remaining, source: holding.source,
       blocked: remaining != null && remaining < 0,
       unknown: holding.amount == null, unit: 'titres',
+      requestedPercent: sellPercentMode ? Number(holdingPercentages[selectionKey(String(client.id), instrument.nom)] || 0) : null,
+      remainingPercent: holding.amount > 0 && remaining != null ? remaining / holding.amount * 100
+        : null,
       indicative: holding.indicative,
     };
   };
@@ -14173,6 +14266,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     setSelectedTitles([]);
     setAllocations({});
     setLiquidityPercentages({});
+    setHoldingPercentages({});
     setIndividualLimits({});
     setTitleSettings({});
     setGlobalQuantity('');
@@ -14211,7 +14305,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     const id = `OG-${now.getTime()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
     const batch = {
       id, mode, sens, createdAt: now.toISOString(), statut: 'Brouillon non routé',
-      modeOrdreCommun: percentageMode ? 'pourcentage' : 'quantite',
+      modeOrdreCommun: percentageMode ? 'pourcentage' : sellPercentMode ? 'pourcentageTitres' : 'quantite',
+      pourcentagesTitres: sellPercentMode ? { ...holdingPercentages } : null,
       pourcentagesLiquidite: percentageMode ? { ...liquidityPercentages } : null,
       clients: [...selectedClients], titres: [...selectedTitles],
       // Instantané des limites retenues pour chaque titre du lot.
@@ -14229,7 +14324,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       soldesAvantSimulation: selectedClientObjects.flatMap((client) =>
         selectedInstrumentObjects.map((instrument) => ({
           clientId: String(client.id), titre: instrument.nom, sens,
-          modeOrdreCommun: percentageMode ? 'pourcentage' : 'quantite',
+          modeOrdreCommun: percentageMode ? 'pourcentage' : sellPercentMode ? 'pourcentageTitres' : 'quantite',
           ...liveBalanceFor(client, instrument),
           nature: 'Projection indicative de brouillon, sans réservation ni exécution',
         }))
@@ -14579,12 +14674,15 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         <div className="space-y-2">
       <Card className="p-3 space-y-3" style={panel}>
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et {percentageMode ? 'budgets en %' : 'quantités'}</h3>
+          <h3 className="text-sm font-bold" style={{ color: C.ink }}>3. Prix, tranches et {percentageMode ? 'budgets en %' : sellPercentMode ? 'titres à céder en %' : 'quantités'}</h3>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="text-xs flex items-center gap-1.5" style={{ color: C.sub }}>Sens
               <select value={sens} onChange={(e) => {
                   setSens(e.target.value);
-                  if (e.target.value === 'Vente') setCommonOrderMode('quantite');
+                  if (e.target.value === 'Vente' && commonOrderMode === 'pourcentage')
+                    setCommonOrderMode('pourcentageTitres');
+                  else if (e.target.value === 'Achat' && commonOrderMode === 'pourcentageTitres')
+                    setCommonOrderMode('pourcentage');
                   setPreview(false); setSaveMessage('');
                 }} className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
                 <option>Achat</option><option>Vente</option>
@@ -14596,7 +14694,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 onChange={(e) => { setCommonOrderMode(e.target.value); setPreview(false); setSaveMessage(''); }}
                 className="px-3 py-2 border rounded-xl text-xs" style={inputStyle}>
                 <option value="quantite">Quantité</option>
-                <option value="pourcentage" disabled={sens === 'Vente'}>Pourcentage de liquidité</option>
+                {sens === 'Achat' ? <option value="pourcentage">Pourcentage de liquidité</option>
+                  : <option value="pourcentageTitres">% nombre de titres</option>}
               </select>
             </label>
           </div>
@@ -14604,8 +14703,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         <p className="text-[10px]" style={{ color: C.sub }}>
           {percentageMode
             ? 'Le pourcentage est appliqué aux espèces disponibles AVANT ce lot, pour chaque client. Les pourcentages de tous les titres du client sont additionnés (maximum 100 %). Quantités calculées par palier aux prix limites, arrondies à l’entier inférieur.'
+            : sellPercentMode
+            ? 'Le pourcentage est appliqué aux titres disponibles au départ pour chaque client et pour chaque actif. La quantité vendue est arrondie à l’entier inférieur, puis répartie entre les paliers. Les titres restants et les contrôles sont recalculés à chaque saisie.'
             : sens === 'Vente'
-            ? 'Pour une vente, la quantité de titres est saisie directement ; le mode pourcentage de liquidité ne s’applique pas aux titres à céder.'
+            ? 'Saisissez directement la quantité de titres à vendre. Vous pouvez également sélectionner « % nombre de titres ».'
             : 'Renseignez les quantités par client et par titre. Les trois colonnes de disponibilité affichent les soldes en espèces et les contrôles du lot.'}
         </p>
         {selectedInstrumentObjects.length === 0 ? (
@@ -14652,17 +14753,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         )}
         <div className="flex gap-2 items-end flex-wrap">
           <label className="text-xs" style={{ color: C.sub }}>
-            {percentageMode ? 'Pourcentage commun (optionnel)' : 'Quantité commune (optionnelle)'}
-            <input type="number" min={percentageMode ? '0.01' : '1'} max={percentageMode ? '100' : undefined}
-              step={percentageMode ? '0.01' : '1'}
-              value={percentageMode ? globalPercent : globalQuantity}
-              onChange={(e) => percentageMode ? setGlobalPercent(e.target.value) : setGlobalQuantity(e.target.value)}
+            {percentageMode ? 'Pourcentage de liquidité commun (optionnel)' : sellPercentMode ? '% nombre de titres commun (optionnel)' : 'Quantité commune (optionnelle)'}
+            <input type="number" min={anyPercentMode ? '0.01' : '1'} max={anyPercentMode ? '100' : undefined}
+              step={anyPercentMode ? '0.01' : '1'}
+              value={anyPercentMode ? globalPercent : globalQuantity}
+              onChange={(e) => anyPercentMode ? setGlobalPercent(e.target.value) : setGlobalQuantity(e.target.value)}
               className="block mt-1 w-44 px-3 py-2 border rounded-xl text-sm" style={inputStyle}
-              placeholder={percentageMode ? 'Ex. 20 %' : 'Ex. 100'} />
+              placeholder={anyPercentMode ? 'Ex. 20 %' : 'Ex. 100'} />
           </label>
           <Btn tone="ghost" onClick={applyCommonValue}>Appliquer aux lignes sélectionnées</Btn>
           <span className="text-[10px]" style={{ color: C.sub }}>
-            {percentageMode ? 'L’application concerne chaque titre ; vérifiez que le total des titres par client ne dépasse pas 100 %.' : 'Vous pouvez modifier chaque ligne ensuite.'}
+            {percentageMode ? 'En achat, la somme des pourcentages par client ne doit pas dépasser 100 %.' : sellPercentMode ? 'En vente, le pourcentage est indépendant pour chaque couple client / titre ; le pré-carnet vérifie les ajouts cumulés.' : 'Vous pouvez modifier chaque ligne ensuite.'}
           </span>
         </div>
         {selectedClients.length > 0 && selectedTitles.length > 0 && (
@@ -14674,6 +14775,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               <span className="text-[10px]" style={{ color: C.sub }}>
                 {percentageMode
                   ? 'Pour chaque client : 100 % = espèces disponibles initiales. Le solde projeté cumule tous les titres du lot (hors frais).'
+                  : sellPercentMode
+                  ? 'Pour chaque client et titre : 100 % = titres disponibles initiaux ; les paliers du même titre sont cumulés.'
                   : sens === 'Achat'
                     ? 'Le solde projeté cumule tous les achats du client, tous titres confondus (hors frais).'
                     : 'Le solde titres projeté cumule les paliers du même client et du même titre.'}
@@ -14682,17 +14785,18 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <div className="overflow-auto rounded-xl border" style={{ borderColor: C.line, maxHeight: 'min(40vh, 365px)' }}>
               <table className="w-full" style={{ minWidth: 1190 }}>
                 <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
-                  <Th>Client</Th><Th>Instrument</Th><Th>{percentageMode ? '% liquidité / Qté calculée' : 'Qté'}</Th><Th>Prix limite titre</Th>
+                  <Th>Client</Th><Th>Instrument</Th><Th>{percentageMode ? '% liquidité / Qté calculée' : sellPercentMode ? '% titres / Qté à céder' : 'Qté'}</Th><Th>Prix limite titre</Th>
                   <Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th>
-                  <Th>{percentageMode ? 'Liquidité de référence (100 %)' : sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
-                  <Th>{percentageMode ? 'Solde après lot (% + espèces)' : sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
-                  <Th>{percentageMode ? 'Contrôle de liquidité (%)' : 'Contrôle'}</Th>
+                  <Th>{percentageMode ? 'Liquidité de référence (100 %)' : sellPercentMode ? 'Titres disponibles (100 %)' : sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
+                  <Th>{percentageMode ? 'Solde après lot (% + espèces)' : sellPercentMode ? 'Titres restants (% + quantité)' : sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
+                  <Th>{percentageMode ? 'Contrôle de liquidité (%)' : sellPercentMode ? 'Contrôle des titres (%)' : 'Contrôle'}</Th>
                 </tr></thead>
                 <tbody>{selectedClientObjects.flatMap((client) => selectedInstrumentObjects.map((instrument) => {
                   const key = selectionKey(String(client.id), instrument.nom);
-                  const rawValue = percentageMode ? (liquidityPercentages[key] ?? '') : (allocations[key] ?? '');
+                  const rawValue = percentageMode ? (liquidityPercentages[key] ?? '')
+                    : sellPercentMode ? (holdingPercentages[key] ?? '') : (allocations[key] ?? '');
                   const entered = rawValue === '' ? 0 : Number(rawValue);
-                  const invalidInput = percentageMode
+                  const invalidInput = anyPercentMode
                     ? !Number.isFinite(entered) || entered < 0 || entered > 100
                     : !Number.isInteger(entered) || entered < 0;
                   const trancheSet = (mode === 'multi' || mode === 'precarnet')
@@ -14705,39 +14809,50 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                         tranches: trancheSet.map((t) => ({ ...t, part: (mode === 'multi' || mode === 'precarnet') ? Number(t.part) : 100 })),
                         deviseClient: client.devise, deviseTitre: instrument.devise,
                       }) : null;
-                  const quantity = percentageMode ? (calculated?.quantite || 0) : entered;
+                  const titresInfo = sellPercentMode ? gsmGroupedAvailableHolding(client, instrument) : null;
+                  const calculatedSell = sellPercentMode && !invalidInput && titresInfo?.amount != null
+                    ? gsmGroupedHoldingPercentBreakdown({
+                        disponibles: titresInfo.amount, pourcentage: entered,
+                        tranches: trancheSet.map((t) => ({ ...t, part: (mode === 'multi' || mode === 'precarnet') ? Number(t.part) : 100 })),
+                      }) : null;
+                  const quantity = percentageMode ? (calculated?.quantite || 0)
+                    : sellPercentMode ? (calculatedSell?.quantite || 0) : entered;
                   const balance = liveBalanceFor(client, instrument);
                   const rowActive = entered > 0 && !invalidInput;
                   const budgetTooSmall = percentageMode && rowActive && !!calculated && calculated.quantite === 0;
+                  const quantityTooSmall = sellPercentMode && rowActive && !!calculatedSell && calculatedSell.quantite === 0;
                   const percentOverflow = percentageMode && (balance.requestedPercent || 0) > 100 + 1e-8;
-                  const alert = invalidInput || (rowActive && (balance.blocked || balance.unknown || budgetTooSmall));
-                  const badgeTone = invalidInput || percentOverflow || budgetTooSmall || (rowActive && balance.blocked) ? 'coral' :
+                  const alert = invalidInput || (rowActive && (balance.blocked || balance.unknown || budgetTooSmall || quantityTooSmall));
+                  const badgeTone = invalidInput || percentOverflow || budgetTooSmall || quantityTooSmall || (rowActive && balance.blocked) ? 'coral' :
                     rowActive && balance.unknown ? 'gold' : rowActive ? 'teal' : 'slate';
-                  const badgeText = invalidInput ? (percentageMode ? '% invalide' : 'Qté invalide') :
+                  const badgeText = invalidInput ? (anyPercentMode ? '% invalide' : 'Qté invalide') :
                     percentOverflow ? 'Plus de 100 % sur le lot' :
                     budgetTooSmall ? 'Budget trop faible' :
+                    quantityTooSmall ? 'Moins d’un titre entier' :
                     rowActive && balance.blocked ? (sens === 'Achat' ? 'Liquidité insuffisante' : 'Titres insuffisants') :
                     rowActive && balance.unknown ? 'Solde inconnu' :
                     rowActive && percentageMode ? `${fmtPrice(balance.requestedPercent || 0)} % ciblés · OK` :
+                    rowActive && sellPercentMode ? `${fmtPrice(balance.requestedPercent || 0)} % des titres ciblés · OK` :
                     rowActive ? 'Capacité indicative OK' : 'Non saisi';
                   return (
                     <tr key={key} className="border-t" style={{ borderColor: C.line, background: alert ? '#FFF6F3' : 'transparent' }}>
                       <Td>{client.nom}</Td><Td>{instrument.nom}</Td>
                       <Td>
-                        <input aria-label={`${percentageMode ? 'Pourcentage de liquidité' : 'Quantité'} ${client.nom} ${instrument.nom}`}
-                          type="number" min="0" max={percentageMode ? '100' : undefined}
-                          step={percentageMode ? '0.01' : '1'}
-                          aria-invalid={invalidInput || (rowActive && balance.blocked) || budgetTooSmall}
+                        <input aria-label={`${percentageMode ? 'Pourcentage de liquidité' : sellPercentMode ? 'Pourcentage du nombre de titres' : 'Quantité'} ${client.nom} ${instrument.nom}`}
+                          type="number" min="0" max={anyPercentMode ? '100' : undefined}
+                          step={anyPercentMode ? '0.01' : '1'}
+                          aria-invalid={invalidInput || (rowActive && balance.blocked) || budgetTooSmall || quantityTooSmall}
                           value={rawValue} onChange={(e) => {
                             if (percentageMode) setLiquidityPercentages((cur) => ({ ...cur, [key]: e.target.value }));
+                            else if (sellPercentMode) setHoldingPercentages((cur) => ({ ...cur, [key]: e.target.value }));
                             else setAllocations((cur) => ({ ...cur, [key]: e.target.value }));
                             setPreview(false); setSaveMessage('');
                           }}
                           className="w-24 px-2 py-1.5 border rounded-lg text-xs"
                           style={{ ...inputStyle, borderColor: alert ? C.coral : C.line }}
-                          placeholder={percentageMode ? '% (ex. 20)' : '0'} />
-                        {percentageMode && <div className="text-[10px] mt-1 whitespace-nowrap" style={{ color: budgetTooSmall ? C.coral : C.sub }}>
-                          {calculated ? `${fmt(calculated.quantite)} titre(s)` : entered > 0 ? 'Calcul indisponible' : '0 titre'}
+                          placeholder={anyPercentMode ? '% (ex. 20)' : '0'} />
+                        {anyPercentMode && <div className="text-[10px] mt-1 whitespace-nowrap" style={{ color: budgetTooSmall ? C.coral : C.sub }}>
+                          {(percentageMode ? calculated : calculatedSell) ? `${fmt(quantity)} titre(s)` : entered > 0 ? 'Calcul indisponible' : '0 titre'}
                         </div>}
                         {percentageMode && calculated && <div className="text-[9px] whitespace-nowrap" style={{ color: C.sub }}>
                           Budget : {fmt(calculated.budgetClient)} {client.devise}
@@ -14750,8 +14865,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                         value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
                         className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
                       <Td>
-                        {percentageMode && <div className="text-xs font-bold" style={{ color: C.ink, ...F_MONO }}>
-                          {balance.available == null ? 'Non connu' : '100 %'}
+                        {anyPercentMode && <div className="text-xs font-bold" style={{ color: C.ink, ...F_MONO }}>
+                          {balance.available == null ? 'Non connu' : sellPercentMode && balance.available === 0 ? '0 titre' : '100 %'}
                         </div>}
                         <div className="text-xs font-semibold whitespace-nowrap" style={{ color: C.ink, ...F_MONO }}>
                           {balance.available == null ? 'Non connu' : `${fmt(balance.available)} ${balance.unit}`}
@@ -14759,7 +14874,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                         <div className="text-[9px]" style={{ color: C.sub }}>{balance.source}</div>
                       </Td>
                       <Td>
-                        {percentageMode && <div aria-live="polite" className="text-xs font-bold"
+                        {anyPercentMode && <div aria-live="polite" className="text-xs font-bold"
                           style={{ color: balance.blocked ? C.coral : balance.unknown ? C.gold : C.teal, ...F_MONO }}>
                           {balance.remainingPercent == null ? 'Non calculable' : `${fmtPrice(balance.remainingPercent)} %`}
                         </div>}
@@ -14768,12 +14883,15 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                           {balance.remaining == null ? 'Non calculable' : `${fmt(balance.remaining)} ${balance.unit}`}
                         </div>
                         <span className="text-[9px]" style={{ color: C.sub }}>
-                          {percentageMode ? `Cible totale : ${fmtPrice(balance.requestedPercent || 0)} % · engagement estimé : ${balance.available > 0 ? fmtPrice(balance.spent / balance.available * 100) : '—'} %` : 'Projection du lot complet'}
+                          {percentageMode ? `Cible totale : ${fmtPrice(balance.requestedPercent || 0)} % · engagement estimé : ${balance.available > 0 ? fmtPrice(balance.spent / balance.available * 100) : '—'} %`
+                            : sellPercentMode ? `Cible : ${fmtPrice(balance.requestedPercent || 0)} % · Quantité vendue : ${balance.available != null && balance.remaining != null ? `${fmt(balance.available - balance.remaining)} titre(s)` : 'non calculable'}`
+                            : 'Projection du lot complet'}
                         </span>
                       </Td>
                       <Td><Badge tone={badgeTone}>{badgeText}</Badge>
-                        {percentageMode && rowActive && <div className="text-[9px] mt-1" style={{ color: C.sub }}>
-                          {balance.available > 0 ? `${fmtPrice(100 - (balance.requestedPercent || 0))} % non affectés (cible)` : 'Liquidité non disponible'}
+                        {anyPercentMode && rowActive && <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                          {percentageMode ? (balance.available > 0 ? `${fmtPrice(100 - (balance.requestedPercent || 0))} % non affectés (cible)` : 'Liquidité non disponible')
+                            : (balance.remainingPercent == null ? 'Position non renseignée' : `${fmtPrice(balance.remainingPercent)} % réellement restants`)}
                         </div>}
                       </Td>
                     </tr>
@@ -14786,6 +14904,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               <div role="alert" className="p-2 rounded-xl text-xs font-semibold" style={{ background: '#FBE9E7', color: C.coral }}>
                 {percentageMode
                   ? 'Pourcentage cumulé supérieur à 100 % ou liquidité insuffisante : réduisez les pourcentages par client ou corrigez les prix.'
+                  : sellPercentMode
+                  ? 'Vente impossible : la quantité calculée dépasse les titres disponibles. Réduisez les pourcentages ou revoyez les ordres.'
                   : 'Opération impossible avec les disponibilités indiquées : diminuez les quantités ou corrigez les prix.'}
                 L'enregistrement du brouillon est bloqué tant que le dépassement persiste.
               </div>
@@ -14793,6 +14913,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <p className="text-[10px]" style={{ color: C.sub }}>
               Calculs indicatifs et non réservés. {percentageMode
                 ? 'Les pourcentages portent sur le solde espèces initial du client ; le solde restant utilise les montants réellement estimés après arrondi des titres entiers. Les paliers ventilent le budget cible.'
+                : sellPercentMode
+                ? 'Pour chaque couple client / titre, 100 % = position disponible initiale. La quantité vendue est arrondie à l’entier inférieur et répartie entre les paliers ; le pré-carnet vérifie toutes les ventes déjà ajoutées.'
                 : 'Les disponibilités sont recalculées sur l’ensemble du lot.'} Les espèces et positions issues des données de démonstration doivent être confirmées dans Valorix / la base de portefeuille ; commissions, taxes et ordres déjà engagés ne sont pas déduits.
             </p>
           </div>
