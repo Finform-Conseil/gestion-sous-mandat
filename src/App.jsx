@@ -13766,6 +13766,218 @@ const gsmExportPreCarnetCsv = (draft) => {
     { type: 'text/csv;charset=utf-8' }), `precarnet-${exportSafeFileName(pc.id)}.csv`);
 };
 
+// ------------------- MARCHÉ FICTIF : AUCUN ROUTAGE RÉEL -------------------
+// Moteur déterministe par séance : ordres à cours limité confrontés à un livre
+// artificiel de contreparties. Aucun fetch, aucun endpoint d'OMS, aucune mutation
+// de trésorerie ou de position réelle. Les prix et volumes sont des hypothèses.
+const GSM_FICTIVE_SCENARIOS = [
+  { id: 'equilibre', label: 'Marché équilibré', description: 'Profondeur moyenne ; exécutions totales, partielles ou en attente selon les limites.' },
+  { id: 'liquide', label: 'Marché liquide', description: 'Contreparties plus importantes et prix généralement plus favorables.' },
+  { id: 'tendu', label: 'Marché tendu', description: 'Faible profondeur et prix parfois hors limite, donc ordres en attente.' },
+];
+
+const gsmFictiveSeed = (value) => String(value || '').split('')
+  .reduce((total, letter) => (total * 33 + letter.charCodeAt(0)) >>> 0, 5381);
+
+const gsmFictiveRoundPrice = (value, market) => {
+  const scale = market === 'BRVM' ? 1 : 100;
+  return Math.max(1 / scale, Math.round(value * scale) / scale);
+};
+
+const gsmFictiveCreateBook = (instrument, sens, scenario) => {
+  const config = scenario === 'liquide'
+    ? { depth: 2.2, offsets: [-0.003, -0.0015, 0, 0.001, 0.002] }
+    : scenario === 'tendu'
+      ? { depth: 0.22, offsets: [0.006, 0.009, 0.013, 0.018, 0.024] }
+      : { depth: 1, offsets: [-0.0015, -0.0003, 0.0015, 0.004, 0.007] };
+  const price = Number(instrument.cours);
+  const volume = Math.max(1, Number(instrument.volumeJour || instrument.volume || 1000));
+  const seed = gsmFictiveSeed(`${instrument.marche}|${instrument.nom}|${scenario}`);
+  const depth = Math.max(1, Math.floor(volume * 0.0025 * config.depth));
+  const levels = config.offsets.map((offset, index) => {
+    const variation = (seed % (13 + index * 7)) / 12000;
+    const direction = sens === 'Achat' ? 1 : -1;
+    return {
+      prix: gsmFictiveRoundPrice(price * (1 + direction * (offset + variation)), instrument.marche),
+      quantite: Math.max(1, Math.floor(depth * (0.6 + index * 0.45))),
+    };
+  });
+  return levels.sort((a, b) => sens === 'Achat' ? a.prix - b.prix : b.prix - a.prix);
+};
+
+const gsmFictiveOrdersFromDraft = (draft) => {
+  if (draft.mode === 'precarnet') return draft.precarnet.groupes.map((group) => ({
+    ...group, instructions: [...group.instructions], executions: [...(group.executions || [])],
+  }));
+  if (draft.simulationMarche?.groupes?.length) return draft.simulationMarche.groupes.map((group) => ({
+    ...group, instructions: [...group.instructions], executions: [...(group.executions || [])],
+  }));
+  // Circuit direct : UNE instruction par ordre de marché, sans consolidation.
+  // Pour le circuit 999 le prix stocké est une limite de sécurité, PAS le code 999.
+  return draft.lignes.map((line) => ({
+    id: `SIM-${line.id}`, marche: line.marche, titre: line.titre, sens: line.sens,
+    devise: line.devise, prixLimite: Number(line.bornePrix), validite: 'Jour',
+    quantiteDemandee: Number(line.quantite),
+    instructions: [{
+      referenceInstruction: line.id, clientId: line.clientId, client: line.client,
+      quantiteDemandee: Number(line.quantite), prixLimite: Number(line.bornePrix),
+      modeSaisie: line.modeSaisie || 'quantite',
+    }], executions: [],
+  }));
+};
+
+const gsmFictiveReport = (draft) => {
+  const groups = draft.mode === 'precarnet'
+    ? (draft.precarnet?.groupes || []) : (draft.simulationMarche?.groupes || []);
+  const currencies = new Map();
+  let demande = 0, execute = 0, transactions = 0;
+  const groupsSummary = [];
+  const allocations = [];
+  groups.forEach((group) => {
+    const amountExecuted = gsmPreCarnetGroupFilled(group);
+    const requested = Number(group.quantiteDemandee || 0);
+    const montant = (group.executions || []).reduce((sum, e) => sum + e.quantite * e.prix, 0);
+    demande += requested;
+    execute += amountExecuted;
+    transactions += (group.executions || []).length;
+    const devise = group.devise || '—';
+    currencies.set(devise, (currencies.get(devise) || 0) + montant);
+    groupsSummary.push({ id: group.id, titre: group.titre, marche: group.marche,
+      devise, sens: group.sens, prixLimite: group.prixLimite, demande: requested,
+      execute: amountExecuted, reste: Math.max(0, requested - amountExecuted),
+      prixMoyen: amountExecuted ? montant / amountExecuted : null,
+      statut: amountExecuted === requested ? 'Exécuté · fictif'
+        : amountExecuted ? 'Partiel · fictif' : 'En attente · fictif',
+    });
+    group.instructions.forEach((inst) => {
+      let qty = 0, total = 0;
+      (group.executions || []).forEach((e) => (e.allocations || []).forEach((a) => {
+        if (a.referenceInstruction === inst.referenceInstruction) {
+          qty += a.quantite; total += a.quantite * e.prix;
+        }
+      }));
+      allocations.push({ groupe: group.id, instruction: inst.referenceInstruction,
+        clientId: inst.clientId, client: inst.client, titre: group.titre,
+        sens: group.sens, devise, demande: inst.quantiteDemandee,
+        execute: qty, reste: inst.quantiteDemandee - qty,
+        montant: total, prixMoyen: qty ? total / qty : null });
+    });
+  });
+  return { demande, execute, reste: Math.max(0, demande - execute), transactions,
+    groupes: groupsSummary, allocations,
+    montantsParDevise: Array.from(currencies, ([devise, montant]) => ({ devise, montant })),
+  };
+};
+
+const gsmFictiveSimulateSession = (draft, scenario, clients, instruments) => {
+  if (!GSM_FICTIVE_SCENARIOS.some((s) => s.id === scenario)) throw new Error('Scénario de marché inconnu.');
+  if (!draft?.lignes?.length) throw new Error('Aucune instruction à lancer.');
+  if (draft.mode === 'precarnet' && !draft.precarnet?.controle) {
+    throw new Error('Le pré-carnet doit être validé avant le lancement fictif.');
+  }
+  const verification = gsmControlerEnsemblePreCarnet(draft.lignes, clients, instruments);
+  if (verification.errors.length) throw new Error(`Contrôles non satisfaits : ${verification.errors.join(' | ')}`);
+  const groups = gsmFictiveOrdersFromDraft(draft);
+  const groupsById = new Map(groups.map((g) => [g.id, g]));
+  const runIndex = (draft.simulationMarche?.seances || []).length + 1;
+  const sessionId = `${draft.id}-FICT-${String(runIndex).padStart(2, '0')}`;
+  const now = new Date().toISOString();
+  const books = new Map();
+  let executionCount = 0, volumeNew = 0;
+  const priority = [...groups].sort((a, b) => {
+    const ak = `${a.marche}|${a.titre}|${a.sens}`, bk = `${b.marche}|${b.titre}|${b.sens}`;
+    if (ak !== bk) return ak.localeCompare(bk);
+    const p = a.sens === 'Achat' ? b.prixLimite - a.prixLimite : a.prixLimite - b.prixLimite;
+    return p || String(a.id).localeCompare(String(b.id));
+  });
+  priority.forEach((source) => {
+    const group = groupsById.get(source.id);
+    let left = Math.max(0, group.quantiteDemandee - gsmPreCarnetGroupFilled(group));
+    if (!left) return;
+    const instr = instruments.find((item) => item.nom === group.titre && item.marche === group.marche);
+    if (!instr || !(Number(instr.cours) > 0)) return; // Non exécuté, pas de fausse cotation.
+    const bookKey = JSON.stringify([group.marche, group.titre, group.sens]);
+    if (!books.has(bookKey)) {
+      const levels = gsmFictiveCreateBook(instr, group.sens, scenario);
+      books.set(bookKey, { marche: group.marche, titre: group.titre, sens: group.sens,
+        reference: Number(instr.cours), devise: group.devise,
+        initial: levels.map((lvl) => ({ ...lvl })), levels });
+    }
+    const book = books.get(bookKey);
+    for (const level of book.levels) {
+      if (!left) break;
+      const compatible = group.sens === 'Achat'
+        ? level.prix <= Number(group.prixLimite) : level.prix >= Number(group.prixLimite);
+      if (!compatible) break; // Niveau trié, les suivants sont encore moins favorables.
+      if (level.quantite <= 0) continue;
+      const qty = Math.min(left, level.quantite);
+      if (!qty) continue;
+      const allocations = gsmAllocatePreCarnetExecution(group, qty);
+      const executionId = `${sessionId}-${String(++executionCount).padStart(4, '0')}`;
+      group.executions.push({
+        id: executionId, at: now, quantite: qty, prix: level.prix,
+        statut: 'Transaction fictive — aucune opération réelle',
+        origine: sessionId,
+        tranchesAlgorithmiquesIndicatives: draft.mode === 'valorix999'
+          ? Math.ceil(qty / Math.max(1, Math.floor(Number(draft.negociateur?.sliceSize) || 200))) : null,
+        allocations: allocations.map((a) => ({ ...a,
+          referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
+          statut: 'Affectation fictive — aucun compte réel modifié',
+        })),
+      });
+      level.quantite -= qty;
+      left -= qty;
+      volumeNew += qty;
+    }
+  });
+  const carnets = Array.from(books.values()).map((book) => ({
+    ...book, niveauxApres: book.levels.map((lvl) => ({ ...lvl })),
+    niveauxAvant: book.initial, levels: undefined, initial: undefined,
+  }));
+  const remaining = groups.reduce((sum, g) =>
+    sum + Math.max(0, g.quantiteDemandee - gsmPreCarnetGroupFilled(g)), 0);
+  const session = { id: sessionId, at: now, scenario, volumeExecute: volumeNew,
+    nombreTransactions: executionCount, reste: remaining, carnets };
+  const previous = draft.simulationMarche?.seances || [];
+  const pc = draft.mode === 'precarnet' ? {
+    ...draft.precarnet, groupes: groups, routageSimuleAt: draft.precarnet.routageSimuleAt || now,
+    statut: remaining === 0 ? 'Exécution totale · marché fictif'
+      : volumeNew ? 'Exécution partielle · marché fictif' : 'Ordres en attente · marché fictif',
+    journal: [...(draft.precarnet.journal || []), { at: now,
+      action: `Séance ${sessionId} · ${scenario} · ${volumeNew} titres exécutés fictivement · ${remaining} en attente` }],
+  } : undefined;
+  const next = { ...draft,
+    statut: remaining === 0 ? 'Exécuté totalement (simulation fictive)'
+      : groups.some((g) => gsmPreCarnetGroupFilled(g) > 0)
+        ? 'Exécuté partiellement (simulation fictive)' : 'En attente (marché fictif)',
+    ...(pc ? { precarnet: pc } : {}),
+    simulationMarche: {
+      lanceAt: draft.simulationMarche?.lanceAt || now,
+      derniereSeanceAt: now, derniereSeance: sessionId,
+      scenario, seances: [...previous, session],
+      ...(pc ? {} : { groupes: groups }),
+      moteur: 'Contreparties générées localement — données et transactions fictives',
+    },
+  };
+  return { ...next, simulationMarche: {
+    ...next.simulationMarche, resume: gsmFictiveReport(next),
+  } };
+};
+
+const gsmExportFictiveResultsCsv = (draft) => {
+  if (!draft?.simulationMarche) return;
+  const result = gsmFictiveReport(draft);
+  const rows = [['Lot', 'Référence instruction', 'Référence groupe', 'Client', 'Titre',
+    'Sens', 'Devise', 'Demandé', 'Exécuté fictif', 'En attente', 'Prix moyen fictif',
+    'Montant fictif', 'Scénario dernière séance'],
+    ...result.allocations.map((a) => [draft.id, a.instruction, a.groupe, a.client,
+      a.titre, a.sens, a.devise, a.demande, a.execute, a.reste,
+      a.prixMoyen ?? '', a.montant, draft.simulationMarche.scenario])];
+  const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+  exportDownloadBlob(new Blob(['\uFEFF', rows.map((r) => r.map(escape).join(';')).join('\r\n')],
+    { type: 'text/csv;charset=utf-8' }), `resultats-marche-fictif-${exportSafeFileName(draft.id)}.csv`);
+};
+
 // Valeur indicative pour préremplir un prix limite à la sélection du titre.
 // L'univers CLIENT_TRADABLE_MARKETS actuel provient de la maquette :
 // ce n'est PAS un prix limite réglementaire ni une cotation de marché live.
@@ -13923,6 +14135,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [preCarnetTargetId, setPreCarnetTargetId] = useState('new');
   const [preCarnetFills, setPreCarnetFills] = useState({});
   const [preCarnetMessage, setPreCarnetMessage] = useState('');
+  const [marcheFictifScenario, setMarcheFictifScenario] = useState('equilibre');
+  const [marcheFictifMessage, setMarcheFictifMessage] = useState('');
+  const [rapportFictifId, setRapportFictifId] = useState(null);
 
   // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
   const clients = Array.isArray(CLIENTS) ? CLIENTS : [];
@@ -14403,19 +14618,29 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       journal: [...draft.precarnet.journal, { at, action: `Contrôlé par ${preCarnetValidator.trim()} (déclaratif)` }],
     } }, 'Pré-carnet validé localement. Aucune transmission vers le marché.');
   };
-  const simulatePreCarnetRoute = (draft) => {
-    if (!draft.precarnet.controle || draft.precarnet.routageSimuleAt) return;
-    const verification = gsmControlerEnsemblePreCarnet(draft.lignes, clients, instruments);
-    if (verification.errors.length) {
-      setPreCarnetMessage(`Simulation bloquée : ${verification.errors.join(' | ')}`);
-      return;
+  const lancerMarcheFictif = (draft) => {
+    try {
+      if (draft.mode === 'precarnet' && preCarnetTargetId === draft.id && nouveauxLotsEnCours) {
+        throw new Error('Terminez votre nouvelle saisie avant le lancement du pré-carnet.');
+      }
+      const updated = gsmFictiveSimulateSession(draft, marcheFictifScenario, clients, instruments);
+      if (onSaveDraft?.(updated) === false) throw new Error('Impossible de conserver les résultats en stockage local.');
+      const rapport = gsmFictiveReport(updated);
+      setRapportFictifId(draft.id);
+      setDraftExpanded(true);
+      setActiveStep(3);
+      const message = `Marché FICTIF : ${fmt(rapport.execute)} titre(s) exécuté(s) sur ${fmt(rapport.demande)} ; ${fmt(rapport.reste)} en attente. Aucun routage réel.`;
+      setMarcheFictifMessage(message);
+      if (draft.mode === 'precarnet') {
+        setPreCarnetSelectedId(draft.id);
+        setPreCarnetMessage(message);
+      }
+    } catch (error) {
+      setMarcheFictifMessage(error.message || 'Simulation de marché impossible.');
+      if (draft.mode === 'precarnet') setPreCarnetMessage(error.message || 'Simulation impossible.');
     }
-    const at = new Date().toISOString();
-    setPreCarnetDraft({ ...draft, statut: 'Routage simulé (aucun envoi)', precarnet: {
-      ...draft.precarnet, statut: 'Routage simulé (aucun envoi)', routageSimuleAt: at,
-      journal: [...draft.precarnet.journal, { at, action: 'Routage SIMULÉ (aucun ordre envoyé)' }],
-    } }, 'Routage simulé enregistré : aucune connexion marché ou Valorix sollicitée.');
   };
+  const simulatePreCarnetRoute = (draft) => lancerMarcheFictif(draft);
   const simulatePreCarnetFill = (draft, group) => {
     try {
       const inputs = preCarnetFills[group.id] || {};
@@ -15094,6 +15319,19 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
         {draftExpanded && (
           <div className="space-y-2">
+            <div className="flex items-end gap-3 flex-wrap p-2 rounded-lg" style={{ background: '#F2F4F8' }}>
+              <label className="text-xs font-semibold" style={{ color: C.ink }}>Scénario de marché fictif
+                <select value={marcheFictifScenario} onChange={(e) => setMarcheFictifScenario(e.target.value)}
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle}>
+                  {GSM_FICTIVE_SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+                </select>
+              </label>
+              <span className="text-[10px] max-w-xl" style={{ color: C.sub }}>
+                {GSM_FICTIVE_SCENARIOS.find((s) => s.id === marcheFictifScenario)?.description}
+                {' '}Simulation purement locale : aucun ordre envoyé, aucune liquidité ou position réelle modifiée.
+              </span>
+            </div>
+            {marcheFictifMessage && <p role="status" className="text-xs" style={{ color: C.indigo }}>{marcheFictifMessage}</p>}
             {drafts.length === 0 && <p className="text-xs" style={{ color: C.sub }}>Aucun brouillon enregistré.</p>}
             {drafts.map((draft) => <div key={draft.id} className="p-3 rounded-xl border flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.line }}>
               <div><div className="text-xs font-bold" style={{ color: C.ink }}>{draft.id}</div>
@@ -15112,6 +15350,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     resetSaisiePreCarnet(); setSaveMessage(''); setPreCarnetMessage('Nouvelle saisie destinée au pré-carnet sélectionné.');
                   }}>+ Ajouter des ordres</Btn>}
                 <Btn tone="ghost" onClick={() => draft.precarnet ? gsmExportPreCarnetCsv(draft) : gsmGroupedCsv(draft)}>Exporter CSV</Btn>
+                {(!draft.precarnet || draft.precarnet.controle) &&
+                  (!draft.simulationMarche || gsmFictiveReport(draft).reste > 0) &&
+                  <button type="button" onClick={() => lancerMarcheFictif(draft)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+                    {draft.simulationMarche ? 'Simuler les reliquats' : 'Lancer sur marché fictif'}
+                  </button>}
+                {draft.simulationMarche && <button type="button"
+                  onClick={() => { setRapportFictifId((id) => id === draft.id ? null : draft.id); setActiveStep(3); }}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ color: C.indigo, borderColor: C.line }}>
+                  {rapportFictifId === draft.id ? 'Masquer le résultat' : 'Résultats simulés'}
+                </button>}
                 <Btn tone="ghost" onClick={() => go('carnet')}>Consulter le carnet</Btn>
                 <button type="button" className="px-3 py-2 rounded-xl border text-xs" style={{ color: C.coral, borderColor: C.line }}
                   onClick={() => { if (typeof window === 'undefined' || window.confirm(`Supprimer le brouillon ${draft.id} ?`)) onDeleteDraft?.(draft.id); }}>Supprimer</button>
@@ -15120,6 +15369,65 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
       </Card>
+      {rapportFictifId && (() => {
+        const draft = drafts.find((d) => d.id === rapportFictifId && d.simulationMarche);
+        if (!draft) return null;
+        const rapport = gsmFictiveReport(draft);
+        const derniere = draft.simulationMarche.seances[draft.simulationMarche.seances.length - 1];
+        return <Card className="p-4 space-y-3" style={{ borderColor: C.indigo }}>
+          <div className="flex justify-between gap-3 items-center flex-wrap">
+            <div><h3 className="text-sm font-bold" style={{ color: C.ink }}>Résultat du marché fictif · {draft.id}</h3>
+              <p className="text-[10px]" style={{ color: C.sub }}>{draft.simulationMarche.seances.length} séance(s) simulée(s) · dernière : {new Date(derniere.at).toLocaleString('fr-FR')} · {derniere.scenario}</p></div>
+            <div className="flex gap-2 flex-wrap">
+              <button type="button" onClick={() => gsmExportFictiveResultsCsv(draft)}
+                className="px-3 py-2 border rounded-xl text-xs font-semibold" style={{ color: C.indigo, borderColor: C.line }}>Exporter résultats CSV</button>
+              <button type="button" onClick={() => setRapportFictifId(null)}
+                className="px-3 py-2 border rounded-xl text-xs" style={{ color: C.sub, borderColor: C.line }}>Fermer</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {[["Demandé", rapport.demande], ["Exécuté fictif", rapport.execute], ["En attente", rapport.reste], ["Transactions fictives", rapport.transactions]].map(([label,value]) =>
+              <div key={label} className="p-3 rounded-lg" style={{ background: '#F2F4F8' }}>
+                <div className="text-[10px]" style={{ color: C.sub }}>{label}</div>
+                <div className="text-lg font-bold" style={{ color: C.ink, ...F_MONO }}>{fmt(value)}</div>
+              </div>)}
+          </div>
+          <p className="text-xs" style={{ color: C.sub }}>
+            Montants exécutés fictifs par devise : {rapport.montantsParDevise.map((m) => `${fmtPrice(m.montant)} ${m.devise}`).join(' · ') || '—'}.
+            Les devises ne sont pas additionnées entre elles.
+          </p>
+          <div className="text-xs font-bold" style={{ color: C.ink }}>Ordres de marché · état après simulation</div>
+          <div className="overflow-auto border rounded-lg" style={{ borderColor: C.line, maxHeight: 225 }}>
+            <table className="w-full" style={{ minWidth: 760 }}><thead className="sticky top-0" style={{ background: '#F2F4F8' }}><tr>
+              <Th>Référence</Th><Th>Titre</Th><Th>Sens</Th><Th>Prix limite</Th><Th>Demandé</Th><Th>Exécuté</Th><Th>Reste</Th><Th>Prix moyen</Th><Th>État</Th>
+            </tr></thead><tbody>{rapport.groupes.map((g) => <tr key={g.id} className="border-t" style={{ borderColor: C.line }}>
+              <Td mono>{g.id}</Td><Td>{g.titre} · {g.marche}</Td><Td>{g.sens}</Td><Td mono>{fmtPrice(g.prixLimite)}</Td>
+              <Td mono>{fmt(g.demande)}</Td><Td mono>{fmt(g.execute)}</Td><Td mono>{fmt(g.reste)}</Td>
+              <Td mono>{g.prixMoyen == null ? '—' : `${fmtPrice(g.prixMoyen)} ${g.devise}`}</Td>
+              <Td><Badge tone={g.reste === 0 ? 'teal' : g.execute ? 'gold' : 'slate'}>{g.statut}</Badge></Td>
+            </tr>)}</tbody></table>
+          </div>
+          <div className="text-xs font-bold" style={{ color: C.ink }}>Retour des transactions par compte client (affectations fictives)</div>
+          <div className="overflow-auto border rounded-lg" style={{ borderColor: C.line, maxHeight: 265 }}>
+            <table className="w-full" style={{ minWidth: 940 }}><thead className="sticky top-0" style={{ background: '#F2F4F8' }}><tr>
+              <Th>Instruction</Th><Th>Client</Th><Th>Titre</Th><Th>Sens</Th><Th>Demandé</Th><Th>Exécuté</Th><Th>Reste</Th><Th>Montant fictif</Th><Th>Prix moyen fictif</Th>
+            </tr></thead><tbody>{rapport.allocations.map((a) => <tr key={a.instruction} className="border-t" style={{ borderColor: C.line }}>
+              <Td mono>{a.instruction}</Td><Td>{a.client}</Td><Td>{a.titre}</Td><Td>{a.sens}</Td>
+              <Td mono>{fmt(a.demande)}</Td><Td mono>{fmt(a.execute)}</Td><Td mono>{fmt(a.reste)}</Td>
+              <Td mono>{fmtPrice(a.montant)} {a.devise}</Td><Td mono>{a.prixMoyen == null ? '—' : fmtPrice(a.prixMoyen)}</Td>
+            </tr>)}</tbody></table>
+          </div>
+          <details className="text-xs" style={{ color: C.sub }}><summary className="cursor-pointer font-semibold">Voir les contreparties artificielles de la dernière séance</summary>
+            <div className="overflow-auto mt-2" style={{ maxHeight: 170 }}><table className="w-full"><thead><tr><Th>Titre</Th><Th>Sens</Th><Th>Cours fictif de référence</Th><Th>Niveaux initiaux</Th><Th>Quantités après exécution</Th></tr></thead><tbody>
+              {(derniere.carnets || []).map((book, i) => <tr key={i} className="border-t" style={{ borderColor: C.line }}>
+                <Td>{book.titre} · {book.marche}</Td><Td>{book.sens}</Td><Td mono>{fmtPrice(book.reference)} {book.devise}</Td>
+                <Td>{book.niveauxAvant.map((n) => `${fmtPrice(n.prix)} × ${fmt(n.quantite)}`).join(' / ')}</Td>
+                <Td>{book.niveauxApres.map((n) => `${fmtPrice(n.prix)} × ${fmt(n.quantite)}`).join(' / ')}</Td>
+              </tr>)}</tbody></table></div>
+          </details>
+          <p className="text-[10px]" style={{ color: C.coral }}>SIMULATION EXCLUSIVEMENT : carnet, transactions, allocations et statuts fictifs. Aucun ordre transmis à une bourse, aucune affectation Valorix, aucun compte réel débité ou crédité.</p>
+        </Card>;
+      })()}
       {selectedPreCarnet && mode === 'precarnet' && (
         <Card className="p-3 space-y-3" style={{ borderColor: C.indigo }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -15172,23 +15480,33 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           {selectedPreCarnet.precarnet.controle && (
             <div className="flex items-center justify-between flex-wrap gap-2 text-xs rounded-lg p-2" style={{ background: '#EAF8F3', color: C.ink }}>
               <span>Contrôlé par {selectedPreCarnet.precarnet.controle.responsable} · {new Date(selectedPreCarnet.precarnet.controle.at).toLocaleString('fr-FR')} (déclaratif)</span>
-              {!selectedPreCarnet.precarnet.routageSimuleAt && <button type="button"
-                onClick={() => simulatePreCarnetRoute(selectedPreCarnet)}
-                className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
-                2. Lancer l’ordre général (simulation)
-              </button>}
+              {!selectedPreCarnet.precarnet.routageSimuleAt && <div className="flex items-center gap-2 flex-wrap">
+                <select value={marcheFictifScenario} onChange={(e) => setMarcheFictifScenario(e.target.value)}
+                  aria-label="Scénario du marché fictif du pré-carnet"
+                  className="px-2 py-2 rounded-xl border text-xs" style={inputStyle}>
+                  {GSM_FICTIVE_SCENARIOS.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}
+                </select>
+                <button type="button" onClick={() => simulatePreCarnetRoute(selectedPreCarnet)}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+                  2. Lancer l’ordre général sur le marché fictif
+                </button>
+              </div>}
             </div>
           )}
-          {selectedPreCarnet.precarnet.routageSimuleAt && <p className="text-xs font-semibold" style={{ color: C.gold }}>
-            Ordre général : routage simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')}.
-            Aucun ordre envoyé au marché. Aucun compte Valorix modifié.
-          </p>}
+          {selectedPreCarnet.precarnet.routageSimuleAt && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: C.gold }}>
+            <span>Ordre général simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')} · aucun envoi réel.</span>
+            {selectedPreCarnet.simulationMarche && <button type="button" onClick={() => setRapportFictifId(selectedPreCarnet.id)}
+              className="px-3 py-1.5 rounded-lg border font-semibold" style={{ borderColor: C.line, color: C.indigo }}>Voir le résultat des transactions</button>}
+            {selectedPreCarnet.simulationMarche && gsmFictiveReport(selectedPreCarnet).reste > 0 &&
+              <button type="button" onClick={() => lancerMarcheFictif(selectedPreCarnet)}
+                className="px-3 py-1.5 rounded-lg border font-semibold" style={{ borderColor: C.line, color: C.indigo }}>Simuler les reliquats</button>}
+          </div>}
           {preCarnetMessage && <p role="status" className="text-xs font-semibold" style={{ color: C.indigo }}>{preCarnetMessage}</p>}
           <div className="overflow-auto rounded-xl border" style={{ maxHeight: 355, borderColor: C.line }}>
             <table className="w-full" style={{ minWidth: 1040 }}>
               <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
                 <Th>Référence groupée</Th><Th>Instrument</Th><Th>Sens</Th><Th>Limite</Th>
-                <Th>Demandé</Th><Th>Exécuté simulé</Th><Th>Reste</Th><Th>Clients</Th><Th>Simulation d'exécution</Th>
+                <Th>Demandé</Th><Th>Exécuté simulé</Th><Th>Reste</Th><Th>Clients</Th><Th>Exécution manuelle fictive</Th>
               </tr></thead>
               <tbody>{selectedPreCarnet.precarnet.groupes.map((group) => {
                 const done = gsmPreCarnetGroupFilled(group);
@@ -15203,16 +15521,16 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     <Td mono>{fmt(left)}</Td><Td>{group.instructions.length} instructions</Td>
                     <Td><div className="flex items-center gap-1">
                       <input type="number" min="1" step="1" max={left} value={fill.quantite ?? ''}
-                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
                         onChange={(e) => setFillField(group.id, 'quantite', e.target.value)}
                         placeholder="Qté" aria-label={`Quantité simulée ${group.id}`}
                         className="w-20 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
                       <input type="number" min="0.0001" step="any" value={fill.prix ?? String(group.prixLimite)}
-                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
                         onChange={(e) => setFillField(group.id, 'prix', e.target.value)}
                         aria-label={`Prix simulé ${group.id}`}
                         className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
-                      <button type="button" disabled={!selectedPreCarnet.precarnet.routageSimuleAt || left <= 0}
+                      <button type="button" disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
                         onClick={() => simulatePreCarnetFill(selectedPreCarnet, group)}
                         className="px-2 py-1.5 rounded-lg text-[10px] font-semibold disabled:opacity-40"
                         style={{ background: C.indigo, color: '#fff' }}>Simuler</button>
@@ -15286,10 +15604,25 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
         id: group.id, sens: group.sens, titre: group.titre, marche: group.marche,
         devise: group.devise, qte: group.quantiteDemandee,
         prix: group.prixLimite, prixSecurite: null,
-        statut: draft.precarnet.statut, pf: `${new Set(group.instructions.map((inst) => inst.clientId)).size} client(s)`,
-        origine: `Pré-carnet ${draft.precarnet.id} · ${fmt(gsmPreCarnetGroupFilled(group))} exéc. simulées`,
+        statut: draft.simulationMarche
+          ? (gsmPreCarnetGroupFilled(group) === group.quantiteDemandee ? 'Exécuté · fictif'
+            : gsmPreCarnetGroupFilled(group) ? 'Partiel · fictif' : 'En attente · fictif')
+          : draft.precarnet.statut,
+        pf: `${new Set(group.instructions.map((inst) => inst.clientId)).size} client(s)`,
+        origine: `Pré-carnet ${draft.precarnet.id} · ${fmt(gsmPreCarnetGroupFilled(group))} exéc. fictives`,
       }))
-    : draft.lignes.map((line) => ({
+    : draft.simulationMarche
+      ? draft.simulationMarche.groupes.map((group) => ({
+          id: group.id, sens: group.sens, titre: group.titre, marche: group.marche,
+          devise: group.devise, qte: group.quantiteDemandee,
+          prix: draft.mode === 'valorix999' ? null : group.prixLimite,
+          prixSecurite: draft.mode === 'valorix999' ? group.prixLimite : null,
+          statut: gsmPreCarnetGroupFilled(group) === group.quantiteDemandee ? 'Exécuté · fictif'
+            : gsmPreCarnetGroupFilled(group) ? 'Partiel · fictif' : 'En attente · fictif',
+          pf: group.instructions[0]?.client || 'Compte',
+          origine: `Marché fictif · ${fmt(gsmPreCarnetGroupFilled(group))} exécutés`,
+        }))
+      : draft.lignes.map((line) => ({
         id: line.id, sens: line.sens, titre: line.titre, marche: line.marche,
         devise: line.devise, qte: line.quantite,
         prix: draft.mode === 'valorix999' ? null : line.bornePrix,
