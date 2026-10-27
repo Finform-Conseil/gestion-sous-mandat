@@ -13354,8 +13354,8 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
  * 2) Direct multicritère : plusieurs clients/titres, tranches de prix par titre,
  *    enveloppes et plafonds individuels.
  * 3) Pré-carnet : regroupement par marché/titre/sens/prix, références,
- *    validation interne, simulation de routage/exécutions et allocation au prorata
- *    ou individuelle confirmée par le gestionnaire (aucun compte réel modifié).
+ *    validation interne, simulation de routage/exécutions et restitution directe
+ *    au portefeuille émetteur en individuel, ou allocation prorata en groupé.
  * 4) Valorix 999 : grand volume, paramètres d'un automate supervisé, mais
  *    aucune interface Valorix, flux de carnet temps réel ni routeur réel ici.
  * Les lignes sont des BROUILLONS, pas des ordres exécutés/routés.
@@ -13693,12 +13693,13 @@ const gsmAllocatePreCarnetExecution = (group, quantity) => {
   }));
 };
 
-// Règle persistée par lot : la méthode ne change pas après la première
-// exécution fictive. "individuelle" = choix EXPLICITE des bénéficiaires ;
-// "prorata" = ventilation automatique entre besoins restant à servir.
+// La méthode est figée dès la première séance pour préserver l'auditabilité.
+// Individuelle : chaque instruction client devient un sous-ordre identifié sur le
+// marché fictif. SEUL le client associé reçoit son exécution propre (0/partielle/totale).
+// Prorata : l'exécution de l'ordre groupé commun est ventilée au prorata.
 const GSM_REPARTITION_MODES = [
-  { id: 'prorata', label: 'Prorata', description: 'Répartition automatique selon les quantités encore demandées par chaque portefeuille.' },
-  { id: 'individuelle', label: 'Individuelle', description: 'Chaque transaction revient sans affectation ; le gestionnaire attribue des quantités aux portefeuilles avant confirmation.' },
+  { id: 'prorata', label: 'Prorata', description: 'Une exécution groupée est répartie automatiquement entre les instructions clients au prorata des quantités encore demandées.' },
+  { id: 'individuelle', label: 'Individuelle', description: 'Chaque instruction client est exécutée séparément dans le marché fictif ; ses quantités exécutées, partielles ou nulles reviennent uniquement à son portefeuille.' },
 ];
 const gsmModeRepartition = (draft) => draft?.modeRepartition || 'prorata';
 const gsmQuantiteAffecteeExecution = (execution) =>
@@ -13715,72 +13716,11 @@ const gsmCapaciteRestanteInstruction = (group, inst, excludeExecId = null) => {
   return Math.max(0, Number(inst.quantiteDemandee || 0) - affected);
 };
 
-// All-or-nothing sur chaque exécution : pas de double affectation,
-// pas de dépassement client et conservation du volume réellement exécuté.
-const gsmAffecterExecutionIndividuelle = (draft, groupId, executionId, saisies) => {
-  if (gsmModeRepartition(draft) !== 'individuelle' || !draft?.simulationMarche) {
-    throw new Error('Une séance de marché fictif en mode individuel est nécessaire.');
-  }
-  const groups = draft.mode === 'precarnet'
-    ? draft.precarnet?.groupes : draft.simulationMarche?.groupes;
-  const group = (groups || []).find((g) => g.id === groupId);
-  const execution = group?.executions?.find((e) => e.id === executionId);
-  if (!group || !execution) throw new Error('Exécution fictive introuvable.');
-  if (gsmQuantiteAffecteeExecution(execution) !== 0) {
-    throw new Error('Cette exécution a déjà été affectée ; aucune modification silencieuse n’est autorisée.');
-  }
-  const validInstructions = new Set(group.instructions.map((i) => String(i.referenceInstruction)));
-  if (Object.keys(saisies || {}).some((key) => !validInstructions.has(String(key)))) {
-    throw new Error('Instruction client inconnue pour cette exécution.');
-  }
-  let allocated = 0;
-  const allocations = [];
-  group.instructions.forEach((inst) => {
-    const raw = saisies?.[inst.referenceInstruction];
-    const qty = raw === '' || raw == null ? 0 : Number(raw);
-    const maximum = gsmCapaciteRestanteInstruction(group, inst, executionId);
-    if (!Number.isSafeInteger(qty) || qty < 0 || qty > maximum) {
-      throw new Error(`${inst.client} : quantité entière entre 0 et ${maximum} requise.`);
-    }
-    if (!qty) return;
-    allocated += qty;
-    allocations.push({
-      referenceInstruction: inst.referenceInstruction, clientId: inst.clientId,
-      client: inst.client, quantite: qty,
-      referenceAffectation: `${execution.id}-A-${inst.referenceInstruction}`,
-      statut: 'Affectation INDIVIDUELLE fictive confirmée — aucun compte réel modifié',
-    });
-  });
-  if (allocated !== Number(execution.quantite)) {
-    throw new Error(`Affectation incomplète : ${allocated} titre(s) saisi(s) sur ${execution.quantite} exécuté(s).`);
-  }
-  const at = new Date().toISOString();
-  const nextGroups = groups.map((g) => g.id !== groupId ? g : {
-    ...g, executions: g.executions.map((e) => e.id !== executionId ? e : {
-      ...e, allocations, allocationStatut: 'Affectée individuellement · fictif',
-      affectationConfirmeeAt: at,
-    }),
-  });
-  const next = { ...draft, ...(draft.mode === 'precarnet'
-    ? { precarnet: { ...draft.precarnet, groupes: nextGroups,
-        journal: [...(draft.precarnet.journal || []), { at, action:
-          `Affectation INDIVIDUELLE ${executionId} : ${allocated} titre(s) à ${allocations.length} compte(s) (simulation)` }],
-      } }
-    : {}),
-    simulationMarche: { ...draft.simulationMarche,
-      ...(draft.mode === 'precarnet' ? {} : { groupes: nextGroups }),
-    },
-  };
-  const resultat = gsmFictiveReport(next);
-  const allocationTerminee = resultat.enAttenteAffectation === 0;
-  return { ...next,
-    statut: allocationTerminee ? next.statut.replace(' · affectation en attente', ' · affectations confirmées') : next.statut,
-    ...(draft.mode === 'precarnet' ? { precarnet: { ...next.precarnet,
-      statut: allocationTerminee ? next.precarnet.statut.replace(' · affectation en attente', ' · affectations confirmées') : next.precarnet.statut } } : {}),
-    simulationMarche: { ...next.simulationMarche, resume: resultat },
-  };
-};
-
+// Aucun choix de bénéficiaire a posteriori en mode individuel : la référence
+// d'instruction client est connue AU MOMENT DE L'EXÉCUTION, pas après.
+// Des exécutions créées par une ancienne version et dépourvues de référence
+// individuelle restent signalées comme non attribuables : jamais de correction
+// silencieuse d'un historique de simulation.
 const gsmSimulatePreCarnetFill = (draft, groupId, rawQuantity, rawPrice) => {
   if (draft?.mode !== 'precarnet' || !draft?.precarnet?.routageSimuleAt) {
     throw new Error('Validez le pré-carnet et lancez la simulation de routage avant une exécution.');
@@ -13798,13 +13738,14 @@ const gsmSimulatePreCarnetFill = (draft, groupId, rawQuantity, rawPrice) => {
     throw new Error('Le prix simulé est incompatible avec la limite du groupe.');
   }
   const executionId = `${group.id}-EX-${String(group.executions.length + 1).padStart(3, '0')}`;
-  const allocation = gsmModeRepartition(draft) === 'individuelle'
-    ? [] : gsmAllocatePreCarnetExecution(group, quantity);
+  if (gsmModeRepartition(draft) === 'individuelle') {
+    throw new Error('En mode individuel, les exécutions sont simulées instruction par instruction sur le marché fictif, pas au niveau global du groupe.');
+  }
+  const allocation = gsmAllocatePreCarnetExecution(group, quantity);
   const execution = {
     id: executionId, quantite: quantity, prix: price,
     at: new Date().toISOString(), statut: 'Exécution simulée — non réelle',
-    allocationStatut: gsmModeRepartition(draft) === 'individuelle'
-      ? 'En attente d’affectation individuelle' : 'Affectée au prorata · fictif',
+    allocationStatut: 'Affectée au prorata · fictif',
     allocations: allocation.map((a) => ({ ...a,
       referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
       statut: 'Affectation simulée — non transmise à Valorix',
@@ -13960,11 +13901,19 @@ const gsmFictiveReport = (draft) => {
           qty += a.quantite; total += a.quantite * e.prix;
         }
       }));
+      const oldUnattributed = (group.executions || []).some((e) =>
+        gsmQuantiteAffecteeExecution(e) < Number(e.quantite || 0));
+      const statutClient = qty >= Number(inst.quantiteDemandee)
+        ? 'Totalement exécuté · fictif'
+        : qty > 0 ? 'Partiellement exécuté · fictif'
+        : oldUnattributed ? 'Exécution historique non attribuée · contrôle requis'
+        : draft.simulationMarche ? 'Non exécuté · fictif' : 'En attente de lancement';
       allocations.push({ groupe: group.id, instruction: inst.referenceInstruction,
         clientId: inst.clientId, client: inst.client, titre: group.titre,
         sens: group.sens, devise, demande: inst.quantiteDemandee,
-        execute: qty, reste: inst.quantiteDemandee - qty,
-        montant: total, prixMoyen: qty ? total / qty : null });
+        execute: qty, reste: Math.max(0, inst.quantiteDemandee - qty),
+        montant: total, prixMoyen: qty ? total / qty : null,
+        statutClient });
     });
   });
   // Livre auxiliaire de démonstration : ne modifie jamais CLIENTS ni l'API.
@@ -13981,10 +13930,18 @@ const gsmFictiveReport = (draft) => {
     p.deltaTitres += (a.sens === 'Achat' ? 1 : -1) * a.execute;
     p.deltaEspeces += (a.sens === 'Achat' ? -1 : 1) * a.montant;
   });
+  const transactionsParClient = groups.flatMap((group) => (group.executions || []).flatMap((e) =>
+    (e.allocations || []).map((a) => ({
+      executionId: e.id, referenceInstruction: a.referenceInstruction,
+      clientId: a.clientId, client: a.client,
+      marche: group.marche, titre: group.titre, sens: group.sens,
+      quantite: Number(a.quantite), prix: Number(e.prix),
+      devise: group.devise, at: e.at,
+    }))));
   return { demande, execute, affecte, enAttenteAffectation,
     reste: Math.max(0, demande - execute), transactions,
     portefeuillesFictifs: [...portefeuilleMap.values()],
-    groupes: groupsSummary, allocations,
+    groupes: groupsSummary, allocations, transactionsParClient,
     montantsParDevise: Array.from(currencies, ([devise, montant]) => ({ devise, montant })),
   };
 };
@@ -14003,7 +13960,7 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
     throw new Error('Mode de répartition inconnu.');
   }
   if (gsmExecutionsEnAttenteAffectation(groups).length > 0) {
-    throw new Error('Affectez les exécutions individuelles en attente avant de simuler une nouvelle séance.');
+    throw new Error('Ce lot contient d’anciennes exécutions sans attribution client identifiable ; aucun nouveau lancement avant leur régularisation contrôlée.');
   }
   const groupsById = new Map(groups.map((g) => [g.id, g]));
   const runIndex = (draft.simulationMarche?.seances || []).length + 1;
@@ -14019,10 +13976,11 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
   });
   priority.forEach((source) => {
     const group = groupsById.get(source.id);
-    let left = Math.max(0, group.quantiteDemandee - gsmPreCarnetGroupFilled(group));
-    if (!left) return;
+    const requestedRemaining = () =>
+      Math.max(0, group.quantiteDemandee - gsmPreCarnetGroupFilled(group));
+    if (!requestedRemaining()) return;
     const instr = instruments.find((item) => item.nom === group.titre && item.marche === group.marche);
-    if (!instr || !(Number(instr.cours) > 0)) return; // Non exécuté, pas de fausse cotation.
+    if (!instr || !(Number(instr.cours) > 0)) return; // Aucun résultat inventé.
     const bookKey = JSON.stringify([group.marche, group.titre, group.sens]);
     if (!books.has(bookKey)) {
       const levels = gsmFictiveCreateBook(instr, group.sens, scenario);
@@ -14031,34 +13989,56 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
         initial: levels.map((lvl) => ({ ...lvl })), levels });
     }
     const book = books.get(bookKey);
-    for (const level of book.levels) {
-      if (!left) break;
-      const compatible = group.sens === 'Achat'
-        ? level.prix <= Number(group.prixLimite) : level.prix >= Number(group.prixLimite);
-      if (!compatible) break; // Niveau trié, les suivants sont encore moins favorables.
-      if (level.quantite <= 0) continue;
-      const qty = Math.min(left, level.quantite);
-      if (!qty) continue;
-      const allocations = modeRepartition === 'prorata'
-        ? gsmAllocatePreCarnetExecution(group, qty) : [];
-      const executionId = `${sessionId}-${String(++executionCount).padStart(4, '0')}`;
-      group.executions.push({
-        id: executionId, at: now, quantite: qty, prix: level.prix,
-        statut: 'Transaction fictive — aucune opération réelle',
-        allocationStatut: modeRepartition === 'prorata'
-          ? 'Affectée au prorata · fictif' : 'En attente d’affectation individuelle',
-        origine: sessionId,
-        tranchesAlgorithmiquesIndicatives: draft.mode === 'valorix999'
-          ? Math.ceil(qty / Math.max(1, Math.floor(Number(draft.negociateur?.sliceSize) || 200))) : null,
-        allocations: allocations.map((a) => ({ ...a,
-          referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
-          statut: 'Affectation fictive — aucun compte réel modifié',
-        })),
-      });
-      level.quantite -= qty;
-      left -= qty;
-      volumeNew += qty;
-    }
+    // Individuelle : les clients gardent une file d'instructions IDENTIFIÉES,
+    // traitée dans l'ordre d'entrée du pré-carnet (priorité FIFO simulée).
+    // Prorata : on confronte une seule fois le volume mutualisé du groupe.
+    const targets = modeRepartition === 'individuelle'
+      ? group.instructions : [null];
+    targets.forEach((clientOrder) => {
+      const id = clientOrder?.referenceInstruction ?? null;
+      let left = clientOrder
+        ? gsmCapaciteRestanteInstruction(group, clientOrder)
+        : requestedRemaining();
+      if (!left) return;
+      const limite = clientOrder && Number(clientOrder.prixLimite) > 0
+        ? (group.sens === 'Achat'
+          ? Math.min(Number(group.prixLimite), Number(clientOrder.prixLimite))
+          : Math.max(Number(group.prixLimite), Number(clientOrder.prixLimite)))
+        : Number(group.prixLimite);
+      for (const level of book.levels) {
+        if (!left) break;
+        const compatible = group.sens === 'Achat'
+          ? level.prix <= limite : level.prix >= limite;
+        if (!compatible) break;
+        if (level.quantite <= 0) continue;
+        const qty = Math.min(left, level.quantite);
+        if (!qty) continue;
+        const allocations = clientOrder ? [{
+          referenceInstruction: id, clientId: clientOrder.clientId,
+          client: clientOrder.client, quantite: qty,
+        }] : gsmAllocatePreCarnetExecution(group, qty);
+        const executionId = `${sessionId}-${String(++executionCount).padStart(4, '0')}`;
+        group.executions.push({
+          id: executionId, at: now, quantite: qty, prix: level.prix,
+          referenceInstructionMarche: id,
+          modeExecution: clientOrder ? 'Instruction individuelle' : 'Ordre mutualisé',
+          statut: 'Transaction fictive — aucune opération réelle',
+          allocationStatut: clientOrder ? 'Retournée à son instruction client · fictif'
+            : 'Affectée au prorata · fictif',
+          origine: sessionId,
+          tranchesAlgorithmiquesIndicatives: draft.mode === 'valorix999'
+            ? Math.ceil(qty / Math.max(1, Math.floor(Number(draft.negociateur?.sliceSize) || 200))) : null,
+          allocations: allocations.map((a) => ({ ...a,
+            referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
+            statut: clientOrder ? 'Exécution individuelle fictive : portefeuille d’origine'
+              : 'Affectation au prorata fictive — aucun compte réel modifié',
+          })),
+        });
+        level.quantite -= qty;
+        left -= qty;
+        volumeNew += qty;
+      }
+    });
   });
   const carnets = Array.from(books.values()).map((book) => ({
     ...book, niveauxApres: book.levels.map((lvl) => ({ ...lvl })),
@@ -14066,9 +14046,8 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
   }));
   const remaining = groups.reduce((sum, g) =>
     sum + Math.max(0, g.quantiteDemandee - gsmPreCarnetGroupFilled(g)), 0);
-  const affectationsEnAttente = modeRepartition === 'individuelle' && volumeNew > 0;
-  const suffixeAffectation = affectationsEnAttente ? ' · affectation en attente' :
-    (modeRepartition === 'individuelle' ? ' · affectations confirmées' : '');
+  const suffixeAffectation = modeRepartition === 'individuelle'
+    ? ' · retours individuels des exécutions' : ' · affectations au prorata';
   const session = { id: sessionId, at: now, scenario, modeRepartition, volumeExecute: volumeNew,
     nombreTransactions: executionCount, reste: remaining, carnets };
   const previous = draft.simulationMarche?.seances || [];
@@ -14077,7 +14056,7 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
     statut: (remaining === 0 ? 'Exécution totale · marché fictif'
       : volumeNew ? 'Exécution partielle · marché fictif' : 'Ordres en attente · marché fictif') + suffixeAffectation,
     journal: [...(draft.precarnet.journal || []), { at: now,
-      action: `Séance ${sessionId} · ${scenario} · ${volumeNew} titres exécutés fictivement · ${remaining} en attente` }],
+      action: `Séance ${sessionId} · ${scenario} · ${volumeNew} titres fictifs · ${remaining} en attente · ${modeRepartition === 'individuelle' ? 'restitution par instruction client' : 'allocation prorata'}` }],
   } : undefined;
   const next = { ...draft, modeRepartition,
     statut: (remaining === 0 ? 'Exécuté totalement (simulation fictive)'
@@ -14102,11 +14081,11 @@ const gsmExportFictiveResultsCsv = (draft) => {
   const result = gsmFictiveReport(draft);
   const rows = [['Lot', 'Référence instruction', 'Référence groupe', 'Client', 'Titre',
     'Sens', 'Devise', 'Demandé', 'Exécuté fictif', 'En attente', 'Prix moyen fictif',
-    'Montant fictif', 'Scénario dernière séance', 'Mode répartition', 'Statut affectation'],
+    'Montant fictif', 'Scénario dernière séance', 'Mode répartition', 'Résultat de l’instruction client'],
     ...result.allocations.map((a) => [draft.id, a.instruction, a.groupe, a.client,
       a.titre, a.sens, a.devise, a.demande, a.execute, a.reste,
       a.prixMoyen ?? '', a.montant, draft.simulationMarche.scenario,
-      gsmModeRepartition(draft), a.execute > 0 ? 'Affecté fictivement' : 'Sans affectation']) ,
+      gsmModeRepartition(draft), a.statutClient]) ,
     ...gsmExecutionsEnAttenteAffectation(draft.mode === 'precarnet'
       ? draft.precarnet.groupes : draft.simulationMarche.groupes).map(({ group, execution }) =>
       [draft.id, '', group.id, '', group.titre, group.sens, group.devise, '',
@@ -14286,14 +14265,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [preCarnetSelectedId, setPreCarnetSelectedId] = useState(null);
   // 'new' : créer un pré-carnet. Sinon : ID d'un pré-carnet encore ouvert.
   const [preCarnetTargetId, setPreCarnetTargetId] = useState('new');
-  const [preCarnetFills, setPreCarnetFills] = useState({});
   const [preCarnetMessage, setPreCarnetMessage] = useState('');
   const [marcheFictifScenario, setMarcheFictifScenario] = useState('equilibre');
   const [marcheFictifMessage, setMarcheFictifMessage] = useState('');
   const [rapportFictifId, setRapportFictifId] = useState(null);
   const [distributionByDraft, setDistributionByDraft] = useState({});
-  const [affectationsIndividuelles, setAffectationsIndividuelles] = useState({});
-  const [distributionMessage, setDistributionMessage] = useState('');
   const modePourDraft = (draft) => draft.modeRepartition || distributionByDraft[draft.id] || 'prorata';
 
   // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
@@ -14792,7 +14768,6 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       if (onSaveDraft?.(updated) === false) throw new Error('Impossible de conserver les résultats en stockage local.');
       const rapport = gsmFictiveReport(updated);
       setRapportFictifId(draft.id);
-      setDistributionMessage('');
       setDraftExpanded(true);
       setActiveStep(3);
       const message = `Marché FICTIF : ${fmt(rapport.execute)} titre(s) exécuté(s) sur ${fmt(rapport.demande)} ; ${fmt(rapport.reste)} en attente. Aucun routage réel.`;
@@ -14807,46 +14782,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     }
   };
   const simulatePreCarnetRoute = (draft) => lancerMarcheFictif(draft);
-  const simulatePreCarnetFill = (draft, group) => {
-    try {
-      const inputs = preCarnetFills[group.id] || {};
-      const updated = gsmSimulatePreCarnetFill(draft, group.id, inputs.quantite, inputs.prix);
-      setPreCarnetDraft(updated, gsmModeRepartition(draft) === 'individuelle'
-        ? 'Exécution fictive enregistrée : affectation individuelle à confirmer dans les résultats.'
-        : 'Exécution et affectation au prorata simulées, sans mouvement de compte.');
-      setPreCarnetFills((before) => ({ ...before, [group.id]: { quantite: '', prix: String(group.prixLimite) } }));
-    } catch (error) {
-      setPreCarnetMessage(error.message || 'Erreur de simulation.');
-    }
-  };
-  const renseignerAffectation = (executionId, instructionId, value) => {
-    setAffectationsIndividuelles((previous) => ({ ...previous,
-      [executionId]: { ...(previous[executionId] || {}), [instructionId]: value },
-    }));
-    setDistributionMessage('');
-  };
-  const confirmerAffectationsIndividuelles = (draft, group, execution) => {
-    try {
-      const updated = gsmAffecterExecutionIndividuelle(draft, group.id, execution.id,
-        affectationsIndividuelles[execution.id] || {});
-      if (onSaveDraft?.(updated) === false) {
-        throw new Error('Enregistrement local impossible : les affectations ne sont pas confirmées.');
-      }
-      setDistributionMessage(`Exécution ${execution.id} affectée fictivement aux portefeuilles sélectionnés.`);
-      setAffectationsIndividuelles((previous) => {
-        const next = { ...previous }; delete next[execution.id]; return next;
-      });
-    } catch (error) {
-      setDistributionMessage(error.message || 'Affectation individuelle impossible.');
-    }
-  };
-  const setFillField = (groupId, field, value) => {
-    setPreCarnetFills((before) => ({ ...before,
-      [groupId]: { ...(before[groupId] || {}), [field]: value },
-    }));
-    setPreCarnetMessage('');
-  };
-
+  // Les exécutions proviennent du marché fictif et sont restituées à chaque
+  // instruction : aucune redistribution manuelle ne doit en changer le bénéficiaire.
   const panel = { borderColor: C.line, background: '#fff' };
   const inputStyle = { borderColor: C.line, color: C.ink, background: '#fff', ...F_BODY };
   return (
@@ -15642,55 +15579,10 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
           {gsmExecutionsEnAttenteAffectation(draft.mode === 'precarnet'
             ? draft.precarnet.groupes : draft.simulationMarche.groupes).length > 0 && (
-            <div className="p-3 rounded-xl border space-y-3" style={{ borderColor: C.gold, background: '#FFF9ED' }}>
-              <div className="text-xs font-bold" style={{ color: C.ink }}>
-                Affectations individuelles à confirmer · simulation
-              </div>
-              <p className="text-[11px]" style={{ color: C.sub }}>
-                Les exécutions sont constatées sur le marché fictif, mais aucun portefeuille
-                n'en est encore bénéficiaire. Saisissez des quantités entières par instruction ;
-                leur somme doit correspondre exactement au volume exécuté.
-              </p>
-              {gsmExecutionsEnAttenteAffectation(draft.mode === 'precarnet'
-                ? draft.precarnet.groupes : draft.simulationMarche.groupes).map(({ group, execution }) => {
-                const input = affectationsIndividuelles[execution.id] || {};
-                const somme = group.instructions.reduce((sum, inst) =>
-                  sum + (Number(input[inst.referenceInstruction]) || 0), 0);
-                return <div key={execution.id} className="bg-white rounded-lg p-3 border space-y-2" style={{ borderColor: C.line }}>
-                  <div className="flex flex-wrap justify-between items-center gap-2">
-                    <div className="text-xs font-bold" style={{ color: C.ink }}>
-                      {execution.id} · {group.titre} · {group.sens} · {fmt(execution.quantite)} titre(s)
-                      à {fmtPrice(execution.prix)} {group.devise}
-                    </div>
-                    <Badge tone={somme === execution.quantite ? 'teal' : 'gold'}>
-                      {fmt(somme)} / {fmt(execution.quantite)} à répartir
-                    </Badge>
-                  </div>
-                  <div className="overflow-auto"><table className="w-full" style={{ minWidth: 590 }}>
-                    <thead><tr><Th>Compte / client</Th><Th>Instruction</Th><Th>Encore éligible</Th><Th>Qté attribuée</Th></tr></thead>
-                    <tbody>{group.instructions.map((inst) => {
-                      const max = gsmCapaciteRestanteInstruction(group, inst, execution.id);
-                      return <tr key={inst.referenceInstruction} className="border-t" style={{ borderColor: C.line }}>
-                        <Td>{inst.client} <span className="text-[10px]" style={{ color: C.sub }}>({inst.clientId})</span></Td>
-                        <Td mono>{inst.referenceInstruction}</Td><Td mono>{fmt(max)}</Td>
-                        <Td><input type="number" min="0" max={max} step="1"
-                          aria-label={`Quantité à affecter à ${inst.client} pour ${execution.id}`}
-                          value={input[inst.referenceInstruction] ?? ''}
-                          onChange={(e) => renseignerAffectation(execution.id, inst.referenceInstruction, e.target.value)}
-                          placeholder="0" className="w-28 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} /></Td>
-                      </tr>;
-                    })}</tbody>
-                  </table></div>
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <span className="text-[10px]" style={{ color: C.sub }}>Affectations simulées uniquement — validation irréversible pour cette exécution.</span>
-                    <button type="button" onClick={() => confirmerAffectationsIndividuelles(draft, group, execution)}
-                      className="px-3 py-2 rounded-lg text-xs font-semibold" style={{ color: '#fff', background: C.navy }}>
-                      Confirmer l'affectation individuelle
-                    </button>
-                  </div>
-                </div>;
-              })}
-              {distributionMessage && <p role="status" className="text-xs font-semibold" style={{ color: C.indigo }}>{distributionMessage}</p>}
+            <div className="p-3 rounded-xl border text-xs" style={{ borderColor: C.gold, color: C.ink, background: '#FFF9ED' }}>
+              Des exécutions d'une ancienne simulation n'ont pas de référence client attribuée.
+              Elles ne peuvent pas être redistribuées arbitrairement en mode individuel.
+              Créez un nouveau lot de simulation pour obtenir un retour individuel traçable.
             </div>
           )}
           <div className="text-xs font-bold" style={{ color: C.ink }}>Impacts sur les portefeuilles fictifs (positions et espèces)</div>
@@ -15704,23 +15596,41 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 <Td mono>{fmt(p.quantite)}</Td><Td mono>{p.deltaTitres > 0 ? '+' : ''}{fmt(p.deltaTitres)}</Td>
                 <Td mono>{p.deltaEspeces > 0 ? '+' : ''}{fmtPrice(p.deltaEspeces)}</Td><Td>{p.devise}</Td>
               </tr>)}
-              {rapport.portefeuillesFictifs.length === 0 && <tr><Td colSpan={7}>Aucune affectation fictive confirmée.</Td></tr>}
+              {rapport.portefeuillesFictifs.length === 0 && <tr><Td colSpan={7}>Aucune exécution fictive attribuée à un portefeuille.</Td></tr>}
             </tbody></table>
           </div>
           <p className="text-[10px]" style={{ color: C.sub }}>
             Livre auxiliaire de simulation, hors frais : les variations sont calculées uniquement
-            sur les affectations confirmées. Aucun solde réel n'est modifié.
+            sur les exécutions propres aux instructions clients (mode individuel) ou réparties automatiquement (mode prorata).
+            Aucun solde réel n'est modifié.
           </p>
-          <div className="text-xs font-bold" style={{ color: C.ink }}>Retour des transactions par compte client (affectations fictives)</div>
+          <div className="text-xs font-bold" style={{ color: C.ink }}>Résultat des instructions par portefeuille · {gsmModeRepartition(draft) === 'individuelle' ? 'exécution propre à chaque client' : 'affectation prorata'}</div>
           <div className="overflow-auto border rounded-lg" style={{ borderColor: C.line, maxHeight: 265 }}>
             <table className="w-full" style={{ minWidth: 940 }}><thead className="sticky top-0" style={{ background: '#F2F4F8' }}><tr>
-              <Th>Instruction</Th><Th>Client</Th><Th>Titre</Th><Th>Sens</Th><Th>Demandé</Th><Th>Affecté</Th><Th>Reste à affecter</Th><Th>Montant fictif</Th><Th>Prix moyen fictif</Th>
+              <Th>Instruction</Th><Th>Client</Th><Th>Titre</Th><Th>Sens</Th><Th>Demandé</Th><Th>Exécuté client</Th><Th>Non exécuté</Th><Th>Montant fictif</Th><Th>Prix moyen fictif</Th><Th>Résultat individuel</Th>
             </tr></thead><tbody>{rapport.allocations.map((a) => <tr key={a.instruction} className="border-t" style={{ borderColor: C.line }}>
               <Td mono>{a.instruction}</Td><Td>{a.client}</Td><Td>{a.titre}</Td><Td>{a.sens}</Td>
               <Td mono>{fmt(a.demande)}</Td><Td mono>{fmt(a.execute)}</Td><Td mono>{fmt(a.reste)}</Td>
               <Td mono>{fmtPrice(a.montant)} {a.devise}</Td><Td mono>{a.prixMoyen == null ? '—' : fmtPrice(a.prixMoyen)}</Td>
+              <Td><Badge tone={a.execute === a.demande ? 'teal' : a.execute ? 'gold' : 'slate'}>{a.statutClient}</Badge></Td>
             </tr>)}</tbody></table>
           </div>
+          <details className="text-xs" style={{ color: C.sub }}>
+            <summary className="cursor-pointer font-semibold">Détail des confirmations fictives par instruction client ({rapport.transactionsParClient.length})</summary>
+            <div className="overflow-auto mt-2" style={{ maxHeight: 210 }}>
+              <table className="w-full" style={{ minWidth: 810 }}><thead><tr>
+                <Th>Référence transaction</Th><Th>Instruction client</Th><Th>Portefeuille</Th>
+                <Th>Titre</Th><Th>Exécuté</Th><Th>Prix fictif</Th><Th>Date simulation</Th>
+              </tr></thead><tbody>{rapport.transactionsParClient.map((t, index) =>
+                <tr key={`${t.executionId}-${t.referenceInstruction}-${index}`} className="border-t" style={{ borderColor: C.line }}>
+                  <Td mono>{t.executionId}</Td><Td mono>{t.referenceInstruction}</Td><Td>{t.client}</Td>
+                  <Td>{t.titre}</Td><Td mono>{fmt(t.quantite)}</Td>
+                  <Td mono>{fmtPrice(t.prix)} {t.devise}</Td>
+                  <Td>{new Date(t.at).toLocaleString('fr-FR')}</Td>
+                </tr>)}
+              </tbody></table>
+            </div>
+          </details>
           <details className="text-xs" style={{ color: C.sub }}><summary className="cursor-pointer font-semibold">Voir les contreparties artificielles de la dernière séance</summary>
             <div className="overflow-auto mt-2" style={{ maxHeight: 170 }}><table className="w-full"><thead><tr><Th>Titre</Th><Th>Sens</Th><Th>Cours fictif de référence</Th><Th>Niveaux initiaux</Th><Th>Quantités après exécution</Th></tr></thead><tbody>
               {(derniere.carnets || []).map((book, i) => <tr key={i} className="border-t" style={{ borderColor: C.line }}>
@@ -15816,12 +15726,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <table className="w-full" style={{ minWidth: 1040 }}>
               <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
                 <Th>Référence groupée</Th><Th>Instrument</Th><Th>Sens</Th><Th>Limite</Th>
-                <Th>Demandé</Th><Th>Exécuté simulé</Th><Th>Reste</Th><Th>Clients</Th><Th>Exécution manuelle fictive</Th>
+                <Th>Demandé</Th><Th>Exécuté simulé</Th><Th>Reste</Th><Th>Clients</Th><Th>Restitution</Th>
               </tr></thead>
               <tbody>{selectedPreCarnet.precarnet.groupes.map((group) => {
                 const done = gsmPreCarnetGroupFilled(group);
                 const left = group.quantiteDemandee - done;
-                const fill = preCarnetFills[group.id] || {};
                 return (
                   <tr key={group.id} className="border-t" style={{ borderColor: C.line }}>
                     <Td mono><span className="text-[10px]">{group.id}</span></Td>
@@ -15829,22 +15738,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     <Td>{group.sens}</Td><Td mono>{fmtPrice(group.prixLimite)}</Td>
                     <Td mono>{fmt(group.quantiteDemandee)}</Td><Td mono>{fmt(done)}</Td>
                     <Td mono>{fmt(left)}</Td><Td>{group.instructions.length} instructions</Td>
-                    <Td><div className="flex items-center gap-1">
-                      <input type="number" min="1" step="1" max={left} value={fill.quantite ?? ''}
-                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
-                        onChange={(e) => setFillField(group.id, 'quantite', e.target.value)}
-                        placeholder="Qté" aria-label={`Quantité simulée ${group.id}`}
-                        className="w-20 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
-                      <input type="number" min="0.0001" step="any" value={fill.prix ?? String(group.prixLimite)}
-                        disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
-                        onChange={(e) => setFillField(group.id, 'prix', e.target.value)}
-                        aria-label={`Prix simulé ${group.id}`}
-                        className="w-24 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} />
-                      <button type="button" disabled={!selectedPreCarnet.precarnet.routageSimuleAt || !!selectedPreCarnet.simulationMarche || left <= 0}
-                        onClick={() => simulatePreCarnetFill(selectedPreCarnet, group)}
-                        className="px-2 py-1.5 rounded-lg text-[10px] font-semibold disabled:opacity-40"
-                        style={{ background: C.indigo, color: '#fff' }}>Simuler</button>
-                    </div></Td>
+                    <Td><span className="text-[10px]" style={{ color: C.sub }}>
+                      {selectedPreCarnet.simulationMarche
+                        ? gsmModeRepartition(selectedPreCarnet) === 'individuelle'
+                          ? 'Par instruction client · résultat direct'
+                          : 'Répartition automatique au prorata'
+                        : 'En attente de lancement fictif'}
+                    </span></Td>
                   </tr>
                 );
               })}</tbody>
@@ -15854,7 +15754,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <div className="text-xs font-bold" style={{ color: C.ink }}>3. Réconciliation et affectation aux comptes (simulation)</div>
             <div className="overflow-auto" style={{ maxHeight: 210 }}><table className="w-full" style={{ minWidth: 760 }}>
               <thead><tr><Th>Groupe</Th><Th>Référence instruction</Th><Th>Client</Th>
-                <Th>Demandé</Th><Th>Affecté simulé</Th><Th>Reste client</Th><Th>Statut</Th></tr></thead>
+                <Th>Demandé</Th><Th>Exécuté client</Th><Th>Non exécuté</Th><Th>Statut</Th></tr></thead>
               <tbody>{selectedPreCarnet.precarnet.groupes.flatMap((group) => group.instructions.map((inst) => {
                 const allocated = group.executions.reduce((sum, e) => sum + (e.allocations || [])
                   .filter((a) => a.referenceInstruction === inst.referenceInstruction)
@@ -15871,7 +15771,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             </table></div>
             <p className="text-[10px]" style={{ color: C.sub }}>
               Chaque exécution simulée reçoit sa propre référence et des références d'affectation par instruction client.
-              Mode {GSM_REPARTITION_MODES.find((m) => m.id === gsmModeRepartition(selectedPreCarnet))?.label} : aucune affectation n'est comptabilisée avant confirmation individuelle, ou avant calcul automatique au prorata. Aucun mouvement Valorix.
+              Mode {GSM_REPARTITION_MODES.find((m) => m.id === gsmModeRepartition(selectedPreCarnet))?.label} :
+              en individuel, l'exécution de chaque instruction revient immédiatement au portefeuille client qui l'a émise ;
+              en prorata, chaque exécution groupée est répartie automatiquement. Aucun mouvement Valorix.
               Les identifiants réels du marché et les confirmations de règlement/livraison restent à intégrer.
             </p>
           </div>
