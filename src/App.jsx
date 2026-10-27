@@ -13409,7 +13409,7 @@ const gsmPersistGroupedDrafts = (drafts) => {
 
 const gsmGroupedCsv = (draft) => {
   const rows = [
-    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction','Mode d’ordre commun','% de liquidité (titre)','Budget cible (palier, devise client)','Devise client','% nombre de titres','Titres disponibles (référence)'],
+    ['Lot','Circuit','Code Valorix','Client','ID portefeuille','Marché','Titre','Sens','Quantité','Prix limite ou borne','Devise','État','Référence instruction','Mode d’ordre commun','% de liquidité (titre)','Budget cible (palier, devise client)','Devise client','% nombre de titres','Titres disponibles (référence)','Limite individuelle retenue','Plus haut du jour (référence)','Origine de la limite individuelle'],
     ...draft.lignes.map((line) => [
       draft.id, GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || draft.mode,
       draft.mode === 'valorix999' ? '999' : '',
@@ -13418,6 +13418,8 @@ const gsmGroupedCsv = (draft) => {
       draft.modeOrdreCommun || line.modeSaisie || 'quantite',
       line.pourcentageLiquidite ?? '', line.budgetCiblePalier ?? '', line.deviseClient ?? '',
       line.pourcentageTitres ?? '', line.titresDisponiblesReference ?? '',
+      line.limiteIndividuelle ?? '', line.coursMaxJourReference ?? '',
+      line.sourceLimiteIndividuelle ?? '',
     ]),
   ];
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -13982,9 +13984,23 @@ const gsmExportFictiveResultsCsv = (draft) => {
 // L'univers CLIENT_TRADABLE_MARKETS actuel provient de la maquette :
 // ce n'est PAS un prix limite réglementaire ni une cotation de marché live.
 const gsmGroupedReferencePrice = (instrument, field = 'cours') => {
-  const value = Number(instrument?.[field]);
+  const raw = instrument?.[field];
+  // Un champ absent ou vide ne doit jamais être converti en un faux cours.
+  if (raw == null || raw === '') return '';
+  const value = Number(raw);
   return Number.isFinite(value) && value > 0 ? String(value) : '';
 };
+
+// Proposition du plafond individuel à partir du PLUS HAUT du jour.
+// Les cours du catalogue peuvent être simulés : aucune cotation live n'est
+// déduite ni reconstruite lorsque coursMax est indisponible.
+// Une valeur explicitement saisie (y compris '' pour supprimer la borne)
+// a toujours priorité sur cette suggestion initiale.
+const gsmGroupedDefaultIndividualLimit = (instrument) =>
+  gsmGroupedReferencePrice(instrument, 'coursMax');
+
+const gsmGroupedEffectiveIndividualLimit = (individualLimits, key, instrument) =>
+  individualLimits[key] ?? gsmGroupedDefaultIndividualLimit(instrument);
 
 const gsmGroupedInitialTitleSettings = (instrument) => ({
   tranches: [{ id: 'A', prix: gsmGroupedReferencePrice(instrument), part: 100 }],
@@ -14332,8 +14348,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         errors.push(`${client.nom} / ${instrument.nom} : le budget de ${fmtPrice(percent)} % ne permet pas l'achat d'un titre entier aux prix limites indiqués.`);
       }
       if (quantity === 0) return;
-      const userLimit = individualLimits[key] === '' || individualLimits[key] == null
-        ? null : Number(individualLimits[key]);
+      const limitRaw = gsmGroupedEffectiveIndividualLimit(individualLimits, key, instrument);
+      const userLimit = limitRaw === '' ? null : Number(limitRaw);
       if (userLimit != null && !(userLimit > 0)) {
         errors.push(`Borne individuelle invalide : ${client.nom} / ${instrument.nom}.`);
         return;
@@ -14357,6 +14373,12 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           quantite: qty, bornePrix: unitPrice, tranche: tranche.id,
           code: mode === 'valorix999' ? '999' : '',
           montantEstime: qty * unitPrice,
+          limiteIndividuelle: userLimit,
+          coursMaxJourReference: gsmGroupedDefaultIndividualLimit(instrument)
+            ? Number(gsmGroupedDefaultIndividualLimit(instrument)) : null,
+          sourceLimiteIndividuelle: userLimit == null ? 'Non renseignée'
+            : individualLimits[key] !== undefined ? 'Saisie par le gestionnaire'
+            : 'Plus haut de cotation du jour (source catalogue, potentiellement simulée)',
           modeSaisie: percentageMode ? 'pourcentage' : sellPercentMode ? 'pourcentageTitres' : 'quantite',
           pourcentageLiquidite: percentageMode ? percent : null,
           pourcentageTitres: sellPercentMode ? percent : null,
@@ -14529,6 +14551,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
       limitesTitres: selectedInstrumentObjects.map((instrument) => ({
         titre: instrument.nom, marche: instrument.marche, devise: instrument.devise,
         coursReferenceIndicatif: Number(instrument.cours) || null,
+        plusHautJourIndicatif: gsmGroupedDefaultIndividualLimit(instrument)
+          ? Number(gsmGroupedDefaultIndividualLimit(instrument)) : null,
         tranches: ((mode === 'multi' || mode === 'precarnet') ? settingsFor(instrument.nom).tranches
           : settingsFor(instrument.nom).tranches.slice(0, 1)).map((tranche) => ({
             prixLimite: Number(tranche.prix),
@@ -15011,7 +15035,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
               <table className="w-full" style={{ minWidth: 1190 }}>
                 <thead className="sticky top-0 z-10" style={{ background: '#F2F4F8' }}><tr>
                   <Th>Client</Th><Th>Instrument</Th><Th>{percentageMode ? '% liquidité / Qté calculée' : sellPercentMode ? '% titres / Qté à céder' : 'Qté'}</Th><Th>Prix limite titre</Th>
-                  <Th>{sens === 'Achat' ? 'Plafond individuel (optionnel)' : 'Plancher individuel (optionnel)'}</Th>
+                  <Th>{sens === 'Achat' ? 'Plafond individuel (plus haut du jour proposé)' : 'Plancher individuel (plus haut du jour proposé)'}</Th>
                   <Th>{percentageMode ? 'Liquidité de référence (100 %)' : sellPercentMode ? 'Titres disponibles (100 %)' : sens === 'Achat' ? 'Espèces disponibles' : 'Titres disponibles'}</Th>
                   <Th>{percentageMode ? 'Solde après lot (% + espèces)' : sellPercentMode ? 'Titres restants (% + quantité)' : sens === 'Achat' ? 'Solde espèces après lot' : 'Titres restants après lot'}</Th>
                   <Th>{percentageMode ? 'Contrôle de liquidité (%)' : sellPercentMode ? 'Contrôle des titres (%)' : 'Contrôle'}</Th>
@@ -15086,9 +15110,33 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                       <Td mono>{Number(settingsFor(instrument.nom).tranches[0]?.prix) > 0
                         ? `${fmtPrice(Number(settingsFor(instrument.nom).tranches[0].prix))} ${instrument.devise}${(mode === 'multi' || mode === 'precarnet') && settingsFor(instrument.nom).tranches.length > 1 ? ' (+ paliers)' : ''}`
                         : 'À définir'}</Td>
-                      <Td><input aria-label={`Limite individuelle ${client.nom} ${instrument.nom}`} type="number" min="0.0001" step="any"
-                        value={individualLimits[key] ?? ''} onChange={(e) => { setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); setSaveMessage(''); }}
-                        className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle} placeholder="Non définie" /></Td>
+                      <Td>
+                        <input aria-label={`${sens === 'Achat' ? 'Plafond' : 'Plancher'} individuel ${client.nom} ${instrument.nom}`}
+                          type="number" min="0.0001" step="any"
+                          value={gsmGroupedEffectiveIndividualLimit(individualLimits, key, instrument)}
+                          onChange={(e) => {
+                            setIndividualLimits((cur) => ({ ...cur, [key]: e.target.value }));
+                            setPreview(false); setSaveMessage('');
+                          }}
+                          className="w-36 px-2 py-1.5 border rounded-lg text-xs" style={inputStyle}
+                          placeholder="Plus haut indisponible" />
+                        <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                          {gsmGroupedDefaultIndividualLimit(instrument)
+                            ? `Plus haut du jour : ${fmtPrice(Number(gsmGroupedDefaultIndividualLimit(instrument)))} ${instrument.devise} · indicatif`
+                            : 'Plus haut de cotation indisponible'}
+                        </div>
+                        {individualLimits[key] !== undefined &&
+                          gsmGroupedDefaultIndividualLimit(instrument) && (
+                          <button type="button" onClick={() => {
+                            setIndividualLimits((cur) => {
+                              const next = { ...cur }; delete next[key]; return next;
+                            });
+                            setPreview(false); setSaveMessage('');
+                          }} className="text-[9px] underline mt-0.5" style={{ color: C.indigo }}>
+                            Réappliquer le plus haut du jour
+                          </button>
+                        )}
+                      </Td>
                       <Td>
                         {anyPercentMode && <div className="text-xs font-bold" style={{ color: C.ink, ...F_MONO }}>
                           {balance.available == null ? 'Non connu' : sellPercentMode && balance.available === 0 ? '0 titre' : '100 %'}
@@ -15135,6 +15183,11 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 L'enregistrement du brouillon est bloqué tant que le dépassement persiste.
               </div>
             )}
+            <p className="text-[10px]" style={{ color: C.sub }}>
+              Les limites individuelles sont proposées à partir du plus haut cours du jour disponible dans le catalogue.
+              Les données de marché de cette maquette peuvent être simulées ; le gestionnaire peut modifier ou effacer la proposition.
+              En vente, cette valeur joue le rôle de prix MINIMUM : si le prix limite proposé est inférieur au plus haut du jour, il faut ajuster le plancher pour pouvoir valider.
+            </p>
             <p className="text-[10px]" style={{ color: C.sub }}>
               Calculs indicatifs et non réservés. {percentageMode
                 ? 'Les pourcentages portent sur le solde espèces initial du client ; le solde restant utilise les montants réellement estimés après arrondi des titres entiers. Les paliers ventilent le budget cible.'
