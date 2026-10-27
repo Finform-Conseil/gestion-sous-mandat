@@ -5145,6 +5145,7 @@ const CLIENT_NAV = [
   },
   { id: 'client-watchlist', label: 'Watchlist', icon: Star },
   { id: 'client-orders', label: 'Mes ordres', icon: ListOrdered },
+  { id: 'client-grouped-orders', label: 'Ordres groupés', icon: ListOrdered },
   { id: 'client-avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'client-cashflows', label: 'Liquidité & revenus', icon: Droplets },
   { id: 'client-analysis', label: 'Performance & risque', icon: Activity },
@@ -33977,10 +33978,420 @@ function ClientPortfolios({ devise, orders }) {
   );
 }
 
+/* --------------------- GESTION LIBRE · ORDRES GROUPÉS --------------------- */
+/*
+ * Sous-espace autonome du client connecté (identité de démonstration).
+ * Ce stockage local n'est PAS un contrôle d'accès serveur. En production,
+ * l'utilisateur authentifié, les comptes autorisés et l'OMS seront validés
+ * et persistés par une API côté serveur. Aucun appel à une bourse/SGI réelle.
+ */
+const GSM_CLIENT_GROUPED_KEY = 'opcvm-gsm-client-grouped-v1';
+const gsmClientLoadGrouped = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const items = JSON.parse(window.localStorage.getItem(GSM_CLIENT_GROUPED_KEY) || '[]');
+    return Array.isArray(items)
+      ? items.filter((b) => b && b.proprietaireId === CLIENT_GESTION_LIBRE.id &&
+          Array.isArray(b.lignes) && b.lignes.every((l) =>
+            CLIENT_GESTION_LIBRE.portefeuilles.some((p) => p.id === l.clientId && p.id === l.portefeuilleId)))
+      : [];
+  } catch { return []; }
+};
+const gsmClientPersistGrouped = (items) => {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(GSM_CLIENT_GROUPED_KEY, JSON.stringify(items));
+    return true;
+  } catch { return false; }
+};
+
+// Livre AUXILIAIRE fictif : les mouvements simulés ne touchent ni le compte SGI,
+// ni CLIENT_GESTION_LIBRE, ni l'API opérationnelle. Les soldes à engager
+// incluent les ordres simples ouverts et les reliquats des autres lots groupés.
+const gsmClientGroupedBalances = (portefeuille, singleOrders = [], batches = [], excludeId = null) => {
+  const positions = Object.fromEntries(portefeuille.lignes.map((l) =>
+    [l.instrument, Number(l.qte || 0)]));
+  let especes = clientAvailableCash(portefeuille, singleOrders);
+  let reserveAchat = 0;
+  const reservesVente = {};
+  singleOrders.filter((o) => o.portefeuilleId === portefeuille.id && o.sens === 'Vente' &&
+    CLIENT_OPEN_ORDER_STATUSES.includes(o.statut)).forEach((o) => {
+    reservesVente[o.instrument] = (reservesVente[o.instrument] || 0) + Number(o.qte || 0);
+  });
+  batches.filter((b) => b.id !== excludeId && b.proprietaireId === CLIENT_GESTION_LIBRE.id).forEach((batch) => {
+    const report = batch.simulationMarche ? gsmFictiveReport(batch) : null;
+    (report?.transactionsParClient || []).filter((t) => t.clientId === portefeuille.id).forEach((t) => {
+      const sens = t.sens === 'Achat' ? 1 : -1;
+      positions[t.titre] = (positions[t.titre] || 0) + sens * Number(t.quantite || 0);
+      // Pas de préfinancement d'achats par les ventes à l'intérieur d'un même nouveau lot.
+      especes -= sens * Number(t.quantite || 0) * Number(t.prix || 0);
+    });
+    const affectees = new Map((report?.allocations || []).map((a) => [a.instruction, a.execute]));
+    batch.lignes.filter((l) => l.clientId === portefeuille.id).forEach((l) => {
+      const restant = Math.max(0, Number(l.quantite || 0) - Number(affectees.get(l.id) || 0));
+      if (l.sens === 'Achat') reserveAchat += restant * Number(l.bornePrix || 0);
+      else reservesVente[l.titre] = (reservesVente[l.titre] || 0) + restant;
+    });
+  });
+  const disponibleTitres = Object.fromEntries(Object.entries(positions).map(([titre, qty]) =>
+    [titre, Math.max(0, Math.floor(qty - (reservesVente[titre] || 0)))]));
+  return { especes: Math.max(0, especes - reserveAchat),
+    especesBrutes: especes, reserveAchat, positions, disponibleTitres, reservesVente };
+};
+
+const gsmClientGroupedVerify = (lignes, singleOrders, batches) => {
+  const errors = [];
+  const consumedCash = new Map();
+  const sold = new Map();
+  const percentCash = new Map();
+  const percentTitles = new Map();
+  const portfolioMap = new Map(CLIENT_GESTION_LIBRE.portefeuilles.map((p) => [p.id, p]));
+  lignes.forEach((line) => {
+    const pf = portfolioMap.get(line.portefeuilleId);
+    const instr = CLIENT_TRADABLE_MARKETS.find((i) => i.nom === line.titre && i.marche === line.marche);
+    const qty = Number(line.quantite), price = Number(line.bornePrix);
+    if (!pf || !instr || line.clientId !== pf.id || line.devise !== pf.devise ||
+      pf.marche !== instr.marche || !Number.isInteger(qty) || qty < 1 ||
+      !Number.isFinite(price) || price <= 0 || !['Achat','Vente'].includes(line.sens)) {
+      errors.push(`Instruction ${line.id || 'sans référence'} : portefeuille, titre, devise ou saisie invalide.`);
+      return;
+    }
+    if (line.sens === 'Achat') {
+      consumedCash.set(pf.id, (consumedCash.get(pf.id) || 0) + qty * price);
+      if (line.modeSaisie === 'pourcentage') {
+        const pct = Number(line.pourcentageLiquidite);
+        if (!(pct > 0 && pct <= 100)) errors.push(`${pf.nom} : pourcentage de liquidité invalide.`);
+        percentCash.set(pf.id, (percentCash.get(pf.id) || 0) + pct);
+      }
+    } else {
+      const k = JSON.stringify([pf.id, line.titre]);
+      sold.set(k, (sold.get(k) || 0) + qty);
+      if (line.modeSaisie === 'pourcentageTitres') {
+        const pct = Number(line.pourcentageTitres);
+        if (!(pct > 0 && pct <= 100)) errors.push(`${pf.nom} / ${line.titre} : pourcentage de titres invalide.`);
+        percentTitles.set(k, (percentTitles.get(k) || 0) + pct);
+      }
+    }
+  });
+  consumedCash.forEach((amount, id) => {
+    const pf = portfolioMap.get(id);
+    const balance = gsmClientGroupedBalances(pf, singleOrders, batches);
+    if (amount > balance.especes + 0.01)
+      errors.push(`${pf.nom} : achats ${fmt(amount)} ${pf.devise} supérieurs aux espèces libres ${fmt(balance.especes)} ${pf.devise}.`);
+  });
+  sold.forEach((qty, k) => {
+    const [id, title] = JSON.parse(k), pf = portfolioMap.get(id);
+    const balance = gsmClientGroupedBalances(pf, singleOrders, batches);
+    if (qty > (balance.disponibleTitres[title] || 0))
+      errors.push(`${pf.nom} / ${title} : ${fmt(qty)} titres demandés, ${fmt(balance.disponibleTitres[title] || 0)} disponibles.`);
+  });
+  percentCash.forEach((pct, id) => { if (pct > 100 + 1e-8)
+    errors.push(`${portfolioMap.get(id)?.nom || id} : total pourcentage liquidité ${fmtPrice(pct)} % supérieur à 100 %.`); });
+  percentTitles.forEach((pct, k) => { if (pct > 100 + 1e-8)
+    errors.push(`${JSON.parse(k)[1]} : total pourcentage titres ${fmtPrice(pct)} % supérieur à 100 %.`); });
+  return errors;
+};
+
+// Le moteur de marché commun vérifie à chaque simulation les positions/espèces
+// de référence du lot. Elles sont figées AU DÉPÔT pour préserver la cohérence
+// lors de plusieurs séances partielles, même après de nouvelles opérations fictives.
+const gsmClientGroupedProfiles = (batches, singleOrders) =>
+  CLIENT_GESTION_LIBRE.portefeuilles.map((pf) => {
+    const balance = gsmClientGroupedBalances(pf, singleOrders, batches);
+    return { id: pf.id, nom: pf.nom, devise: pf.devise,
+      compteEspeces: balance.especes, positions: Object.entries(balance.disponibleTitres)
+        .map(([instrument, qte]) => ({ instrument, qte })) };
+  });
+
+function ClientGroupedOrders({ goClient, orders = [], batches = [], onSaveBatch, onDeleteBatch }) {
+  const portfolios = CLIENT_GESTION_LIBRE.portefeuilles;
+  const [portefeuilleId, setPortefeuilleId] = useState(portfolios[0]?.id || '');
+  const pf = portfolios.find((p) => p.id === portefeuilleId) || portfolios[0];
+  const instruments = CLIENT_TRADABLE_MARKETS.filter((m) => m.marche === pf?.marche && m.devise === pf?.devise);
+  const [titre, setTitre] = useState(instruments[0]?.nom || '');
+  const instrument = instruments.find((m) => m.nom === titre) || instruments[0];
+  const [sens, setSens] = useState('Achat');
+  const [modeSaisie, setModeSaisie] = useState('quantite');
+  const [valeur, setValeur] = useState('100');
+  const [prix, setPrix] = useState(gsmGroupedReferencePrice(instrument));
+  const [lignes, setLignes] = useState([]);
+  const [scenario, setScenario] = useState('equilibre');
+  const [opened, setOpened] = useState(null);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const backgroundStyle = { borderColor: C.line, color: C.ink, background: '#fff' };
+  const btnInput = 'w-full px-3 py-2 rounded-xl border text-xs';
+  const balances = pf ? gsmClientGroupedBalances(pf, orders, batches) : null;
+  const basketAmount = lignes.filter((l) => l.portefeuilleId === pf?.id && l.sens === 'Achat')
+    .reduce((sum, l) => sum + l.quantite * l.bornePrix, 0);
+  const basketHolding = lignes.filter((l) => l.portefeuilleId === pf?.id && l.sens === 'Vente' && l.titre === instrument?.nom)
+    .reduce((sum, l) => sum + l.quantite, 0);
+  const dispo = Math.max(0, (balances?.especes || 0) - basketAmount);
+  const dispoTitres = Math.max(0, (balances?.disponibleTitres?.[instrument?.nom] || 0) - basketHolding);
+  const courantMax = Number(instrument?.coursMax || 0);
+  const achatsPercentBase = balances?.especes || 0;
+  const titresPercentBase = balances?.disponibleTitres?.[instrument?.nom] || 0;
+  const quantityPreview = modeSaisie === 'quantite' ? Number(valeur)
+    : sens === 'Achat'
+      ? Math.floor((achatsPercentBase * Number(valeur) / 100) / Number(prix || 0))
+      : Math.floor(titresPercentBase * Number(valeur) / 100);
+  const refreshInstrument = (nextPortfolio, nextTitle = null) => {
+    const matches = CLIENT_TRADABLE_MARKETS.filter((item) => item.marche === nextPortfolio.marche && item.devise === nextPortfolio.devise);
+    const current = matches.find((item) => item.nom === nextTitle) || matches[0];
+    setTitre(current?.nom || '');
+    setPrix(gsmGroupedReferencePrice(current));
+    setValeur('100');
+  };
+  const addLine = () => {
+    setError(''); setMessage('');
+    const qte = Number(quantityPreview), limit = Number(prix);
+    if (!pf || !instrument || !['Achat','Vente'].includes(sens) ||
+      !Number.isInteger(qte) || qte < 1 || !Number.isFinite(limit) || limit <= 0 ||
+      (modeSaisie !== 'quantite' && (!Number.isFinite(Number(valeur)) || Number(valeur) <= 0 || Number(valeur) > 100))) {
+      setError('Indiquez une quantité entière positive, ou un pourcentage entre 0 et 100 donnant au moins un titre, et un prix limite positif.');
+      return;
+    }
+    const line = { id: `TMP-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+      portefeuilleId: pf.id, clientId: pf.id, client: pf.nom, sgi: pf.sgi,
+      titre: instrument.nom, marche: instrument.marche, devise: instrument.devise,
+      sens, quantite: qte, bornePrix: limit, modeSaisie,
+      saisieLotId: `LIGNE-${Date.now()}`,
+      pourcentageLiquidite: sens === 'Achat' && modeSaisie === 'pourcentage' ? Number(valeur) : null,
+      pourcentageTitres: sens === 'Vente' && modeSaisie === 'pourcentageTitres' ? Number(valeur) : null };
+    const next = [...lignes, line];
+    const errors = gsmClientGroupedVerify(next, orders, batches);
+    if (errors.length) { setError(errors[0]); return; }
+    setLignes(next);
+    setMessage(`${fmt(qte)} titre(s) ${instrument.nom} ajouté(s) au lot pour ${pf.sgi}.`);
+  };
+  const save = () => {
+    setError(''); setMessage('');
+    const errs = gsmClientGroupedVerify(lignes, orders, batches);
+    if (!lignes.length || errs.length) {
+      setError(errs[0] || 'Ajoutez au moins un ordre valide.'); return;
+    }
+    const timestamp = new Date().toISOString();
+    const id = `CLG-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const normalized = lignes.map((l, i) => ({ ...l, id: `${id}-L${String(i+1).padStart(3,'0')}` }));
+    const profiles = gsmClientGroupedProfiles(batches, orders);
+    const prepared = { id, proprietaireId: CLIENT_GESTION_LIBRE.id, createdAt: timestamp,
+      mode: 'multi', modeRepartition: 'individuelle', statut: 'Brouillon client · non transmis',
+      origine: 'Gestion libre · regroupement de plusieurs instructions/SGI',
+      lignes: normalized, profilsSimulation: profiles,
+      validation: { verifieAt: timestamp, controles: 'Espèces/positions par portefeuille, devise et marché (maquette)' },
+    };
+    // Validation supplémentaire par le même moteur que les ordres du gestionnaire.
+    const checks = gsmControlerEnsemblePreCarnet(normalized, profiles, CLIENT_TRADABLE_MARKETS);
+    if (checks.errors.length) { setError(checks.errors[0]); return; }
+    if (onSaveBatch?.(prepared) === false) { setError('Enregistrement local impossible.'); return; }
+    setLignes([]); setOpened(id);
+    setMessage(`Lot ${id} créé pour vos seuls portefeuilles. Aucun ordre réel envoyé.`);
+  };
+  const launch = (batch) => {
+    setError(''); setMessage('');
+    if (batch.proprietaireId !== CLIENT_GESTION_LIBRE.id ||
+      batch.lignes.some((l) => !portfolios.some((pf) => pf.id === l.portefeuilleId && pf.id === l.clientId))) {
+      setError('Lot client non autorisé.'); return;
+    }
+    try {
+      const result = gsmFictiveSimulateSession(batch, scenario,
+        batch.profilsSimulation || gsmClientGroupedProfiles(batches.filter((b) => b.id !== batch.id), orders),
+        CLIENT_TRADABLE_MARKETS, 'individuelle');
+      if (onSaveBatch?.(result) === false) { setError('Impossible de sauvegarder le retour de simulation.'); return; }
+      setOpened(batch.id);
+      const report = gsmFictiveReport(result);
+      setMessage(`Marché fictif : ${fmt(report.execute)} titre(s) exécuté(s) sur ${fmt(report.demande)}, ${fmt(report.reste)} restant(s).`);
+    } catch(e) { setError(e.message || 'Simulation indisponible.'); }
+  };
+  const selected = batches.find((b) => b.id === opened) || batches[0] || null;
+  const report = selected?.simulationMarche ? gsmFictiveReport(selected) : null;
+  const existingError = gsmClientGroupedVerify(lignes, orders, batches);
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Gestion libre', 'Ordres groupés']} />
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion libre · Multi-portefeuilles / multi-SGI</Eyebrow>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Ordres groupés</h2>
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Composez plusieurs instructions d'achat ou de vente pour vos propres portefeuilles, puis
+            suivez séparément les résultats de chaque compte sur un marché fictif. Les ordres ne
+            sont jamais transférés entre SGI, portefeuilles ou clients.
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge tone="navy">{batches.length} lot(s) personnel(s)</Badge>
+          <Btn tone="ghost" onClick={() => goClient('client-orders')}>Mes ordres →</Btn>
+        </div>
+      </div>
+      <Card className="p-5">
+        <div className="flex justify-between items-center flex-wrap gap-3 mb-4">
+          <div>
+            <Eyebrow>Composer un nouveau lot</Eyebrow>
+            <div className="text-xs" style={{ color: C.sub }}>Un lot peut contenir plusieurs titres, sens d'opération et SGI, sans compte tiers.</div>
+          </div>
+          <Badge tone="teal">{lignes.length} instruction(s) dans le panier</Badge>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>Mon portefeuille / SGI</label>
+            <select className={btnInput} style={backgroundStyle} value={pf?.id || ''} onChange={(e) => {
+              const next = portfolios.find((p) => p.id === e.target.value);
+              if (next) { setPortefeuilleId(next.id); refreshInstrument(next); setError(''); }
+            }}>
+              {portfolios.map((p) => <option key={p.id} value={p.id}>{p.sgi} · {p.nom} ({p.marche})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>Titre / marché</label>
+            <select className={btnInput} style={backgroundStyle} value={instrument?.nom || ''} onChange={(e) => {
+              const newTitle = instruments.find((m) => m.nom === e.target.value);
+              setTitre(e.target.value); setPrix(gsmGroupedReferencePrice(newTitle)); setError('');
+            }}>
+              {instruments.map((m) => <option key={m.nom} value={m.nom}>{m.nom} · {m.type} · {m.marche}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>Sens d'ordre</label>
+            <select className={btnInput} style={backgroundStyle} value={sens} onChange={(e) => {
+              setSens(e.target.value); setModeSaisie('quantite'); setValeur('100'); setError('');
+            }}>
+              <option value="Achat">Achat</option><option value="Vente">Vente</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>Mode de saisie</label>
+            <select className={btnInput} style={backgroundStyle} value={modeSaisie} onChange={(e) => { setModeSaisie(e.target.value); setValeur('10'); setError(''); }}>
+              <option value="quantite">Quantité</option>
+              {sens === 'Achat' ? <option value="pourcentage">% des espèces disponibles</option>
+                : <option value="pourcentageTitres">% du nombre de titres</option>}
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>
+              {modeSaisie === 'quantite' ? 'Nombre de titres' : 'Pourcentage (%)'}
+            </label>
+            <input type="number" min={modeSaisie === 'quantite' ? '1' : '0.01'} max={modeSaisie === 'quantite' ? undefined : 100}
+              step={modeSaisie === 'quantite' ? '1' : '0.1'} className={btnInput} style={backgroundStyle}
+              value={valeur} onChange={(e) => { setValeur(e.target.value); setError(''); }} />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold block mb-1" style={{ color: C.sub }}>Prix limite ({pf?.devise})</label>
+            <input type="number" min="0.01" step="any" className={btnInput} style={backgroundStyle}
+              value={prix} onChange={(e) => { setPrix(e.target.value); setError(''); }} />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-[11px] my-4" style={{ color: C.sub }}>
+          <span>Espèces libres : <b style={{ color: C.ink }}>{fmt(dispo)} {pf?.devise}</b></span>
+          <span>Titres disponibles ({instrument?.nom || '—'}) : <b style={{ color: C.ink }}>{fmt(dispoTitres)}</b></span>
+          <span>Quantité calculée : <b style={{ color: C.ink }}>{Number.isFinite(quantityPreview) ? fmt(Math.max(0, Math.floor(quantityPreview))) : '—'}</b></span>
+          <span>Plus haut du jour indicatif : <b style={{ color: C.ink }}>{courantMax > 0 ? `${fmtPrice(courantMax)} ${instrument?.devise}` : 'Non renseigné'}</b></span>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[10px]" style={{ color: C.sub }}>Pourcentage calculé sur les disponibilités avant ce nouveau lot ; arrondi à l'entier inférieur. Pas de frais intégrés.</div>
+          <Btn tone="navy" onClick={addLine}>+ Ajouter cette instruction au lot</Btn>
+        </div>
+      </Card>
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 flex flex-wrap justify-between items-center gap-3">
+          <div className="font-semibold text-sm" style={{ color: C.ink }}>Panier des instructions à émettre</div>
+          <div className="flex gap-2 flex-wrap">
+            <Btn tone="ghost" onClick={() => { setLignes([]); setError(''); setMessage('Panier vidé.'); }}>Vider le panier</Btn>
+            <Btn tone="navy" onClick={save}>Enregistrer le lot</Btn>
+          </div>
+        </div>
+        <div className="overflow-x-auto"><table className="w-full" style={{ minWidth: 1000 }}>
+          <thead style={{ background: '#FAFAFC' }}><tr>
+            <Th>SGI / portefeuille</Th><Th>Titre</Th><Th>Sens</Th><Th>Mode</Th>
+            <Th>Quantité</Th><Th>Prix limite</Th><Th>Montant indicatif</Th><Th>Action</Th>
+          </tr></thead>
+          <tbody>
+            {lignes.length ? lignes.map((l) => <tr key={l.id} style={{ borderTop: `1px solid ${C.line}` }}>
+              <Td><div className="text-xs font-semibold">{l.sgi}</div><div className="text-[10px]" style={{color:C.sub}}>{l.client}</div></Td>
+              <Td>{l.titre}</Td><Td><Badge tone={l.sens === 'Achat' ? 'teal' : 'coral'}>{l.sens}</Badge></Td>
+              <Td>{l.modeSaisie === 'quantite' ? 'Quantité' : `${l.sens === 'Achat' ? '% espèces' : '% titres'} · ${fmtPrice(l.sens === 'Achat' ? l.pourcentageLiquidite : l.pourcentageTitres)} %`}</Td>
+              <Td mono>{fmt(l.quantite)}</Td><Td mono>{fmtPrice(l.bornePrix)} {l.devise}</Td>
+              <Td mono>{fmtPrice(l.quantite * l.bornePrix)} {l.devise}</Td>
+              <Td><button type="button" className="text-xs font-semibold" style={{ color: C.coral }} onClick={() => setLignes((prev) => prev.filter((x) => x.id !== l.id))}>Retirer</button></Td>
+            </tr>) : <tr><td colSpan={8} className="text-center py-7 text-xs" style={{color:C.sub}}>Aucune instruction. Ajoutez un titre pour commencer.</td></tr>}
+          </tbody>
+        </table></div>
+        {existingError.length > 0 && <div className="px-4 pb-3 text-xs" style={{color:C.coral}}>{existingError[0]}</div>}
+      </Card>
+      {error && <div role="alert" className="p-3 rounded-xl text-xs" style={{ background:'#FFF0EE', color:C.coral }}>{error}</div>}
+      {message && <div className="p-3 rounded-xl text-xs" style={{ background:'#EAF7F2', color:'#166C53' }}>{message}</div>}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+          <div><Eyebrow>Marché fictif</Eyebrow><div className="font-semibold text-sm" style={{color:C.ink}}>Mes lots groupés et résultats d'exécution</div></div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs" style={{color:C.sub}}>Scénario</span>
+            <select className="px-3 py-2 border rounded-xl text-xs" style={backgroundStyle} value={scenario} onChange={(e) => setScenario(e.target.value)}>
+              {GSM_FICTIVE_SCENARIOS.map((sc) => <option key={sc.id} value={sc.id}>{sc.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="text-[11px] mb-4" style={{color:C.sub}}>Chaque instruction reste liée à son portefeuille d'origine. Les ordres incompatibles avec les cours des contreparties fictives restent en attente.</div>
+        {!batches.length && <div className="text-xs py-5" style={{color:C.sub}}>Aucun lot sauvegardé pour ce compte client.</div>}
+        <div className="space-y-2">
+          {batches.map((batch) => {
+            const result = batch.simulationMarche ? gsmFictiveReport(batch) : null;
+            const selectedBatch = selected?.id === batch.id;
+            return <div key={batch.id} className="border rounded-xl p-3" style={{borderColor:C.line}}>
+              <div className="flex flex-wrap gap-3 justify-between items-center">
+                <div>
+                  <button type="button" className="text-xs font-bold text-left hover:underline" style={{color:C.navy}} onClick={() => setOpened(selectedBatch ? null : batch.id)}>{batch.id} · {batch.lignes.length} instruction(s)</button>
+                  <div className="text-[10px] mt-1" style={{color:C.sub}}>{new Date(batch.createdAt).toLocaleString('fr-FR')} · {batch.statut}</div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {result && <Badge tone={result.reste === 0 ? 'teal' : result.execute > 0 ? 'gold' : 'slate'}>{fmt(result.execute)}/{fmt(result.demande)} exécutés</Badge>}
+                  <Btn tone="ghost" onClick={() => gsmGroupedCsv(batch)}>Export ordres CSV</Btn>
+                  {result && <Btn tone="ghost" onClick={() => gsmExportFictiveResultsCsv(batch)}>Export résultats CSV</Btn>}
+                  {(!result || result.reste > 0) && <Btn tone="navy" onClick={() => launch(batch)}>{result ? 'Simuler les reliquats' : 'Lancer sur marché fictif'}</Btn>}
+                  {!batch.simulationMarche && <button type="button" className="text-xs" style={{color:C.coral}} onClick={() => {
+                    if (onDeleteBatch?.(batch.id) === false) setError('Suppression locale impossible.');
+                    else { setOpened(null); setMessage('Brouillon supprimé.'); }
+                  }}>Supprimer</button>}
+                </div>
+              </div>
+              {selectedBatch && result && <div className="overflow-x-auto mt-4">
+                <div className="text-xs font-semibold mb-2" style={{color:C.ink}}>Résultats attribués à vos portefeuilles (simulation)</div>
+                <table className="w-full" style={{minWidth:1050}}>
+                  <thead style={{background:'#FAFAFC'}}><tr><Th>SGI / portefeuille</Th><Th>Titre</Th><Th>Sens</Th><Th>Demandé</Th><Th>Exécuté</Th><Th>Reliquat</Th><Th>Prix moyen</Th><Th>Montant</Th><Th>Résultat</Th></tr></thead>
+                  <tbody>{result.allocations.map((a) => {
+                    const portfolio = portfolios.find((p) => p.id === a.clientId);
+                    return <tr key={a.instruction} style={{borderTop:`1px solid ${C.line}`}}>
+                      <Td><div className="font-semibold text-xs">{portfolio?.sgi || '—'}</div><div className="text-[10px]">{portfolio?.nom || a.client}</div></Td>
+                      <Td>{a.titre}</Td><Td>{a.sens}</Td><Td mono>{fmt(a.demande)}</Td><Td mono>{fmt(a.execute)}</Td><Td mono>{fmt(a.reste)}</Td>
+                      <Td mono>{a.prixMoyen == null ? '—' : `${fmtPrice(a.prixMoyen)} ${a.devise}`}</Td><Td mono>{fmtPrice(a.montant)} {a.devise}</Td>
+                      <Td><Badge tone={a.execute >= a.demande ? 'teal' : a.execute ? 'gold' : 'slate'}>{a.statutClient}</Badge></Td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+                <div className="text-xs mt-3 font-semibold" style={{color:C.ink}}>Impact fictif dans mes portefeuilles</div>
+                <div className="overflow-x-auto mt-2"><table className="w-full" style={{minWidth:700}}>
+                  <thead style={{background:'#FAFAFC'}}><tr><Th>Portefeuille / SGI</Th><Th>Titre</Th><Th>Variation titres</Th><Th>Variation espèces</Th></tr></thead>
+                  <tbody>{result.portefeuillesFictifs.map((v,i) => <tr key={`${v.clientId}-${v.titre}-${v.sens}-${i}`} style={{borderTop:`1px solid ${C.line}`}}>
+                    <Td>{portfolios.find((p) => p.id === v.clientId)?.sgi || v.client}</Td><Td>{v.titre}</Td>
+                    <Td mono>{v.deltaTitres > 0 ? '+' : ''}{fmt(v.deltaTitres)}</Td>
+                    <Td mono>{v.deltaEspeces > 0 ? '+' : ''}{fmtPrice(v.deltaEspeces)} {v.devise}</Td>
+                  </tr>)}</tbody>
+                </table></div>
+                <div className="text-[10px] mt-3" style={{color:C.sub}}>Livre auxiliaire fictif : les positions SGI et l'API opérationnelle ne sont pas modifiées.</div>
+              </div>}
+              {selectedBatch && !result && <div className="text-xs mt-3" style={{color:C.sub}}>Lot enregistré. Lancez une séance fictive pour recevoir les états d'exécution individuels.</div>}
+            </div>;
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function ClientOrderTicket({
   goClient,
   onCreateOrder,
   orders,
+  groupedBatches = [],
   initialInstrument,
   initialMarket,
   source = 'vue-boursiere',
@@ -34046,16 +34457,17 @@ function ClientOrderTicket({
       ? Number(marche?.cours || 0)
       : Number(prixLimite || 0);
   const montantEstime = Number(qte || 0) * prixEstime;
-  const position =
-    portefeuilleCourant?.lignes.find((ligne) => ligne.instrument === instrument)
-      ?.qte || 0;
+  // Le ticket simple doit considérer les autres ordres ouverts et les lots
+  // groupés du même portefeuille pour éviter une double mobilisation fictive.
+  const groupedBalance = portefeuilleCourant
+    ? gsmClientGroupedBalances(portefeuilleCourant, orders, groupedBatches)
+    : null;
+  const position = groupedBalance?.disponibleTitres?.[instrument] || 0;
   const cashTotal = portefeuilleCourant?.compteEspeces || 0;
   const cashReserve = portefeuilleCourant
-    ? clientReservedCash(portefeuilleCourant, orders)
+    ? clientReservedCash(portefeuilleCourant, orders) + Number(groupedBalance?.reserveAchat || 0)
     : 0;
-  const cash = portefeuilleCourant
-    ? clientAvailableCash(portefeuilleCourant, orders)
-    : 0;
+  const cash = groupedBalance?.especes || 0;
   const achatPossible = sens !== 'Achat' || montantEstime <= cash;
   const ventePossible = sens !== 'Vente' || Number(qte || 0) <= position;
   const ordreValide =
@@ -34343,6 +34755,12 @@ function ClientOrderTicket({
                 {portefeuilleCourant?.devise || marche.devise}
               </span>
             </div>
+            {groupedBatches.length > 0 && (
+              <div className="text-[10px]" style={{ color: C.sub }}>
+                Espèces libres : engagements des ordres groupés et mouvements fictifs pris en compte.
+                Le solde total demeure celui de la maquette SGI, non modifié.
+              </div>
+            )}
             <div className="flex justify-between gap-3">
               <span>Liquidité totale</span>
               <span style={F_MONO}>
@@ -35837,7 +36255,7 @@ function ClientAvis({ orders, devise }) {
   );
 }
 
-function ClientOrders({ orders }) {
+function ClientOrders({ orders, groupedBatches = [], goClient }) {
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Mes ordres']} />
@@ -35855,6 +36273,24 @@ function ClientOrders({ orders }) {
         </div>
         <Badge tone="gold">{orders.length} ordre(s)</Badge>
       </div>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>Mes lots d’ordres groupés (gestion libre)</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              {groupedBatches.length} lot(s) personnel(s) · résultats individuels consultables dans l'onglet dédié.
+            </div>
+          </div>
+          <Btn tone="navy" onClick={() => goClient?.('client-grouped-orders')}>Ouvrir mes ordres groupés →</Btn>
+        </div>
+        {groupedBatches.slice(0, 3).map((b) => (
+          <div key={b.id} className="text-xs py-2 mt-2 flex justify-between gap-3" style={{ borderTop:`1px solid ${C.line}`, color:C.sub }}>
+            <span>{b.id} · {b.lignes.length} instruction(s)</span>
+            <span>{b.statut}</span>
+          </div>
+        ))}
+      </Card>
 
       <Card className="p-0 overflow-hidden">
         <table className="w-full">
@@ -38858,6 +39294,21 @@ export default function App() {
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
   const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
+  const [clientGroupedBatches, setClientGroupedBatches] = useState(gsmClientLoadGrouped);
+  const saveClientGroupedBatch = (batch) => {
+    const next = [batch, ...clientGroupedBatches.filter((b) => b.id !== batch.id)];
+    if (!gsmClientPersistGrouped(next)) return false;
+    setClientGroupedBatches(next);
+    return true;
+  };
+  const deleteClientGroupedBatch = (id) => {
+    const existing = clientGroupedBatches.find((b) => b.id === id);
+    if (!existing || existing.simulationMarche) return false;
+    const next = clientGroupedBatches.filter((b) => b.id !== id);
+    if (!gsmClientPersistGrouped(next)) return false;
+    setClientGroupedBatches(next);
+    return true;
+  };
   const [groupedDrafts, setGroupedDrafts] = useState(gsmLoadGroupedDrafts);
   const saveGroupedDraft = (batch) => {
     // Conserve une seule version de chaque pré-carnet lors des transitions.
@@ -39837,6 +40288,7 @@ export default function App() {
                     goClient={goClient}
                     onCreateOrder={createClientOrder}
                     orders={clientOrders}
+                    groupedBatches={clientGroupedBatches}
                     initialInstrument={clientCtx.instrument}
                     initialMarket={clientCtx.marche}
                     source={clientCtx.source}
@@ -39849,8 +40301,17 @@ export default function App() {
                     goClient={goClient}
                   />
                 )}
+                {clientScreen === 'client-grouped-orders' && (
+                  <ClientGroupedOrders
+                    goClient={goClient}
+                    orders={clientOrders}
+                    batches={clientGroupedBatches}
+                    onSaveBatch={saveClientGroupedBatch}
+                    onDeleteBatch={deleteClientGroupedBatch}
+                  />
+                )}
                 {clientScreen === 'client-orders' && (
-                  <ClientOrders orders={clientOrders} />
+                  <ClientOrders orders={clientOrders} groupedBatches={clientGroupedBatches} goClient={goClient} />
                 )}
                 {clientScreen === 'client-avis' && (
                   <ClientAvis orders={clientOrders} devise={siteDevise} />
