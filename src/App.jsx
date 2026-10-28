@@ -13357,8 +13357,9 @@ function PortefeuilleDetail({ client, go, reportOpen, onGenerateReport }) {
  * 3) Pré-carnet : regroupement par marché/titre/sens/prix, références,
  *    validation interne, simulation de routage/exécutions et restitution directe
  *    au portefeuille émetteur en individuel, ou allocation prorata en groupé.
- * 4) Valorix 999 : grand volume, paramètres d'un automate supervisé, mais
- *    aucune interface Valorix, flux de carnet temps réel ni routeur réel ici.
+ * 4) Valorix 999 : exécution algorithmique SUPERVISÉE sur un carnet fictif,
+ *    par séquences, limites de prix, liquidité, pauses et affectations clients.
+ *    Aucun connecteur Valorix ni flux de cotation réel n'est activé.
  * Les lignes sont des BROUILLONS, pas des ordres exécutés/routés.
  */
 const GSM_GROUPED_ORDERS_KEY = 'opcvm-gsm-grouped-orders-drafts-v1';
@@ -13384,8 +13385,8 @@ const GSM_GROUPED_OPTIONS = [
   {
     id: 'valorix999',
     title: 'Option 3 · Valorix 999 supervisé',
-    subtitle: 'Gros volumes, pricing algorithmique à superviser',
-    description: 'Prépare un carnet 999 et des limites de sécurité. L’automate devra utiliser un flux de contreparties réel avant toute injection.',
+    subtitle: 'Exécution séquencée · liquidité · prix de sécurité · supervision',
+    description: 'Fractionnement des instructions, simulation du carnet, suspension sur prix défavorable et retour des exécutions vers chaque portefeuille (individuel ou prorata). Aucun routage réel Valorix.',
   },
 ];
 
@@ -14077,6 +14078,278 @@ const gsmFictiveSimulateSession = (draft, scenario, clients, instruments, distri
   } };
 };
 
+/* ------------------- VALORIX 999 · EXECUTION SEQUENTIELLE ------------------- */
+// Automate de DEMONSTRATION, piloté par le gestionnaire. Chaque clic simule
+// une ou plusieurs séquences successives ; le délai minDelay est représenté
+// dans une horloge virtuelle et NON par une transmission différée réelle.
+// Aucun web socket, API courtier, ordre réel ou mutation des comptes CLIENTS.
+const gsmValorixStatuts = {
+  pret: 'Prêt à simuler', en_cours: 'Pilotage supervisé',
+  suspendu_manuel: 'Suspendu par le gestionnaire',
+  suspendu_prix: 'Suspendu · prix défavorable',
+  termine: 'Ordre intégralement exécuté (fictif)',
+  arrete: 'Arrêté par le gestionnaire',
+};
+
+const gsmValorixSettings = (draft) => {
+  const value = draft?.negociateur || {};
+  const sliceSize = Number(value.sliceSize);
+  const participation = Number(value.participation);
+  const minDelay = Number(value.minDelay);
+  const maxDeviationPct = Number(value.maxDeviationPct ?? 1);
+  if (!Number.isInteger(sliceSize) || sliceSize < 1) throw new Error('Valorix 999 : la taille d’une tranche doit être un entier positif.');
+  if (!(participation > 0 && participation <= 100)) throw new Error('Valorix 999 : participation comprise entre 0 et 100 %.');
+  if (!(minDelay >= 1 && Number.isFinite(minDelay))) throw new Error('Valorix 999 : délai minimum >= 1 seconde.');
+  if (!(maxDeviationPct > 0 && maxDeviationPct <= 10)) throw new Error('Valorix 999 : tolérance de dérive comprise entre 0 et 10 %.');
+  if (!String(value.supervisor || '').trim()) throw new Error('Valorix 999 : renseignez le négociateur / superviseur avant de lancer le lot.');
+  return { sliceSize, participation, minDelay, maxDeviationPct,
+    supervisor: String(value.supervisor).trim() };
+};
+
+// En prorata seulement, les instructions compatibles sont mutualisées avant
+// l'exécution. Des bornes de prix différentes ne sont JAMAIS fusionnées.
+const gsmValorixInitialOrders = (draft, distribution) => {
+  if (draft.simulationMarche?.groupes?.length) return gsmFictiveOrdersFromDraft(draft);
+  const individual = gsmFictiveOrdersFromDraft(draft);
+  if (distribution === 'individuelle') return individual;
+  const pooled = new Map();
+  individual.forEach((group) => {
+    const key = JSON.stringify([group.marche, group.titre, group.sens, group.devise, group.prixLimite]);
+    if (!pooled.has(key)) pooled.set(key, { ...group,
+      id: `V999-${draft.id}-${String(pooled.size + 1).padStart(3, '0')}`,
+      instructions: [], quantiteDemandee: 0, executions: [] });
+    const combined = pooled.get(key);
+    combined.quantiteDemandee += Number(group.quantiteDemandee || 0);
+    combined.instructions.push(...group.instructions);
+  });
+  return [...pooled.values()];
+};
+
+// Une trajectoire de prix fictive est rejouable : elle ne prétend pas refléter
+// la BRVM / NGX / GSE. Les chocs défavorables provoquent une vraie suspension
+// de la simulation ; le gestionnaire doit explicitement demander la reprise.
+const gsmValorixFictiveDrift = (scenario, number, instrument) => {
+  const patterns = scenario === 'tendu'
+    ? [0.002, 0.012, 0.018, 0.007, 0.004, -0.001, 0.013, 0.003]
+    : scenario === 'liquide'
+      ? [-0.003, -0.001, 0.001, -0.002, -0.003, 0, -0.002, 0.001]
+      : [0, 0.001, 0.004, 0.002, -0.001, 0.002, 0.006, -0.001];
+  const seed = gsmFictiveSeed(`${instrument.marche}|${instrument.nom}`);
+  return patterns[(number - 1 + seed % 2) % patterns.length];
+};
+
+const gsmValorixRunSequences = (draft, scenario, clients, instruments, distribution = 'prorata', requestedSteps = 1) => {
+  if (draft?.mode !== 'valorix999') throw new Error('L’exécution séquencée est réservée à Valorix 999.');
+  if (!GSM_FICTIVE_SCENARIOS.some((item) => item.id === scenario)) throw new Error('Scénario fictif inconnu.');
+  const controls = gsmValorixSettings(draft);
+  if (draft.simulationMarche && !draft.negociationAlgorithmique) {
+    throw new Error('Une ancienne simulation classique existe sur ce lot 999. Créez un nouveau lot pour démarrer l’automate séquencé.');
+  }
+  const validation = gsmControlerEnsemblePreCarnet(draft.lignes, clients, instruments);
+  if (validation.errors.length) throw new Error(`Contrôles non satisfaits : ${validation.errors.join(' | ')}`);
+  const mode = gsmModeRepartition({ modeRepartition: draft.modeRepartition || distribution });
+  if (!GSM_REPARTITION_MODES.some((m) => m.id === mode)) throw new Error('Mode de répartition inconnu.');
+  const existing = draft.negociationAlgorithmique;
+  if (existing && existing.statut !== 'en_cours') {
+    throw new Error(`Automate ${gsmValorixStatuts[existing.statut] || existing.statut}. Reprenez-le explicitement si une suspension est en cours.`);
+  }
+  if (existing && existing.scenario !== scenario) {
+    throw new Error('Le scénario reste fixé pendant un même lot 999 : rétablissez le scénario initial.');
+  }
+  if (existing && existing.modeRepartition !== mode) {
+    throw new Error('Le mode de répartition est verrouillé après la première séquence.');
+  }
+  const steps = Number(requestedSteps);
+  if (!Number.isInteger(steps) || steps < 1 || steps > 10) throw new Error('Entre 1 et 10 séquences par commande.');
+  const at = new Date().toISOString();
+  const start = existing?.lanceAt || at;
+  const groups = gsmValorixInitialOrders(draft, mode);
+  if (gsmExecutionsEnAttenteAffectation(groups).length) throw new Error('Exécutions anciennes non attribuées : suivi bloqué.');
+  const sequences = [...(existing?.sequences || [])];
+  const seances = [...(draft.simulationMarche?.seances || [])];
+  const journal = [...(existing?.journal || [])];
+  let status = 'en_cours';
+  let lastReason = '';
+  const limitable = (group, inst) => {
+    const a = Number(group.prixLimite);
+    const b = Number(inst?.prixLimite);
+    return Number.isFinite(b) && b > 0
+      ? group.sens === 'Achat' ? Math.min(a, b) : Math.max(a, b) : a;
+  };
+  for (let offset = 0; offset < steps; offset += 1) {
+    const number = sequences.length + 1;
+    const seqId = `${draft.id}-V999-SEQ-${String(number).padStart(3, '0')}`;
+    const atStep = new Date().toISOString();
+    const virtualTime = new Date(new Date(start).getTime() + (number - 1) * controls.minDelay * 1000).toISOString();
+    const snapshots = new Map();
+    const observations = [];
+    let volume = 0, trades = 0;
+    const ordered = [...groups].sort((a, b) =>
+      `${a.marche}|${a.titre}|${a.sens}`.localeCompare(`${b.marche}|${b.titre}|${b.sens}`)
+      || (a.sens === 'Achat' ? b.prixLimite - a.prixLimite : a.prixLimite - b.prixLimite)
+      || String(a.id).localeCompare(String(b.id)));
+    for (const group of ordered) {
+      const open = Math.max(0, Number(group.quantiteDemandee) - gsmPreCarnetGroupFilled(group));
+      if (!open) continue;
+      const instrument = instruments.find((item) => item.nom === group.titre && item.marche === group.marche);
+      if (!instrument || !(Number(instrument.cours) > 0)) {
+        observations.push({ groupe: group.id, titre: group.titre, sens: group.sens,
+          demande: open, execute: 0, motif: 'Cours fictif absent : aucune exécution inventée' });
+        continue;
+      }
+      const key = JSON.stringify([group.marche, group.titre, group.sens]);
+      if (!snapshots.has(key)) {
+        const levels = gsmFictiveCreateBook(instrument, group.sens, scenario);
+        const drift = gsmValorixFictiveDrift(scenario, number, instrument);
+        const direction = group.sens === 'Achat' ? 1 : -1;
+        const adjusted = levels.map((level) => ({
+          ...level, prix: gsmFictiveRoundPrice(level.prix * (1 + direction * drift), group.marche),
+        })).sort((a,b) => direction === 1 ? a.prix - b.prix : b.prix - a.prix);
+        const depth = adjusted.reduce((sum, item) => sum + item.quantite, 0);
+        // Taux de participation appliqué AU CARNET partagé de chaque actif :
+        // aucun double emploi de la liquidité entre groupes d'un même titre.
+        snapshots.set(key, { levels: adjusted, initial: adjusted.map((item) => ({ ...item })),
+          depth, quota: Math.floor(depth * controls.participation / 100), used: 0,
+          drift, instrument });
+      }
+      const snapshot = snapshots.get(key);
+      const price = snapshot.levels.find((level) => level.quantite > 0)?.prix ?? null;
+      const limit = Number(group.prixLimite);
+      const adverse = price != null && (group.sens === 'Achat' ? price > limit : price < limit);
+      const deviation = Number(snapshot.drift) * 100;
+      const driftTooLarge = deviation > controls.maxDeviationPct;
+      const available = Math.max(0, snapshot.quota - snapshot.used);
+      const target = Math.min(open, controls.sliceSize, available);
+      const observation = { groupe: group.id, titre: group.titre, marche: group.marche,
+        sens: group.sens, devise: group.devise, demande: open, limite: limit,
+        prixObserve: price, profondeur: snapshot.depth, quotaParticipation: snapshot.quota,
+        trancheMax: controls.sliceSize, cible: target, execute: 0,
+        motif: 'Séquence simulée' };
+      if (adverse || driftTooLarge) {
+        observation.motif = adverse ? 'Prix hors limite de sécurité' : 'Dérive de prix supérieure au seuil autorisé';
+        status = 'suspendu_prix';
+        lastReason = `${group.titre} : ${observation.motif}`;
+        observations.push(observation);
+        continue;
+      }
+      if (target <= 0) {
+        observation.motif = snapshot.quota === 0
+          ? 'Participation trop faible face à la profondeur disponible'
+          : 'Quota de participation épuisé pour cet actif';
+        observations.push(observation);
+        continue;
+      }
+      // Prorata : tranche commune et affectation de chaque fill.
+      // Individuelle : chaque instruction est ciblée indépendamment et le
+      // bénéficiaire est attaché à la transaction AVANT l'exécution.
+      const targets = mode === 'individuelle' ? group.instructions : [null];
+      let budget = target;
+      for (const inst of targets) {
+        if (!budget) break;
+        let left = Math.min(budget, inst ? gsmCapaciteRestanteInstruction(group, inst) : open);
+        const individualLimit = limitable(group, inst);
+        for (const level of snapshot.levels) {
+          if (!left) break;
+          if (group.sens === 'Achat' ? level.prix > individualLimit : level.prix < individualLimit) break;
+          const qty = Math.min(left, level.quantite);
+          if (qty <= 0) continue;
+          const allocations = inst ? [{ referenceInstruction: inst.referenceInstruction,
+            clientId: inst.clientId, client: inst.client, quantite: qty }]
+            : gsmAllocatePreCarnetExecution(group, qty);
+          const executionId = `${seqId}-EX-${String(++trades).padStart(3, '0')}`;
+          group.executions.push({ id: executionId, origine: seqId, at: atStep,
+            quantite: qty, prix: level.prix, referenceInstructionMarche: inst?.referenceInstruction || null,
+            modeExecution: inst ? 'Valorix 999 · individuelle' : 'Valorix 999 · prorata',
+            statut: 'Transaction fictive — aucune opération réelle',
+            allocationStatut: inst ? 'Restitution individuelle · fictif' : 'Allocation prorata · fictif',
+            allocations: allocations.map((a) => ({ ...a,
+              referenceAffectation: `${executionId}-A-${a.referenceInstruction}`,
+              statut: 'Affectation au portefeuille fictif — sans débit réel' })),
+          });
+          budget -= qty; left -= qty; level.quantite -= qty;
+          snapshot.used += qty; volume += qty; observation.execute += qty;
+        }
+      }
+      observation.motif = observation.execute ? (observation.execute === open ? 'Exécution totale' : 'Exécution partielle · liquidité / tranche')
+        : 'Aucun niveau compatible avec la limite';
+      observations.push(observation);
+    }
+    const remaining = groups.reduce((sum, group) =>
+      sum + Math.max(0, group.quantiteDemandee - gsmPreCarnetGroupFilled(group)), 0);
+    if (remaining === 0) status = 'termine';
+    const carnets = Array.from(snapshots.values()).map((snapshot) => ({
+      titre: snapshot.instrument.nom, marche: snapshot.instrument.marche,
+      sens: '', reference: Number(snapshot.instrument.cours), devise: snapshot.instrument.devise,
+      niveauxAvant: snapshot.initial, niveauxApres: snapshot.levels.map((l) => ({ ...l })),
+    }));
+    const sequence = { id: seqId, numero: number, at: atStep, heureTheorique: virtualTime,
+      scenario, modeRepartition: mode, statut: status, volumeExecute: volume,
+      nombreTransactions: trades, reste: remaining, observations, carnets,
+      raison: lastReason };
+    sequences.push(sequence);
+    seances.push(sequence); // Compatible avec le rapport et le carnet existants.
+    journal.push({ at: atStep, action: `${seqId} · ${volume} titre(s) exécutés · ${remaining} restant(s) · ${gsmValorixStatuts[status]}${lastReason ? ` · ${lastReason}` : ''}` });
+    if (status !== 'en_cours') break;
+  }
+  const now = new Date().toISOString();
+  const remaining = groups.reduce((sum, group) =>
+    sum + Math.max(0, group.quantiteDemandee - gsmPreCarnetGroupFilled(group)), 0);
+  const next = { ...draft, modeRepartition: mode,
+    statut: `${gsmValorixStatuts[status]} · Valorix 999 fictif`,
+    negociateur: { ...draft.negociateur, ...controls },
+    negociationAlgorithmique: {
+      lanceAt: start, derniereActionAt: now, statut: status,
+      scenario, modeRepartition: mode, superviseur: controls.supervisor,
+      sequences, journal, raison: lastReason,
+    },
+    simulationMarche: { ...draft.simulationMarche, lanceAt: start, derniereSeanceAt: now,
+      derniereSeance: sequences[sequences.length - 1]?.id, scenario, seances,
+      groupes: groups, moteur: 'Valorix 999 séquencé · profondeur artificielle · aucun routage réel' },
+  };
+  const result = gsmFictiveReport(next);
+  if (result.execute + result.reste !== result.demande || result.affecte !== result.execute ||
+      result.enAttenteAffectation !== 0) {
+    throw new Error('Incohérence de simulation 999 : quantités ou affectations non conservées.');
+  }
+  return { ...next, simulationMarche: { ...next.simulationMarche, resume: result } };
+};
+
+const gsmValorixControl = (draft, action) => {
+  if (draft?.mode !== 'valorix999' || !draft.negociationAlgorithmique) {
+    throw new Error('Aucune simulation Valorix 999 démarrée sur ce lot.');
+  }
+  const current = draft.negociationAlgorithmique;
+  const state = current.statut;
+  let status;
+  if (action === 'pause' && state === 'en_cours') status = 'suspendu_manuel';
+  else if (action === 'resume' && ['suspendu_manuel', 'suspendu_prix'].includes(state)) status = 'en_cours';
+  else if (action === 'stop' && ['en_cours', 'suspendu_manuel', 'suspendu_prix'].includes(state)) status = 'arrete';
+  else throw new Error(`Action « ${action} » non autorisée depuis l’état ${gsmValorixStatuts[state] || state}.`);
+  const now = new Date().toISOString();
+  const actionLabel = action === 'pause' ? 'Suspension manuelle' : action === 'resume' ? 'Reprise supervisée' : 'Arrêt définitif';
+  return { ...draft, statut: `${gsmValorixStatuts[status]} · Valorix 999 fictif`,
+    negociationAlgorithmique: { ...current, statut: status, raison: '', derniereActionAt: now,
+      journal: [...current.journal, { at: now, action: `${actionLabel} · ${current.superviseur}` }] } };
+};
+
+const gsmExportValorixSequencesCsv = (draft) => {
+  const sequences = draft?.negociationAlgorithmique?.sequences || [];
+  if (!sequences.length) return;
+  const rows = [['Lot', 'Séquence', 'Date simulation', 'Horaire virtuel', 'Statut', 'Groupe',
+    'Titre', 'Marché', 'Sens', 'Devise', 'Quantité restante avant séquence', 'Prix limite',
+    'Meilleur prix fictif', 'Profondeur fictive', 'Quota participation', 'Taille tranche',
+    'Cible', 'Exécuté', 'Motif', 'Mode répartition'],
+    ...sequences.flatMap((seq) => seq.observations.map((obs) => [draft.id, seq.numero, seq.at,
+      seq.heureTheorique, gsmValorixStatuts[seq.statut], obs.groupe,
+      obs.titre, obs.marche, obs.sens, obs.devise, obs.demande, obs.limite,
+      obs.prixObserve ?? '', obs.profondeur ?? '', obs.quotaParticipation ?? '',
+      obs.trancheMax ?? '', obs.cible ?? '', obs.execute,
+      obs.motif, seq.modeRepartition]))];
+  const escape = (x) => `"${String(x ?? '').replace(/"/g, '""')}"`;
+  exportDownloadBlob(new Blob(['\uFEFF', rows.map((r) => r.map(escape).join(';')).join('\r\n')],
+    { type: 'text/csv;charset=utf-8' }), `valorix-999-sequences-${exportSafeFileName(draft.id)}.csv`);
+};
+
 const gsmExportFictiveResultsCsv = (draft) => {
   if (!draft?.simulationMarche) return;
   const result = gsmFictiveReport(draft);
@@ -14254,7 +14527,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [individualLimits, setIndividualLimits] = useState({});
   const [globalQuantity, setGlobalQuantity] = useState('');
   const [globalPercent, setGlobalPercent] = useState('');
-  const [negotiatorSettings, setNegotiatorSettings] = useState({ sliceSize: '200', participation: '15', minDelay: '5', supervisor: '', remarks: '' });
+  const [negotiatorSettings, setNegotiatorSettings] = useState({ sliceSize: '200', participation: '15', minDelay: '5', maxDeviationPct: '1', supervisor: '', remarks: '' });
   const [preview, setPreview] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [draftExpanded, setDraftExpanded] = useState(false);
@@ -14272,6 +14545,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [scenarioMarcheVisible, setScenarioMarcheVisible] = useState(false);
   const [marcheFictifMessage, setMarcheFictifMessage] = useState('');
   const [rapportFictifId, setRapportFictifId] = useState(null);
+  const [valorixExpandedDraftId, setValorixExpandedDraftId] = useState(null);
   const [distributionByDraft, setDistributionByDraft] = useState({});
   const modePourDraft = (draft) => draft.modeRepartition || distributionByDraft[draft.id] || 'prorata';
 
@@ -14406,6 +14680,8 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     if (!Number.isInteger(Number(negotiatorSettings.sliceSize)) || Number(negotiatorSettings.sliceSize) <= 0) errors.push('Le volume maximal par injection doit être un entier positif.');
     if (!(Number(negotiatorSettings.participation) > 0 && Number(negotiatorSettings.participation) <= 100)) errors.push('La participation maximale doit être entre 0 et 100 %.');
     if (!(Number(negotiatorSettings.minDelay) >= 1)) errors.push('La temporisation doit être au moins d’une seconde.');
+    if (!(Number(negotiatorSettings.maxDeviationPct) > 0 && Number(negotiatorSettings.maxDeviationPct) <= 10)) errors.push('La dérive maximale de prix doit être comprise entre 0 et 10 %.');
+    if (!String(negotiatorSettings.supervisor || '').trim()) errors.push('Renseignez le négociateur / superviseur pour Valorix 999.');
   }
   selectedInstrumentObjects.forEach((instrument) => {
     const tranches = (mode === 'multi' || mode === 'precarnet') ? settingsFor(instrument.nom).tranches : settingsFor(instrument.nom).tranches.slice(0, 1);
@@ -14514,7 +14790,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     : sellPercentMode ? 'Renseignez un pourcentage permettant de vendre au moins un titre entier.'
     : 'Renseignez une quantité supérieure à zéro pour au moins une ligne client / titre.');
   if (mode === 'precarnet' && proposed.length) warnings.push('Pré-carnet préparé localement : le routage, les exécutions et les affectations dans Valorix ne sont PAS connectés. Les simulations sont purement illustratives.');
-  if (mode === 'valorix999') warnings.push('Le code 999 est une convention à valider avec Valorix. Aucun carnet temps réel ni automate de pricing n’est connecté : aucun prix d’exécution n’est calculé.');
+  if (mode === 'valorix999') warnings.push('Valorix 999 : les tranches, les prix et les confirmations sont simulés sur un carnet artificiel. Le code 999 est une convention à confirmer avec Valorix ; aucune interface réelle n’est connectée.');
   const buyAmountsByClient = {};
   if (sens === 'Achat') {
     proposed.forEach((row) => {
@@ -14764,6 +15040,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   };
   const lancerMarcheFictif = (draft) => {
     try {
+      if (draft.mode === 'valorix999') throw new Error('Utilisez le pilotage algorithmique supervisé pour Valorix 999.');
       if (draft.mode === 'precarnet' && preCarnetTargetId === draft.id && nouveauxLotsEnCours) {
         throw new Error('Terminez votre nouvelle saisie avant le lancement du pré-carnet.');
       }
@@ -14782,6 +15059,22 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
     } catch (error) {
       setMarcheFictifMessage(error.message || 'Simulation de marché impossible.');
       if (draft.mode === 'precarnet') setPreCarnetMessage(error.message || 'Simulation impossible.');
+    }
+  };
+  // Supervision explicite de l'Option 3 : une action = un groupe de
+  // séquences virtuelles, jamais une automatisation dans le navigateur.
+  const piloterValorix999 = (draft, action, steps = 1) => {
+    try {
+      const updated = action === 'run'
+        ? gsmValorixRunSequences(draft, draft.negociationAlgorithmique?.scenario || marcheFictifScenario, clients, instruments, modePourDraft(draft), steps)
+        : gsmValorixControl(draft, action);
+      if (onSaveDraft?.(updated) === false) throw new Error('Stockage local indisponible : résultat non conservé.');
+      const report = updated.simulationMarche ? gsmFictiveReport(updated) : null;
+      setValorixExpandedDraftId(updated.id);
+      setRapportFictifId(updated.simulationMarche ? updated.id : null);
+      setMarcheFictifMessage(`Valorix 999 fictif : ${gsmValorixStatuts[updated.negociationAlgorithmique.statut]}. ${report ? `${fmt(report.execute)} exécutés, ${fmt(report.reste)} restants.` : ''} Aucun routage réel.`);
+    } catch (error) {
+      setMarcheFictifMessage(error.message || 'Commande Valorix 999 impossible.');
     }
   };
   const simulatePreCarnetRoute = (draft) => lancerMarcheFictif(draft);
@@ -15318,16 +15611,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
             <h3 className="text-sm font-bold" style={{ color: C.ink }}>4. Paramètres du futur automate · Valorix 999</h3>
             <Badge tone="gold">Supervision du négociateur requise</Badge>
           </div>
-          <p className="text-xs" style={{ color: C.sub }}>Ces paramètres sont joints au brouillon 999. Ils ne déclenchent ni pricing ni injection.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <p className="text-xs" style={{ color: C.sub }}>Ces limites pilotent l’exécution algorithmique sur le marché FICTIF : tranches, quota de participation à la profondeur artificielle, prix maximal d’achat / minimal de vente et suspension si le prix est défavorable. Chaque séquence est déclenchée sous supervision. L’intervalle est une horloge virtuelle, jamais un ordre différé envoyé à Valorix.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             {[
               ['sliceSize','Qté max / injection','number'],
               ['participation','Participation max (%)','number'],
-              ['minDelay','Délai min (sec.)','number'],
+              ['minDelay','Intervalle virtuel (sec.)','number'],
+              ['maxDeviationPct','Dérive défavorable max (%)','number'],
               ['supervisor','Négociateur / superviseur','text'],
             ].map(([key, label, type]) => (
               <label key={key} className="text-xs" style={{ color: C.sub }}>{label}
-                <input type={type} min={type === 'number' ? '1' : undefined} value={negotiatorSettings[key]}
+                <input type={type} min={type === 'number' ? (key === 'maxDeviationPct' ? '0.01' : '1') : undefined} step={key === 'maxDeviationPct' ? '0.01' : '1'} value={negotiatorSettings[key]}
                   onChange={(e) => { setNegotiatorSettings((cur) => ({ ...cur, [key]: e.target.value })); setPreview(false); }}
                   className="mt-1 w-full px-3 py-2 border rounded-xl text-sm" style={inputStyle} />
               </label>
@@ -15561,7 +15855,13 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     {rapportLot && <div className="text-[10px] mt-1" style={{ color: C.teal }}>{fmt(rapportLot.execute)} exécutés / {fmt(rapportLot.demande)} demandés · {fmt(rapportLot.reste)} en attente</div>}
                   </div>
                   <div className="flex gap-2 flex-wrap items-center">
-                    {simulationPossible && reliquatPossible && <button type="button" onClick={() => lancerMarcheFictif(draft)}
+                    {draft.mode === 'valorix999' && <button type="button"
+                      onClick={() => setValorixExpandedDraftId((id) => id === draft.id ? null : draft.id)}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold border"
+                      style={{ borderColor: C.gold, color: C.ink, background: '#FFF9ED' }}>
+                      {valorixExpandedDraftId === draft.id ? 'Fermer la supervision 999' : 'Superviser Valorix 999'}
+                    </button>}
+                    {draft.mode !== 'valorix999' && simulationPossible && reliquatPossible && <button type="button" onClick={() => lancerMarcheFictif(draft)}
                       className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
                       {draft.simulationMarche ? 'Simuler les reliquats' : 'Lancer sur marché fictif'}
                     </button>}
@@ -15576,6 +15876,95 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                 </div>;
               })}
             </div>
+            {valorixExpandedDraftId && (() => {
+              const draft = drafts.find((d) => d.id === valorixExpandedDraftId && d.mode === 'valorix999');
+              if (!draft) return null;
+              const algo = draft.negociationAlgorithmique;
+              const state = algo?.statut || 'pret';
+              const report = draft.simulationMarche ? gsmFictiveReport(draft) : null;
+              const canRun = !algo || state === 'en_cours';
+              const canResume = ['suspendu_manuel','suspendu_prix'].includes(state);
+              const canStop = ['en_cours','suspendu_manuel','suspendu_prix'].includes(state);
+              return <div className="p-4 rounded-xl border space-y-3" style={{ borderColor: C.gold, background: '#FFFDF8' }}>
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <h4 className="text-sm font-bold" style={{ color: C.ink }}>Pilotage algorithmique · Valorix 999 · {draft.id}</h4>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      Superviseur : {draft.negociateur?.supervisor || 'non renseigné'} · Mode : {GSM_REPARTITION_MODES.find((m) => m.id === modePourDraft(draft))?.label}
+                      {' '}· Tranche max : {draft.negociateur?.sliceSize} titres · Participation max : {draft.negociateur?.participation} %
+                      {' '}· Intervalle virtuel : {draft.negociateur?.minDelay} s · Scénario : {algo?.scenario || marcheFictifScenario}
+                    </div>
+                  </div>
+                  <Badge tone={state === 'termine' ? 'teal' : state.startsWith('suspendu') ? 'coral' : 'gold'}>{gsmValorixStatuts[state]}</Badge>
+                </div>
+                <p className="text-[11px]" style={{ color: C.sub }}>
+                  Le négociateur déclenche les séquences et décide d’une pause, d’une reprise ou d’un arrêt.
+                  Une hausse de prix défavorable (ou une baisse pour les ventes) bloque automatiquement la simulation.
+                  Le scénario est fixé au premier lancement. Aucune attente réelle ni connexion Valorix.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {canRun && <button type="button" onClick={() => piloterValorix999(draft, 'run', 1)}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+                    {algo ? 'Exécuter la prochaine séquence' : 'Démarrer · 1 séquence'}
+                  </button>}
+                  {canRun && <button type="button" onClick={() => piloterValorix999(draft, 'run', 5)}
+                    className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: C.indigo, color: C.indigo }}>
+                    Simuler jusqu’à 5 séquences
+                  </button>}
+                  {state === 'en_cours' && <button type="button" onClick={() => piloterValorix999(draft, 'pause')}
+                    className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ borderColor: C.gold, color: C.ink }}>Suspendre</button>}
+                  {canResume && <button type="button" onClick={() => piloterValorix999(draft, 'resume')}
+                    className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.teal, color: '#fff' }}>Reprendre sous supervision</button>}
+                  {canStop && <button type="button" onClick={() => {
+                    if (typeof window === 'undefined' || window.confirm('Arrêter définitivement ce lot 999 fictif ? Les transactions déjà simulées seront conservées.')) piloterValorix999(draft, 'stop');
+                  }} className="px-3 py-2 rounded-xl border text-xs font-semibold"
+                    style={{ borderColor: C.coral, color: C.coral }}>Arrêter le lot</button>}
+                  {!!algo?.sequences?.length && <button type="button" onClick={() => gsmExportValorixSequencesCsv(draft)}
+                    className="px-3 py-2 rounded-xl border text-xs font-semibold" style={{ color: C.indigo, borderColor: C.line }}>Journal des séquences CSV</button>}
+                </div>
+                {algo?.raison && <p role="alert" className="p-2 rounded-xl text-xs" style={{ background: '#FBE9E7', color: C.coral }}>
+                  Arrêt automatique sur prix : {algo.raison}. Vérifier les limites avant une reprise volontaire.
+                </p>}
+                {report && <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[["Demandé", report.demande], ["Exécuté", report.execute], ["Reliquat", report.reste], ["Affecté", report.affecte]].map(([label, value]) =>
+                    <div key={label} className="p-2 rounded-lg" style={{ background: '#F2F4F8' }}>
+                      <div className="text-[10px]" style={{ color: C.sub }}>{label}</div>
+                      <div className="text-base font-bold" style={{ color: C.ink, ...F_MONO }}>{fmt(value)}</div>
+                    </div>)}
+                </div>}
+                {!!algo?.sequences?.length && <div className="space-y-2">
+                  <div className="text-xs font-bold" style={{ color: C.ink }}>Journal de décision et exécution par tranche</div>
+                  <div className="overflow-auto border rounded-lg" style={{ borderColor: C.line, maxHeight: 290 }}>
+                    <table className="w-full" style={{ minWidth: 1080 }}><thead className="sticky top-0" style={{ background: '#F2F4F8' }}><tr>
+                      <Th>Séquence</Th><Th>Horaire virtuel</Th><Th>Titre</Th><Th>Sens</Th><Th>Prix observé</Th><Th>Prix limite</Th><Th>Profondeur</Th><Th>Quota</Th><Th>Demandé</Th><Th>Exécuté</Th><Th>Décision</Th>
+                    </tr></thead><tbody>{algo.sequences.flatMap((seq) => seq.observations.map((obs, index) =>
+                      <tr key={`${seq.id}-${obs.groupe}-${index}`} className="border-t" style={{ borderColor: C.line }}>
+                        <Td mono>{seq.numero}</Td><Td>{new Date(seq.heureTheorique).toLocaleTimeString('fr-FR')}</Td>
+                        <Td>{obs.titre} · {obs.marche}</Td><Td>{obs.sens}</Td>
+                        <Td mono>{obs.prixObserve == null ? '—' : fmtPrice(obs.prixObserve)}</Td>
+                        <Td mono>{obs.limite == null ? '—' : fmtPrice(obs.limite)}</Td>
+                        <Td mono>{obs.profondeur == null ? '—' : fmt(obs.profondeur)}</Td>
+                        <Td mono>{obs.quotaParticipation == null ? '—' : fmt(obs.quotaParticipation)}</Td>
+                        <Td mono>{fmt(obs.demande)}</Td><Td mono>{fmt(obs.execute)}</Td><Td>{obs.motif}</Td>
+                      </tr>))}</tbody></table>
+                  </div>
+                </div>}
+                {report && <div className="space-y-1">
+                  <div className="text-xs font-bold" style={{ color: C.ink }}>Retour par portefeuille · {modePourDraft(draft) === 'individuelle' ? 'exécutions propres' : 'affectations prorata'}</div>
+                  <div className="overflow-auto border rounded-lg" style={{ borderColor: C.line, maxHeight: 210 }}>
+                    <table className="w-full" style={{ minWidth: 650 }}><thead><tr>
+                      <Th>Client</Th><Th>Titre</Th><Th>Demandé</Th><Th>Exécuté</Th><Th>Reliquat</Th><Th>Prix moyen</Th><Th>Statut</Th>
+                    </tr></thead><tbody>{report.allocations.map((line) => <tr key={line.instruction} className="border-t" style={{ borderColor: C.line }}>
+                      <Td>{line.client}</Td><Td>{line.titre}</Td><Td mono>{fmt(line.demande)}</Td>
+                      <Td mono>{fmt(line.execute)}</Td><Td mono>{fmt(line.reste)}</Td>
+                      <Td mono>{line.prixMoyen == null ? '—' : `${fmtPrice(line.prixMoyen)} ${line.devise}`}</Td>
+                      <Td>{line.statutClient}</Td>
+                    </tr>)}</tbody></table>
+                  </div>
+                </div>}
+                <p className="text-[10px]" style={{ color: C.coral }}>ENTIÈREMENT FICTIF : ni automatisation temporelle réelle, ni cotation officielle, ni transfert vers Valorix, ni mouvement réel de portefeuille.</p>
+              </div>;
+            })()}
       {rapportFictifId && (() => {
         const draft = drafts.find((d) => d.id === rapportFictifId && d.simulationMarche);
         if (!draft) return null;
@@ -15584,7 +15973,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         return <Card className="p-4 space-y-3" style={{ borderColor: C.indigo }}>
           <div className="flex justify-between gap-3 items-center flex-wrap">
             <div><h3 className="text-sm font-bold" style={{ color: C.ink }}>Résultat du marché fictif · {draft.id}</h3>
-              <p className="text-[10px]" style={{ color: C.sub }}>{draft.simulationMarche.seances.length} séance(s) simulée(s) · dernière : {new Date(derniere.at).toLocaleString('fr-FR')} · {derniere.scenario} · Répartition : {GSM_REPARTITION_MODES.find((m) => m.id === gsmModeRepartition(draft))?.label}</p></div>
+              <p className="text-[10px]" style={{ color: C.sub }}>{draft.simulationMarche.seances.length} {draft.mode === 'valorix999' ? 'séquence(s)' : 'séance(s)'} simulée(s) · dernière : {new Date(derniere.at).toLocaleString('fr-FR')} · {derniere.scenario} · Répartition : {GSM_REPARTITION_MODES.find((m) => m.id === gsmModeRepartition(draft))?.label}</p></div>
             <div className="flex gap-2 flex-wrap">
               <button type="button" onClick={() => gsmExportFictiveResultsCsv(draft)}
                 className="px-3 py-2 border rounded-xl text-xs font-semibold" style={{ color: C.indigo, borderColor: C.line }}>Exporter résultats CSV</button>
