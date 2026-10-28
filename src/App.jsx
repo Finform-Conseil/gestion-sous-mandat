@@ -13460,6 +13460,7 @@ const gsmBuildPreCarnet = (lines, batchId, validite = 'Jour') => {
       referenceInstruction: line.id, clientId: line.clientId,
       client: line.client, quantiteDemandee: Number(line.quantite),
       prixLimite: price, modeSaisie: line.modeSaisie || 'quantite',
+      annuleAt: line.annuleAt || null, quantiteAnnulee: Number(line.quantiteAnnulee || 0),
       pourcentageLiquidite: line.pourcentageLiquidite ?? null,
       pourcentageTitres: line.pourcentageTitres ?? null,
       titresDisponiblesReference: line.titresDisponiblesReference ?? null,
@@ -13483,6 +13484,8 @@ const gsmControlerEnsemblePreCarnet = (lignes, clients, instruments) => {
   const pourcentages = new Map();
   const pourcentagesTitres = new Map();
   for (const line of lignes) {
+    // Une instruction intégralement annulée n'est plus une demande active.
+    if (line.annuleAt && Number(line.quantite || 0) === 0) continue;
     const client = clients.find((c) => String(c.id) === String(line.clientId));
     const instrument = instruments.find((i) => i.nom === line.titre && i.marche === line.marche);
     if (!client || !instrument) {
@@ -13864,6 +13867,7 @@ const gsmFictiveOrdersFromDraft = (draft) => {
       referenceInstruction: line.id, clientId: line.clientId, client: line.client,
       quantiteDemandee: Number(line.quantite), prixLimite: Number(line.bornePrix),
       modeSaisie: line.modeSaisie || 'quantite',
+      annuleAt: line.annuleAt || null, quantiteAnnulee: Number(line.quantiteAnnulee || 0),
     }], executions: [],
   }));
 };
@@ -13893,7 +13897,9 @@ const gsmFictiveReport = (draft) => {
       devise, sens: group.sens, prixLimite: group.prixLimite, demande: requested,
       execute: amountExecuted, reste: Math.max(0, requested - amountExecuted),
       prixMoyen: amountExecuted ? montant / amountExecuted : null,
-      statut: amountExecuted === requested ? 'Exécuté · fictif'
+      statut: group.instructions.every((inst) => !!inst.annuleAt)
+        ? (amountExecuted ? 'Reliquats annulés · fictif' : 'Annulé · fictif')
+        : amountExecuted === requested ? 'Exécuté · fictif'
         : amountExecuted ? 'Partiel · fictif' : 'En attente · fictif',
     });
     group.instructions.forEach((inst) => {
@@ -13905,7 +13911,9 @@ const gsmFictiveReport = (draft) => {
       }));
       const oldUnattributed = (group.executions || []).some((e) =>
         gsmQuantiteAffecteeExecution(e) < Number(e.quantite || 0));
-      const statutClient = qty >= Number(inst.quantiteDemandee)
+      const statutClient = inst.annuleAt
+        ? (qty > 0 ? 'Reliquat annulé · exécution partielle conservée' : 'Annulé · aucune exécution')
+        : qty >= Number(inst.quantiteDemandee)
         ? 'Totalement exécuté · fictif'
         : qty > 0 ? 'Partiellement exécuté · fictif'
         : oldUnattributed ? 'Exécution historique non attribuée · contrôle requis'
@@ -16225,7 +16233,172 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   );
 }
 
-function Carnet({ initial, go, groupedDrafts = [] }) {
+
+/* ---------- CARNET GSM · MODIFICATION / ANNULATION TRAÇABLES ---------- */
+// Une ligne représente une INSTRUCTION client, même si sa négociation est
+// mutualisée par un groupe. Les fills et allocations passés sont immuables.
+const gsmCarnetFilledInstruction = (draft, reference) => {
+  const groups = draft?.mode === 'precarnet'
+    ? (draft.precarnet?.groupes || [])
+    : (draft.simulationMarche?.groupes || []);
+  return groups.reduce((sum, group) => sum + (group.executions || []).reduce(
+    (subtotal, execution) => subtotal + (execution.allocations || [])
+      .filter((allocation) => allocation.referenceInstruction === reference)
+      .reduce((amount, allocation) => amount + Number(allocation.quantite || 0), 0), 0), 0);
+};
+
+const gsmCarnetEditGroupedInstruction = (draft, instructionId, action, values = {}, clients = CLIENTS, instruments = CLIENT_TRADABLE_MARKETS) => {
+  const line = draft?.lignes?.find((candidate) => candidate.id === instructionId);
+  if (!line) throw new Error('Instruction introuvable dans ce lot.');
+  if (line.annuleAt) throw new Error('Cette instruction est déjà annulée : aucune réactivation implicite.');
+  const executed = gsmCarnetFilledInstruction(draft, instructionId);
+  const currentQty = Number(line.quantite || 0);
+  if (!Number.isInteger(executed) || executed < 0 || executed > currentQty) {
+    throw new Error('Historique d’exécution incohérent : modification interdite.');
+  }
+  if (currentQty <= executed) throw new Error('Ordre totalement exécuté : aucune quantité ouverte à modifier ou annuler.');
+  const algorithm = draft.negociationAlgorithmique;
+  if (algorithm && ['en_cours', 'termine', 'arrete'].includes(algorithm.statut)) {
+    throw new Error(algorithm.statut === 'en_cours'
+      ? 'Suspendez d’abord le pilotage Valorix 999 avant toute modification.'
+      : 'Pilotage Valorix 999 terminé ou arrêté : ce lot est verrouillé.');
+  }
+  if (!['modifier', 'annuler'].includes(action)) throw new Error('Action inconnue.');
+  const groups = draft.mode === 'precarnet' ? (draft.precarnet?.groupes || [])
+    : (draft.simulationMarche?.groupes || []);
+  const containsPriorFills = groups.some((g) => (g.executions || []).length > 0);
+  if (gsmExecutionsEnAttenteAffectation(groups).length) {
+    throw new Error('Exécutions historiques non attribuées : modification bloquée pour préserver les droits clients.');
+  }
+  const containing = groups.find((g) => g.instructions.some((i) => i.referenceInstruction === instructionId));
+  const currentPrice = Number(line.bornePrix);
+  const nextPrice = action === 'annuler' ? currentPrice : Number(values.prixLimite);
+  if (!Number.isFinite(nextPrice) || nextPrice <= 0) throw new Error('Prix limite strictement positif requis.');
+  const pending = action === 'annuler' ? 0 : Number(values.reliquat);
+  if (!Number.isInteger(pending) || pending < 1) {
+    if (action !== 'annuler') throw new Error('Renseignez un reliquat entier supérieur à zéro ; pour zéro, utilisez Annuler.');
+  }
+  const nextQty = executed + pending;
+  // Après un premier traitement, interdire l'augmentation du volume engagé :
+  // sa réservation et son nouveau routage nécessiteraient un contrôle SGI.
+  if (draft.simulationMarche && nextQty > currentQty) {
+    throw new Error('Après lancement du marché fictif, vous pouvez seulement réduire le reliquat (ou l’annuler).');
+  }
+  if (nextPrice !== currentPrice && containing && containing.instructions.length > 1 &&
+      (draft.simulationMarche || containsPriorFills)) {
+    throw new Error('Prix commun d’un groupe mutualisé verrouillé après exécution : modifiez les quantités ou préparez un nouveau lot pour un prix distinct.');
+  }
+  if (nextPrice !== currentPrice && containing && containing.instructions.length === 1 &&
+      (containing.executions || []).some((ex) => gsmQuantiteAffecteeExecution(ex) < Number(ex.quantite || 0))) {
+    throw new Error('Exécution historique non affectée : modification du prix bloquée.');
+  }
+  const at = new Date().toISOString();
+  const canceled = action === 'annuler' ? currentQty - executed : 0;
+  const nextLine = {
+    ...line, quantite: nextQty, bornePrix: nextPrice,
+    quantiteInitiale: Number(line.quantiteInitiale ?? currentQty),
+    ...(action === 'annuler' ? { annuleAt: at, quantiteAnnulee: canceled,
+      statut: executed ? 'Reliquat annulé · exécution conservée' : 'Annulé' }
+      : { statut: executed ? 'Modifié · exécution partielle conservée' : 'Modifié · en attente' }),
+    historiqueModifications: [...(line.historiqueModifications || []), {
+      at, action, ancienTotal: currentQty, ancienPrix: currentPrice,
+      nouvelleQuantite: nextQty, nouveauPrix: nextPrice, dejaExecute: executed,
+      reliquatAvant: currentQty - executed, reliquatApres: pending,
+    }],
+  };
+  const lignes = draft.lignes.map((item) => item.id === instructionId ? nextLine : item);
+  // Contrôle conservateur sur les soldes et les titres de tous les comptes.
+  // Les anciennes quantités de pourcentage ne doivent pas invalider une saisie
+  // explicite de reliquat en quantité : c'est maintenant un ordre en quantité.
+  if (action === 'modifier' || action === 'annuler') {
+    nextLine.modeSaisie = 'quantite';
+    nextLine.pourcentageLiquidite = null;
+    nextLine.pourcentageTitres = null;
+    nextLine.budgetCiblePalier = null;
+  }
+  const validation = gsmControlerEnsemblePreCarnet(lignes, clients, instruments);
+  if (validation.errors.length) throw new Error(`Contrôle des disponibilités : ${validation.errors.join(' | ')}`);
+  let precarnet = draft.precarnet;
+  let simulationMarche = draft.simulationMarche;
+  // Avant validation, la reconstitution du pré-carnet permet de déplacer une
+  // instruction à nouveau prix vers son groupe exact (sans transaction passée).
+  if (precarnet && !simulationMarche && !containsPriorFills && !precarnet.routageSimuleAt) {
+    const rebuilt = gsmBuildPreCarnet(lignes, draft.id, precarnet.validite);
+    precarnet = { ...precarnet, groupes: rebuilt.groupes,
+      statut: 'En préparation', controle: null, routageSimuleAt: null,
+      journal: [...(precarnet.journal || []), { at,
+        action: `${action} ${instructionId} : ${currentQty - executed} → ${pending} ouvert(s), limite ${currentPrice} → ${nextPrice}. Validation précédente invalidée ; nouveau contrôle requis.` }] };
+  } else if (precarnet) {
+    precarnet = { ...precarnet,
+      groupes: precarnet.groupes.map((group) => ({ ...group,
+        instructions: group.instructions.map((inst) => inst.referenceInstruction === instructionId
+          ? { ...inst, quantiteDemandee: nextQty, prixLimite: nextPrice,
+              annuleAt: nextLine.annuleAt || null, quantiteAnnulee: canceled }
+          : inst),
+        prixLimite: group.instructions.length === 1 && group.instructions[0].referenceInstruction === instructionId
+          ? nextPrice : group.prixLimite,
+        quantiteDemandee: group.instructions.reduce((total, inst) => total +
+          (inst.referenceInstruction === instructionId ? nextQty : Number(inst.quantiteDemandee || 0)), 0),
+      })),
+      journal: [...(precarnet.journal || []), { at,
+        action: `${action} ${instructionId} · nouveau reliquat ${pending} · ${canceled} annulés` }],
+    };
+  }
+  if (simulationMarche && draft.mode !== 'precarnet') {
+    simulationMarche = { ...simulationMarche, groupes: simulationMarche.groupes.map((group) => ({
+      ...group,
+      instructions: group.instructions.map((inst) => inst.referenceInstruction === instructionId
+        ? { ...inst, quantiteDemandee: nextQty, prixLimite: nextPrice,
+            annuleAt: nextLine.annuleAt || null, quantiteAnnulee: canceled }
+        : inst),
+      prixLimite: group.instructions.length === 1 && group.instructions[0].referenceInstruction === instructionId
+        ? nextPrice : group.prixLimite,
+      quantiteDemandee: group.instructions.reduce((total, inst) => total +
+        (inst.referenceInstruction === instructionId ? nextQty : Number(inst.quantiteDemandee || 0)), 0),
+    })) };
+  }
+  const hasOpen = lignes.some((item) => Number(item.quantite || 0) > gsmCarnetFilledInstruction(
+    { ...draft, lignes, precarnet, simulationMarche }, item.id));
+  let negotiation = draft.negociationAlgorithmique;
+  if (negotiation) {
+    const activity = `${action} ${instructionId} · ${canceled} annulation(s) · reliquat ${pending}`;
+    negotiation = { ...negotiation, journal: [...(negotiation.journal || []), { at, action: activity }],
+      ...(hasOpen ? {} : { statut: 'termine', raison: 'Aucun reliquat actif après annulation' }) };
+  }
+  const result = { ...draft, lignes,
+    ...(precarnet ? { precarnet } : {}),
+    ...(simulationMarche ? { simulationMarche } : {}),
+    ...(negotiation ? { negociationAlgorithmique: negotiation } : {}),
+    ...(precarnet && !precarnet.controle && !simulationMarche
+      ? { statut: 'Pré-carnet · En préparation (à revalider)' }
+      : hasOpen ? {} : { statut: 'Aucun reliquat actif · carnet fictif' }),
+    journalOrdres: [...(draft.journalOrdres || []), { at, action, instructionId,
+      dejaExecute: executed, prixAvant: currentPrice, prixApres: nextPrice,
+      quantiteAvant: currentQty, quantiteApres: nextQty, quantiteAnnulee: canceled }],
+  };
+  if (result.simulationMarche) result.simulationMarche = {
+    ...result.simulationMarche, resume: gsmFictiveReport(result),
+  };
+  return result;
+};
+
+const GSM_CARNET_DEMO_KEY = 'opcvm-gsm-carnet-ordres-demo-v1';
+const gsmCarnetLoadDemo = () => {
+  if (typeof window === 'undefined') return ORDERS;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(GSM_CARNET_DEMO_KEY) || '{}');
+    return ORDERS.map((order) => stored[order.id] ? { ...order, ...stored[order.id] } : order);
+  } catch { return ORDERS; }
+};
+const gsmCarnetSaveDemo = (orders) => {
+  if (typeof window === 'undefined') return false;
+  try {
+    window.localStorage.setItem(GSM_CARNET_DEMO_KEY, JSON.stringify(
+      Object.fromEntries(orders.map((order) => [order.id, order]))));
+    return true;
+  } catch { return false; }
+};
+function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
   const [f, setF] = useState(initial?.marche || 'Tous');
   const [instrumentFilter, setInstrumentFilter] = useState(
     initial?.instrument || null
@@ -16236,43 +16409,109 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
     ? initial.cessionOrders
     : [];
   const cessionA4 = initial?.cessionA4 || null;
-  const groupedRows = groupedDrafts.flatMap((draft) => draft.mode === 'precarnet' && draft.precarnet
-    ? draft.precarnet.groupes.map((group) => ({
-        id: group.id, sens: group.sens, titre: group.titre, marche: group.marche,
-        devise: group.devise, qte: group.quantiteDemandee,
-        prix: group.prixLimite, prixSecurite: null,
-        statut: draft.simulationMarche
-          ? (gsmPreCarnetGroupFilled(group) === group.quantiteDemandee ? 'Exécuté · fictif'
-            : gsmPreCarnetGroupFilled(group) ? 'Partiel · fictif' : 'En attente · fictif')
-          : draft.precarnet.statut,
-        pf: `${new Set(group.instructions.map((inst) => inst.clientId)).size} client(s)`,
-        origine: `Pré-carnet ${draft.precarnet.id} · ${fmt(gsmPreCarnetGroupFilled(group))} exéc. fictives`,
-      }))
-    : draft.simulationMarche
-      ? draft.simulationMarche.groupes.map((group) => ({
-          id: group.id, sens: group.sens, titre: group.titre, marche: group.marche,
-          devise: group.devise, qte: group.quantiteDemandee,
-          prix: draft.mode === 'valorix999' ? null : group.prixLimite,
-          prixSecurite: draft.mode === 'valorix999' ? group.prixLimite : null,
-          statut: gsmPreCarnetGroupFilled(group) === group.quantiteDemandee ? 'Exécuté · fictif'
-            : gsmPreCarnetGroupFilled(group) ? 'Partiel · fictif' : 'En attente · fictif',
-          pf: group.instructions[0]?.client || 'Compte',
-          origine: `Marché fictif · ${fmt(gsmPreCarnetGroupFilled(group))} exécutés`,
-        }))
-      : draft.lignes.map((line) => ({
-        id: line.id, sens: line.sens, titre: line.titre, marche: line.marche,
-        devise: line.devise, qte: line.quantite,
-        prix: draft.mode === 'valorix999' ? null : line.bornePrix,
-        prixSecurite: draft.mode === 'valorix999' ? line.bornePrix : null,
-        statut: 'Brouillon', pf: line.client,
-        origine: draft.mode === 'valorix999' ? 'Préparation Valorix 999' : 'Ordre groupé',
-      })));
-  const sourceRows = [...groupedRows, ...cessionRows, ...ORDERS];
-  const rows = sourceRows.filter(
-    (o) =>
-      (f === 'Tous' || o.marche === f) &&
-      (!instrumentFilter || o.titre === instrumentFilter)
-  );
+  const [demoOrders, setDemoOrders] = useState(gsmCarnetLoadDemo);
+  const [editing, setEditing] = useState(null);
+  const [requestedRemainder, setRequestedRemainder] = useState('');
+  const [requestedPrice, setRequestedPrice] = useState('');
+  const [manageMessage, setManageMessage] = useState('');
+  const [pendingCancellation, setPendingCancellation] = useState(null);
+  const groupedRows = groupedDrafts.flatMap((draft) => draft.lignes.map((line) => {
+    const filled = gsmCarnetFilledInstruction(draft, line.id);
+    const remaining = Math.max(0, Number(line.quantite || 0) - filled);
+    const canceled = Number(line.quantiteAnnulee || 0);
+    return {
+      id: line.id, lotId: draft.id, typeGestion: 'grouped',
+      sens: line.sens, titre: line.titre, marche: line.marche, devise: line.devise,
+      qte: Number(line.quantite || 0), qteInitiale: Number(line.quantiteInitiale ?? line.quantite),
+      execute: filled, reliquat: remaining, annule: canceled,
+      prix: draft.mode === 'valorix999' ? null : Number(line.bornePrix),
+      prixSecurite: draft.mode === 'valorix999' ? Number(line.bornePrix) : null,
+      pf: line.client,
+      derniereModification: line.historiqueModifications?.slice(-1)[0] || null,
+      statut: line.annuleAt ? (filled ? 'Partiel · reliquat annulé' : 'Annulé')
+        : remaining === 0 ? 'Exécuté · fictif'
+        : filled ? 'Partiel · fictif'
+        : draft.simulationMarche ? 'En attente · fictif'
+        : line.historiqueModifications?.length ? 'Modifié · en attente' : 'Brouillon',
+      origine: `${GSM_GROUPED_OPTIONS.find((item) => item.id === draft.mode)?.title || 'Ordre groupé'} · ${draft.id}`,
+      editable: !line.annuleAt && remaining > 0 &&
+        !['termine', 'arrete', 'en_cours'].includes(draft.negociationAlgorithmique?.statut),
+      reason: draft.negociationAlgorithmique?.statut === 'en_cours'
+        ? 'Suspendre Valorix 999 avant modification' : '',
+    };
+  }));
+  const sourceRows = [
+    ...groupedRows,
+    ...cessionRows.map((order) => ({ ...order, typeGestion: 'cession', editable: false })),
+    ...demoOrders.map((order) => ({ ...order, typeGestion: 'demo',
+      execute: order.statut === 'Exécuté' ? Number(order.qte) : 0,
+      reliquat: ['Annulé', 'Exécuté'].includes(order.statut) ? 0 : Number(order.qte),
+      editable: !['Annulé', 'Exécuté'].includes(order.statut),
+      origine: 'Ordre de démonstration',
+    })),
+  ];
+  const rows = sourceRows.filter((o) =>
+    (f === 'Tous' || o.marche === f) &&
+    (!instrumentFilter || o.titre === instrumentFilter));
+  const openEdit = (order) => {
+    setManageMessage('');
+    setEditing(order);
+    setRequestedRemainder(String(order.reliquat));
+    setRequestedPrice(String(order.prixSecurite ?? order.prix ?? ''));
+  };
+  const confirmEdit = () => {
+    if (!editing) return;
+    try {
+      if (editing.typeGestion === 'grouped') {
+        const draft = groupedDrafts.find((d) => d.id === editing.lotId);
+        if (!draft) throw new Error('Lot introuvable.');
+        const updated = gsmCarnetEditGroupedInstruction(draft, editing.id, 'modifier',
+          { reliquat: requestedRemainder, prixLimite: requestedPrice });
+        if (onSaveGroupedDraft?.(updated) === false) throw new Error('Impossible de sauvegarder la modification.');
+      } else if (editing.typeGestion === 'demo') {
+        const qty = Number(requestedRemainder), price = Number(requestedPrice);
+        if (!Number.isInteger(qty) || qty < 1 || !(Number.isFinite(price) && price > 0))
+          throw new Error('Quantité entière positive et prix limite strictement positif requis.');
+        const next = demoOrders.map((o) => o.id === editing.id ? {
+          ...o, qte: qty, prix: price, statut: 'Modifié · démonstration',
+          historiqueModifications: [...(o.historiqueModifications || []), {
+            at: new Date().toISOString(), action: 'modifier', quantiteAvant: o.qte,
+            quantiteApres: qty, prixAvant: o.prix, prixApres: price,
+          }],
+        } : o);
+        if (!gsmCarnetSaveDemo(next)) throw new Error('Stockage local indisponible.');
+        setDemoOrders(next);
+      } else throw new Error('Ce circuit est à gérer depuis son module d’origine.');
+      setEditing(null);
+      setManageMessage(`Ordre ${editing.id} modifié. Exécutions antérieures inchangées.`);
+    } catch (error) { setManageMessage(error.message || 'Modification impossible.'); }
+  };
+  const confirmCancel = () => {
+    if (!pendingCancellation) return;
+    try {
+      const order = pendingCancellation;
+      if (order.typeGestion === 'grouped') {
+        const draft = groupedDrafts.find((d) => d.id === order.lotId);
+        if (!draft) throw new Error('Lot introuvable.');
+        const updated = gsmCarnetEditGroupedInstruction(draft, order.id, 'annuler');
+        if (onSaveGroupedDraft?.(updated) === false) throw new Error('Annulation non enregistrée.');
+      } else if (order.typeGestion === 'demo') {
+        const next = demoOrders.map((o) => o.id === order.id ? {
+          ...o, statut: 'Annulé', annuleAt: new Date().toISOString(),
+          historiqueModifications: [...(o.historiqueModifications || []), {
+            at: new Date().toISOString(), action: 'annuler', quantiteAnnulee: o.qte,
+          }],
+        } : o);
+        if (!gsmCarnetSaveDemo(next)) throw new Error('Stockage local indisponible.');
+        setDemoOrders(next);
+      } else throw new Error('Annulation non autorisée sur ce circuit.');
+      setManageMessage(`Reliquat de ${order.id} annulé dans la simulation. Transactions déjà exécutées conservées.`);
+      setPendingCancellation(null);
+    } catch (error) {
+      setManageMessage(error.message || 'Annulation impossible.');
+      setPendingCancellation(null);
+    }
+  };
   return (
     <div className="space-y-4">
       <Breadcrumb items={['Accueil', "Carnet d'ordres"]} />
@@ -16320,6 +16559,57 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
           </div>
         </Card>
       )}
+      {manageMessage && <div role="status" className="p-3 rounded-xl border text-xs font-semibold"
+        style={{ borderColor: C.line, color: manageMessage.includes('impossible') || manageMessage.includes('invalide') ? C.coral : C.navy,
+          background: '#F5F7FF' }}>{manageMessage}</div>}
+      {editing && <Card className="p-4 space-y-3" style={{ borderColor: C.indigo }}>
+        <div className="flex items-center justify-between gap-2">
+          <div><div className="font-bold text-sm" style={{ color: C.ink }}>Modifier l'ordre {editing.id}</div>
+            <p className="text-xs mt-1" style={{ color: C.sub }}>{editing.pf} · {editing.titre} · {editing.sens}
+              {' '}· {fmt(editing.execute || 0)} déjà exécuté(s), non modifiable(s).</p></div>
+          <button type="button" onClick={() => setEditing(null)} aria-label="Fermer l'édition"><X size={18} /></button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-xs font-semibold" style={{ color: C.sub }}>Quantité restante souhaitée
+            <input type="number" min="1" step="1" value={requestedRemainder}
+              onChange={(e) => setRequestedRemainder(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 border rounded-xl text-sm"
+              style={{ borderColor: C.line, color: C.ink, background: '#fff' }}/>
+          </label>
+          <label className="text-xs font-semibold" style={{ color: C.sub }}>
+            {editing.prixSecurite != null ? 'Borne de sécurité' : 'Prix limite'} ({editing.devise})
+            <input type="number" min="0.0001" step="any" value={requestedPrice}
+              onChange={(e) => setRequestedPrice(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 border rounded-xl text-sm"
+              style={{ borderColor: C.line, color: C.ink, background: '#fff' }}/>
+          </label>
+        </div>
+        <p className="text-[10px]" style={{ color: C.sub }}>
+          La modification n'agit que sur la quantité encore ouverte. Une limite de prix commune à plusieurs
+          clients peut rester verrouillée après validation du lot. L'Option 3 doit être suspendue avant édition.
+        </p>
+        <div className="flex gap-2 flex-wrap">
+          <Btn tone="navy" onClick={confirmEdit}>Enregistrer les modifications</Btn>
+          <Btn tone="ghost" onClick={() => setEditing(null)}>Fermer</Btn>
+        </div>
+      </Card>}
+      {pendingCancellation && <Card className="p-4 space-y-3" style={{ borderColor: C.coral }}>
+        <div className="text-sm font-bold" style={{ color: C.ink }}>Confirmer l'annulation de {pendingCancellation.id} ?</div>
+        <p className="text-xs" style={{ color: C.sub }}>
+          {pendingCancellation.pf} · {pendingCancellation.titre} · {fmt(pendingCancellation.reliquat)} titre(s)
+          encore en attente seront annulés. Les {fmt(pendingCancellation.execute || 0)} titre(s) déjà exécutés
+          resteront attribués à leur portefeuille d'origine.
+        </p>
+        <div className="flex gap-2">
+          <button type="button" onClick={confirmCancel} className="px-3 py-2 rounded-xl text-xs font-bold text-white"
+            style={{ background: C.coral }}>Confirmer l'annulation</button>
+          <Btn tone="ghost" onClick={() => setPendingCancellation(null)}>Conserver l'ordre</Btn>
+        </div>
+      </Card>}
+      <p className="text-[10px]" style={{ color: C.sub }}>
+        Gestion locale fictive : seules les instructions encore ouvertes sont modifiables. Les lignes Cession_Retrait
+        restent gérées dans leur parcours d'origine et aucune opération n'est transmise à une SGI / Valorix.
+      </p>
       {cessionRows.length > 0 && (
         <Card
           className="p-4"
@@ -16366,19 +16656,23 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
           Aucun ordre pour ce filtre.
         </Card>
       )}
-      <Card className="p-0 overflow-hidden">
-        <table className="w-full">
+      <Card className="p-0 overflow-x-auto">
+        <table className="w-full" style={{ minWidth: 1400 }}>
           <thead style={{ background: '#FAFAFC' }}>
             <tr>
               <Th>Réf.</Th>
               <Th>Sens</Th>
               <Th>Titre</Th>
               <Th>Marché</Th>
-              <Th>Qté</Th>
+              <Th>Demandée</Th>
+              <Th>Exécutée</Th>
+              <Th>Restante</Th>
+              <Th>Annulée</Th>
               <Th>Prix / borne</Th>
               <Th>Portefeuille</Th>
               <Th>Statut</Th>
               <Th>Origine</Th>
+              <Th>Actions</Th>
             </tr>
           </thead>
           <tbody>
@@ -16400,7 +16694,10 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
                 <Td>
                   <Badge tone="navy">{o.marche}</Badge>
                 </Td>
-                <Td mono>{o.qte}</Td>
+                <Td mono>{fmt(o.qte)}</Td>
+                <Td mono>{fmt(o.execute ?? 0)}</Td>
+                <Td mono>{fmt(o.reliquat ?? 0)}</Td>
+                <Td mono>{o.annule ? fmt(o.annule) : '—'}</Td>
                 <Td mono>
                   {o.prixSecurite != null
                     ? `Limite 999 : ${fmtPrice(o.prixSecurite)} ${o.devise}`
@@ -16420,7 +16717,21 @@ function Carnet({ initial, go, groupedDrafts = [] }) {
                     {o.statut}
                   </Badge>
                 </Td>
-                <Td><span className="text-xs" style={{ color: C.sub }}>{o.origine || 'Ordre existant'}</span></Td>
+                <Td><span className="text-xs" style={{ color: C.sub }}>{o.origine || 'Ordre existant'}</span>
+                  {o.derniereModification && <div className="text-[10px] mt-1" style={{ color: C.indigo }}>
+                    {o.derniereModification.action === 'annuler' ? 'Annulation' : 'Modification'}
+                    {' '}· {new Date(o.derniereModification.at).toLocaleString('fr-FR')}
+                  </div>}
+                </Td>
+                <Td>
+                  {o.editable ? <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => openEdit(o)} className="text-xs font-semibold"
+                      style={{ color: C.indigo }}>Modifier</button>
+                    <button type="button" onClick={() => { setManageMessage(''); setPendingCancellation(o); }}
+                      className="text-xs font-semibold" style={{ color: C.coral }}>Annuler</button>
+                  </div> : <span className="text-[10px]" title={o.reason || 'Ordre soldé, annulé ou géré dans un autre module'}
+                    style={{ color: C.sub }}>—</span>}
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -40604,7 +40915,7 @@ export default function App() {
                     onDeleteDraft={deleteGroupedDraft}
                   />
                 )}
-                {screen === 'carnet' && <Carnet initial={ctx} go={go} groupedDrafts={groupedDrafts} />}
+                {screen === 'carnet' && <Carnet initial={ctx} go={go} groupedDrafts={groupedDrafts} onSaveGroupedDraft={saveGroupedDraft} />}
                 {screen === 'profondeur' && (
                   <ProfondeurMarche ctx={ctx} go={go} />
                 )}
