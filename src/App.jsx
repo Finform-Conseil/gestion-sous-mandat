@@ -16447,6 +16447,10 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
   const [instrumentFilter, setInstrumentFilter] = useState(
     initial?.instrument || null
   );
+  // Filtres cumulables du carnet : indépendants des fiches et des actions métier.
+  const [filtreSensCarnet, setFiltreSensCarnet] = useState('Tous');
+  const [filtrePortefeuilleCarnet, setFiltrePortefeuilleCarnet] = useState('Tous');
+  const [filtreStatutCarnet, setFiltreStatutCarnet] = useState('Tous');
   const [cessionA4ModalVisible, setCessionA4ModalVisible] =
     useState(false);
   const cessionRows = Array.isArray(initial?.cessionOrders)
@@ -16498,9 +16502,32 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
       origine: 'Ordre de démonstration',
     })),
   ];
+  // Les listes de choix proviennent de tous les ordres, pas du sous-ensemble
+  // filtré : chaque critère peut ainsi se combiner avec les trois autres.
+  const gsmCarnetValeurFiltre = (value) => String(value ?? '').trim() || 'Non renseigné';
+  const gsmCarnetOptions = (key, selected = 'Tous') => Array.from(new Set([
+    ...sourceRows.map((order) => gsmCarnetValeurFiltre(order[key])),
+    ...(selected !== 'Tous' ? [selected] : []),
+  ])).sort((left, right) => left.localeCompare(right, 'fr', { sensitivity: 'base' }));
+  const titresDisponiblesCarnet = gsmCarnetOptions('titre', instrumentFilter || 'Tous');
+  const portefeuillesDisponiblesCarnet = gsmCarnetOptions('pf', filtrePortefeuilleCarnet);
+  const statutsDisponiblesCarnet = gsmCarnetOptions('statut', filtreStatutCarnet);
+  const nombreFiltresCarnet = Number(f !== 'Tous') + Number(Boolean(instrumentFilter)) +
+    Number(filtreSensCarnet !== 'Tous') + Number(filtrePortefeuilleCarnet !== 'Tous') +
+    Number(filtreStatutCarnet !== 'Tous');
+  const reinitialiserFiltresCarnet = () => {
+    setF('Tous');
+    setInstrumentFilter(null);
+    setFiltreSensCarnet('Tous');
+    setFiltrePortefeuilleCarnet('Tous');
+    setFiltreStatutCarnet('Tous');
+  };
   const rows = sourceRows.filter((o) =>
     (f === 'Tous' || o.marche === f) &&
-    (!instrumentFilter || o.titre === instrumentFilter));
+    (!instrumentFilter || gsmCarnetValeurFiltre(o.titre) === instrumentFilter) &&
+    (filtreSensCarnet === 'Tous' || gsmCarnetValeurFiltre(o.sens) === filtreSensCarnet) &&
+    (filtrePortefeuilleCarnet === 'Tous' || gsmCarnetValeurFiltre(o.pf) === filtrePortefeuilleCarnet) &&
+    (filtreStatutCarnet === 'Tous' || gsmCarnetValeurFiltre(o.statut) === filtreStatutCarnet));
   // Référence durable par instruction : la fiche reste consultable après
   // modification, annulation ou exécution complète, même si un filtre la masque.
   const detailOrder = sourceRows.find((order) => String(order.id) === String(detailOrderId));
@@ -16629,6 +16656,71 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
           </div>
         </div>
       </div>
+      <Card className="p-4 space-y-3" style={{ borderColor: C.line }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-bold flex items-center gap-2" style={{ color: C.ink }}>
+              <Filter size={15} /> Filtrer les ordres
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Combinez les critères Sens, Titre, Portefeuille et Statut. Le marché reste sélectionnable en haut du carnet.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <Badge tone="navy">{rows.length} / {sourceRows.length} ordre(s)</Badge>
+            {nombreFiltresCarnet > 0 && <Badge tone="gold">{nombreFiltresCarnet} filtre(s) actif(s)</Badge>}
+            <button type="button" onClick={reinitialiserFiltresCarnet}
+              disabled={nombreFiltresCarnet === 0}
+              className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
+              Réinitialiser les filtres
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Sens
+            <select aria-label="Filtrer le carnet par sens" value={filtreSensCarnet}
+              onChange={(e) => setFiltreSensCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les sens</option>
+              <option value="Achat">Achat</option>
+              <option value="Vente">Vente</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Titre
+            <select aria-label="Filtrer le carnet par titre" value={instrumentFilter || 'Tous'}
+              onChange={(e) => setInstrumentFilter(e.target.value === 'Tous' ? null : e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les titres</option>
+              {titresDisponiblesCarnet.map((titre) => <option key={titre} value={titre}>{titre}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Portefeuille
+            <select aria-label="Filtrer le carnet par portefeuille" value={filtrePortefeuilleCarnet}
+              onChange={(e) => setFiltrePortefeuilleCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les portefeuilles</option>
+              {portefeuillesDisponiblesCarnet.map((pf) => <option key={pf} value={pf}>{pf}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Statut
+            <select aria-label="Filtrer le carnet par statut" value={filtreStatutCarnet}
+              onChange={(e) => setFiltreStatutCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les statuts</option>
+              {statutsDisponiblesCarnet.map((statut) => <option key={statut} value={statut}>{statut}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
       {groupedRows.length > 0 && (
         <Card className="p-4" style={{ borderColor: C.indigo, background: '#F5F7FF' }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -16876,11 +16968,15 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
         payload={cessionA4}
       />
       {rows.length === 0 && (
-        <Card className="p-6 text-center text-sm" style={{ color: C.sub }}>
-          Aucun ordre pour ce filtre.
+        <Card className="p-6 text-center space-y-2" style={{ color: C.sub }}>
+          <p className="text-sm font-semibold">Aucun ordre ne correspond aux filtres sélectionnés.</p>
+          <p className="text-xs">Essayez de modifier un critère ou de réinitialiser les filtres.</p>
+          {nombreFiltresCarnet > 0 && <Btn tone="ghost" onClick={reinitialiserFiltresCarnet}>
+            Afficher tous les ordres
+          </Btn>}
         </Card>
       )}
-      <Card className="p-0 overflow-x-auto">
+      {rows.length > 0 && <Card className="p-0 overflow-x-auto">
         <table className="w-full" style={{ minWidth: 1400 }}>
           <thead style={{ background: '#FAFAFC' }}>
             <tr>
@@ -16970,7 +17066,7 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
             ))}
           </tbody>
         </table>
-      </Card>
+      </Card>}
     </div>
   );
 }
