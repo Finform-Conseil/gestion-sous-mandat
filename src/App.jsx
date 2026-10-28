@@ -16656,71 +16656,6 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
           </div>
         </div>
       </div>
-      <Card className="p-4 space-y-3" style={{ borderColor: C.line }}>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div>
-            <div className="text-sm font-bold flex items-center gap-2" style={{ color: C.ink }}>
-              <Filter size={15} /> Filtrer les ordres
-            </div>
-            <p className="text-[11px] mt-1" style={{ color: C.sub }}>
-              Combinez les critères Sens, Titre, Portefeuille et Statut. Le marché reste sélectionnable en haut du carnet.
-            </p>
-          </div>
-          <div className="flex gap-2 items-center flex-wrap">
-            <Badge tone="navy">{rows.length} / {sourceRows.length} ordre(s)</Badge>
-            {nombreFiltresCarnet > 0 && <Badge tone="gold">{nombreFiltresCarnet} filtre(s) actif(s)</Badge>}
-            <button type="button" onClick={reinitialiserFiltresCarnet}
-              disabled={nombreFiltresCarnet === 0}
-              className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
-              Réinitialiser les filtres
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
-            Sens
-            <select aria-label="Filtrer le carnet par sens" value={filtreSensCarnet}
-              onChange={(e) => setFiltreSensCarnet(e.target.value)}
-              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
-              <option value="Tous">Tous les sens</option>
-              <option value="Achat">Achat</option>
-              <option value="Vente">Vente</option>
-            </select>
-          </label>
-          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
-            Titre
-            <select aria-label="Filtrer le carnet par titre" value={instrumentFilter || 'Tous'}
-              onChange={(e) => setInstrumentFilter(e.target.value === 'Tous' ? null : e.target.value)}
-              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
-              <option value="Tous">Tous les titres</option>
-              {titresDisponiblesCarnet.map((titre) => <option key={titre} value={titre}>{titre}</option>)}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
-            Portefeuille
-            <select aria-label="Filtrer le carnet par portefeuille" value={filtrePortefeuilleCarnet}
-              onChange={(e) => setFiltrePortefeuilleCarnet(e.target.value)}
-              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
-              <option value="Tous">Tous les portefeuilles</option>
-              {portefeuillesDisponiblesCarnet.map((pf) => <option key={pf} value={pf}>{pf}</option>)}
-            </select>
-          </label>
-          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
-            Statut
-            <select aria-label="Filtrer le carnet par statut" value={filtreStatutCarnet}
-              onChange={(e) => setFiltreStatutCarnet(e.target.value)}
-              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
-              <option value="Tous">Tous les statuts</option>
-              {statutsDisponiblesCarnet.map((statut) => <option key={statut} value={statut}>{statut}</option>)}
-            </select>
-          </label>
-        </div>
-      </Card>
       {groupedRows.length > 0 && (
         <Card className="p-4" style={{ borderColor: C.indigo, background: '#F5F7FF' }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -16926,6 +16861,72 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
         Gestion locale fictive : seules les instructions encore ouvertes sont modifiables. Les lignes Cession_Retrait
         restent gérées dans leur parcours d'origine et aucune opération n'est transmise à une SGI / Valorix.
       </p>
+
+      <Card className="p-4 space-y-3" style={{ borderColor: C.line }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-bold flex items-center gap-2" style={{ color: C.ink }}>
+              <Filter size={15} /> Filtrer les ordres
+            </div>
+            <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Combinez les critères Sens, Titre, Portefeuille et Statut. Le marché reste sélectionnable en haut du carnet.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center flex-wrap">
+            <Badge tone="navy">{rows.length} / {sourceRows.length} ordre(s)</Badge>
+            {nombreFiltresCarnet > 0 && <Badge tone="gold">{nombreFiltresCarnet} filtre(s) actif(s)</Badge>}
+            <button type="button" onClick={reinitialiserFiltresCarnet}
+              disabled={nombreFiltresCarnet === 0}
+              className="px-3 py-2 rounded-xl border text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
+              Réinitialiser les filtres
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Sens
+            <select aria-label="Filtrer le carnet par sens" value={filtreSensCarnet}
+              onChange={(e) => setFiltreSensCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les sens</option>
+              <option value="Achat">Achat</option>
+              <option value="Vente">Vente</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Titre
+            <select aria-label="Filtrer le carnet par titre" value={instrumentFilter || 'Tous'}
+              onChange={(e) => setInstrumentFilter(e.target.value === 'Tous' ? null : e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les titres</option>
+              {titresDisponiblesCarnet.map((titre) => <option key={titre} value={titre}>{titre}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Portefeuille
+            <select aria-label="Filtrer le carnet par portefeuille" value={filtrePortefeuilleCarnet}
+              onChange={(e) => setFiltrePortefeuilleCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les portefeuilles</option>
+              {portefeuillesDisponiblesCarnet.map((pf) => <option key={pf} value={pf}>{pf}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold" style={{ color: C.sub }}>
+            Statut
+            <select aria-label="Filtrer le carnet par statut" value={filtreStatutCarnet}
+              onChange={(e) => setFiltreStatutCarnet(e.target.value)}
+              className="block w-full mt-1 px-3 py-2 rounded-xl border text-sm"
+              style={{ borderColor: C.line, background: '#fff', color: C.ink }}>
+              <option value="Tous">Tous les statuts</option>
+              {statutsDisponiblesCarnet.map((statut) => <option key={statut} value={statut}>{statut}</option>)}
+            </select>
+          </label>
+        </div>
+      </Card>
       {cessionRows.length > 0 && (
         <Card
           className="p-4"
