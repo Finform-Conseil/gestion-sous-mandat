@@ -14268,7 +14268,7 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [preCarnetTargetId, setPreCarnetTargetId] = useState('new');
   const [preCarnetMessage, setPreCarnetMessage] = useState('');
   const [marcheFictifScenario, setMarcheFictifScenario] = useState('equilibre');
-  // Réglage avancé : masqué par défaut, sans désactiver le moteur fictif.
+  // Cadre complet Marché fictif : replié par défaut, simulation conservée en mémoire.
   const [scenarioMarcheVisible, setScenarioMarcheVisible] = useState(false);
   const [marcheFictifMessage, setMarcheFictifMessage] = useState('');
   const [rapportFictifId, setRapportFictifId] = useState(null);
@@ -15477,29 +15477,6 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
         </div>
         {draftExpanded && (
           <div className="space-y-2">
-            <div className="p-2 rounded-lg" style={{ background: '#F2F4F8' }}>
-              <button type="button" aria-expanded={scenarioMarcheVisible}
-                onClick={() => setScenarioMarcheVisible((visible) => !visible)}
-                className="text-xs font-semibold px-3 py-2 rounded-lg border"
-                style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
-                {scenarioMarcheVisible ? 'Masquer le scénario de marché fictif' : 'Afficher le scénario de marché fictif'}
-              </button>
-              {scenarioMarcheVisible && (
-                <div className="flex items-end gap-3 flex-wrap mt-3">
-                  <label className="text-xs font-semibold" style={{ color: C.ink }}>Scénario de marché fictif
-                    <select value={marcheFictifScenario} onChange={(e) => setMarcheFictifScenario(e.target.value)}
-                      className="mt-1 block w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle}>
-                      {GSM_FICTIVE_SCENARIOS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-                    </select>
-                  </label>
-                  <span className="text-[10px] max-w-xl" style={{ color: C.sub }}>
-                    {GSM_FICTIVE_SCENARIOS.find((s) => s.id === marcheFictifScenario)?.description}
-                    {' '}Simulation purement locale : aucun ordre envoyé, aucune liquidité ou position réelle modifiée.
-                  </span>
-                </div>
-              )}
-            </div>
-            {marcheFictifMessage && <p role="status" className="text-xs" style={{ color: C.indigo }}>{marcheFictifMessage}</p>}
             {drafts.length === 0 && <p className="text-xs" style={{ color: C.sub }}>Aucun brouillon enregistré.</p>}
             {drafts.map((draft) => <div key={draft.id} className="p-3 rounded-xl border flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.line }}>
               <div><div className="text-xs font-bold" style={{ color: C.ink }}>{draft.id}</div>
@@ -15532,18 +15509,6 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
                     resetSaisiePreCarnet(); setSaveMessage(''); setPreCarnetMessage('Nouvelle saisie destinée au pré-carnet sélectionné.');
                   }}>+ Ajouter des ordres</Btn>}
                 <Btn tone="ghost" onClick={() => draft.precarnet ? gsmExportPreCarnetCsv(draft) : gsmGroupedCsv(draft)}>Exporter CSV</Btn>
-                {(!draft.precarnet || draft.precarnet.controle) &&
-                  (!draft.simulationMarche || (gsmFictiveReport(draft).reste > 0 &&
-                    gsmFictiveReport(draft).enAttenteAffectation === 0)) &&
-                  <button type="button" onClick={() => lancerMarcheFictif(draft)}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
-                    {draft.simulationMarche ? 'Simuler les reliquats' : 'Lancer sur marché fictif'}
-                  </button>}
-                {draft.simulationMarche && <button type="button"
-                  onClick={() => { setRapportFictifId((id) => id === draft.id ? null : draft.id); setActiveStep(3); }}
-                  className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ color: C.indigo, borderColor: C.line }}>
-                  {rapportFictifId === draft.id ? 'Masquer le résultat' : 'Résultats simulés'}
-                </button>}
                 <Btn tone="ghost" onClick={() => go('carnet')}>Consulter le carnet</Btn>
                 <button type="button" className="px-3 py-2 rounded-xl border text-xs" style={{ color: C.coral, borderColor: C.line }}
                   onClick={() => { if (typeof window === 'undefined' || window.confirm(`Supprimer le brouillon ${draft.id} ?`)) onDeleteDraft?.(draft.id); }}>Supprimer</button>
@@ -15552,6 +15517,65 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           </div>
         )}
       </Card>
+      {/* Tout le cadre du marché fictif se replie, sans masquer les brouillons. */}
+      <Card className="p-4 space-y-3" style={{ borderColor: C.indigo }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <Eyebrow>Marché fictif</Eyebrow>
+            <h3 className="text-sm font-bold" style={{ color: C.ink }}>Simulation et résultats des ordres groupés</h3>
+          </div>
+          <button type="button" aria-expanded={scenarioMarcheVisible}
+            aria-controls="gsm-marche-fictif-gestionnaire"
+            onClick={() => setScenarioMarcheVisible((visible) => !visible)}
+            className="px-3 py-2 rounded-xl border text-xs font-semibold"
+            style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
+            {scenarioMarcheVisible ? 'Masquer tout le marché fictif' : 'Afficher le marché fictif'}
+          </button>
+        </div>
+        {scenarioMarcheVisible && (
+          <div id="gsm-marche-fictif-gestionnaire" className="space-y-3">
+            <div className="p-3 rounded-xl flex items-center gap-3 flex-wrap" style={{ background: '#F2F4F8' }}>
+              <label className="text-xs font-semibold" style={{ color: C.ink }}>Scénario de marché fictif
+                <select value={marcheFictifScenario} onChange={(e) => setMarcheFictifScenario(e.target.value)}
+                  aria-label="Scénario du marché fictif du gestionnaire"
+                  className="mt-1 block w-full px-3 py-2 border rounded-lg text-xs" style={inputStyle}>
+                  {GSM_FICTIVE_SCENARIOS.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}
+                </select>
+              </label>
+              <span className="text-[10px] max-w-xl" style={{ color: C.sub }}>
+                {GSM_FICTIVE_SCENARIOS.find((scenario) => scenario.id === marcheFictifScenario)?.description}
+                {' '}Simulation locale : aucun ordre réel transmis au marché ou à Valorix.
+              </span>
+            </div>
+            {marcheFictifMessage && <p role="status" className="text-xs" style={{ color: C.indigo }}>{marcheFictifMessage}</p>}
+            <div className="space-y-2">
+              {drafts.length === 0 && <p className="text-xs" style={{ color: C.sub }}>Créez un brouillon d'ordre pour commencer une simulation.</p>}
+              {drafts.map((draft) => {
+                const rapportLot = draft.simulationMarche ? gsmFictiveReport(draft) : null;
+                const simulationPossible = !draft.precarnet || !!draft.precarnet.controle;
+                const reliquatPossible = !rapportLot || (rapportLot.reste > 0 && rapportLot.enAttenteAffectation === 0);
+                return <div key={draft.id} className="p-3 border rounded-xl flex items-center justify-between gap-3 flex-wrap" style={{ borderColor: C.line }}>
+                  <div>
+                    <div className="text-xs font-bold" style={{ color: C.ink }}>{draft.id}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>{GSM_GROUPED_OPTIONS.find((o) => o.id === draft.mode)?.title || draft.mode} · {draft.lignes.length} instruction(s)</div>
+                    {rapportLot && <div className="text-[10px] mt-1" style={{ color: C.teal }}>{fmt(rapportLot.execute)} exécutés / {fmt(rapportLot.demande)} demandés · {fmt(rapportLot.reste)} en attente</div>}
+                  </div>
+                  <div className="flex gap-2 flex-wrap items-center">
+                    {simulationPossible && reliquatPossible && <button type="button" onClick={() => lancerMarcheFictif(draft)}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
+                      {draft.simulationMarche ? 'Simuler les reliquats' : 'Lancer sur marché fictif'}
+                    </button>}
+                    {draft.simulationMarche && <button type="button"
+                      onClick={() => { setRapportFictifId((id) => id === draft.id ? null : draft.id); setActiveStep(3); }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold border"
+                      style={{ borderColor: C.line, color: C.indigo }}>
+                      {rapportFictifId === draft.id ? 'Masquer le résultat' : 'Résultats simulés'}
+                    </button>}
+                    {draft.precarnet && !draft.precarnet.controle && <span className="text-[10px]" style={{ color: C.gold }}>Pré-carnet à valider avant simulation</span>}
+                  </div>
+                </div>;
+              })}
+            </div>
       {rapportFictifId && (() => {
         const draft = drafts.find((d) => d.id === rapportFictifId && d.simulationMarche);
         if (!draft) return null;
@@ -15655,6 +15679,9 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <p className="text-[10px]" style={{ color: C.coral }}>SIMULATION EXCLUSIVEMENT : carnet, transactions, allocations et statuts fictifs. Aucun ordre transmis à une bourse, aucune affectation Valorix, aucun compte réel débité ou crédité.</p>
         </Card>;
       })()}
+          </div>
+        )}
+      </Card>
       {selectedPreCarnet && mode === 'precarnet' && (
         <Card className="p-3 space-y-3" style={{ borderColor: C.indigo }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -15707,33 +15734,21 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           {selectedPreCarnet.precarnet.controle && (
             <div className="flex items-center justify-between flex-wrap gap-2 text-xs rounded-lg p-2" style={{ background: '#EAF8F3', color: C.ink }}>
               <span>Contrôlé par {selectedPreCarnet.precarnet.controle.responsable} · {new Date(selectedPreCarnet.precarnet.controle.at).toLocaleString('fr-FR')} (déclaratif)</span>
-              {!selectedPreCarnet.precarnet.routageSimuleAt && <div className="flex items-center gap-2 flex-wrap">
+              {!selectedPreCarnet.precarnet.routageSimuleAt && scenarioMarcheVisible && <div className="flex items-center gap-2 flex-wrap">
                 <select value={modePourDraft(selectedPreCarnet)}
                   onChange={(e) => setDistributionByDraft((before) => ({ ...before, [selectedPreCarnet.id]: e.target.value }))}
                   aria-label="Mode de répartition du pré-carnet" className="px-2 py-2 rounded-xl border text-xs" style={inputStyle}>
                   {GSM_REPARTITION_MODES.map((m) => <option key={m.id} value={m.id}>Répartition {m.label}</option>)}
                 </select>
-                <button type="button" aria-expanded={scenarioMarcheVisible}
-                  onClick={() => setScenarioMarcheVisible((visible) => !visible)}
-                  className="px-2 py-2 rounded-xl border text-xs font-semibold"
-                  style={{ borderColor: C.line, color: C.indigo, background: '#fff' }}>
-                  {scenarioMarcheVisible ? 'Masquer le scénario' : 'Afficher le scénario'}
-                </button>
-                {scenarioMarcheVisible && (
-                  <select value={marcheFictifScenario} onChange={(e) => setMarcheFictifScenario(e.target.value)}
-                    aria-label="Scénario du marché fictif du pré-carnet"
-                    className="px-2 py-2 rounded-xl border text-xs" style={inputStyle}>
-                    {GSM_FICTIVE_SCENARIOS.map((scenario) => <option key={scenario.id} value={scenario.id}>{scenario.label}</option>)}
-                  </select>
-                )}
-                <button type="button" onClick={() => simulatePreCarnetRoute(selectedPreCarnet)}
+                <span className="text-[10px]" style={{ color: C.sub }}>Scénario choisi dans le cadre « Marché fictif » ci-dessus.</span>
+                <button type="button" onClick={() => { setScenarioMarcheVisible(true); simulatePreCarnetRoute(selectedPreCarnet); }}
                   className="px-3 py-2 rounded-xl text-xs font-semibold" style={{ background: C.navy, color: '#fff' }}>
                   2. Lancer l’ordre général sur le marché fictif
                 </button>
               </div>}
             </div>
           )}
-          {selectedPreCarnet.precarnet.routageSimuleAt && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: C.gold }}>
+          {selectedPreCarnet.precarnet.routageSimuleAt && scenarioMarcheVisible && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: C.gold }}>
             <span>Ordre général simulé le {new Date(selectedPreCarnet.precarnet.routageSimuleAt).toLocaleString('fr-FR')} · aucun envoi réel.</span>
             {selectedPreCarnet.simulationMarche && <button type="button" onClick={() => setRapportFictifId(selectedPreCarnet.id)}
               className="px-3 py-1.5 rounded-lg border font-semibold" style={{ borderColor: C.line, color: C.indigo }}>Voir le résultat des transactions</button>}
@@ -34341,26 +34356,32 @@ function ClientGroupedOrders({ goClient, orders = [], batches = [], onSaveBatch,
       </Card>
       {error && <div role="alert" className="p-3 rounded-xl text-xs" style={{ background:'#FFF0EE', color:C.coral }}>{error}</div>}
       {message && <div className="p-3 rounded-xl text-xs" style={{ background:'#EAF7F2', color:'#166C53' }}>{message}</div>}
-      <Card className="p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-3">
+      {/* Gestion libre : masquer/afficher l'intégralité du cadre (scénario, lots, actions et résultats). */}
+      <Card className="p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div><Eyebrow>Marché fictif</Eyebrow><div className="font-semibold text-sm" style={{color:C.ink}}>Mes lots groupés et résultats d'exécution</div></div>
+          <button type="button" aria-expanded={scenarioMarcheVisible}
+            aria-controls="gsm-marche-fictif-gestion-libre"
+            className="px-3 py-2 border rounded-xl text-xs font-semibold"
+            style={{...backgroundStyle,color:C.indigo}}
+            onClick={() => setScenarioMarcheVisible((visible) => !visible)}>
+            {scenarioMarcheVisible ? 'Masquer tout le marché fictif' : 'Afficher le marché fictif'}
+          </button>
+        </div>
+      </Card>
+      {scenarioMarcheVisible && (
+      <Card className="p-5" >
+        <div id="gsm-marche-fictif-gestion-libre" className="flex flex-wrap items-center justify-between gap-4 mb-3">
+          <div><div className="font-semibold text-sm" style={{color:C.ink}}>Lots enregistrés et résultats du marché fictif</div></div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button type="button" aria-expanded={scenarioMarcheVisible}
-              className="px-3 py-2 border rounded-xl text-xs font-semibold"
-              style={{ ...backgroundStyle, color: C.indigo }}
-              onClick={() => setScenarioMarcheVisible((visible) => !visible)}>
-              {scenarioMarcheVisible ? 'Masquer le scénario' : 'Afficher le scénario'}
-            </button>
-            {scenarioMarcheVisible && (
-              <label className="flex items-center gap-2 text-xs" style={{ color: C.sub }}>
-                Scénario de marché fictif
-                <select aria-label="Choisir le scénario de marché fictif"
-                  className="px-3 py-2 border rounded-xl text-xs" style={backgroundStyle}
-                  value={scenario} onChange={(e) => setScenario(e.target.value)}>
-                  {GSM_FICTIVE_SCENARIOS.map((sc) => <option key={sc.id} value={sc.id}>{sc.label}</option>)}
-                </select>
-              </label>
-            )}
+            <label className="flex items-center gap-2 text-xs" style={{ color: C.sub }}>
+              Scénario de marché fictif
+              <select aria-label="Choisir le scénario de marché fictif"
+                className="px-3 py-2 border rounded-xl text-xs" style={backgroundStyle}
+                value={scenario} onChange={(e) => setScenario(e.target.value)}>
+                {GSM_FICTIVE_SCENARIOS.map((sc) => <option key={sc.id} value={sc.id}>{sc.label}</option>)}
+              </select>
+            </label>
           </div>
         </div>
         <div className="text-[11px] mb-4" style={{color:C.sub}}>Chaque instruction reste liée à son portefeuille d'origine. Les ordres incompatibles avec les cours des contreparties fictives restent en attente.</div>
@@ -34416,6 +34437,7 @@ function ClientGroupedOrders({ goClient, orders = [], batches = [], onSaveBatch,
           })}
         </div>
       </Card>
+      )}
     </div>
   );
 }
