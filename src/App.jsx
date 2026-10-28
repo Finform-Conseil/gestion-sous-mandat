@@ -14519,7 +14519,7 @@ const gsmGroupedAvailableHolding = (client, instrument) => {
   return { amount: null, source: 'Position non documentée', indicative: false };
 };
 
-function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
+function OrdresGroupes({ go, initial = {}, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [mode, setMode] = useState('simple');
   const [selectedClients, setSelectedClients] = useState([]);
   const [selectedTitles, setSelectedTitles] = useState([]);
@@ -14556,6 +14556,17 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
   const [valorixExpandedDraftId, setValorixExpandedDraftId] = useState(null);
   const [distributionByDraft, setDistributionByDraft] = useState({});
   const modePourDraft = (draft) => draft.modeRepartition || distributionByDraft[draft.id] || 'prorata';
+  // Ouverture contextuelle d'un lot depuis le Carnet. Un ancien ordre ne doit
+  // jamais être reconstitué comme une nouvelle saisie : on lit son instantané.
+  const originatingDraft = initial?.lotId ? drafts.find((draft) => draft.id === initial.lotId) : null;
+  const originatingLine = originatingDraft?.lignes?.find((line) => line.id === initial?.instructionId);
+  useEffect(() => {
+    if (!originatingDraft) return;
+    setDraftExpanded(true);
+    setMode(originatingDraft.mode);
+    setActiveStep(3);
+    if (originatingDraft.precarnet) setPreCarnetSelectedId(originatingDraft.id);
+  }, [initial?.lotId, initial?.instructionId]);
 
   // CLIENTS est synchronisé avec /api/snapshot par l'application hôte.
   const clients = Array.isArray(CLIENTS) ? CLIENTS : [];
@@ -15104,6 +15115,39 @@ function OrdresGroupes({ go, drafts = [], onSaveDraft, onDeleteDraft }) {
           <Btn tone="ghost" onClick={() => go('carnet')}>Voir le carnet d’ordres</Btn>
         </div>
       </div>
+
+      {originatingDraft && (
+        <Card className="p-4 space-y-3" style={{ borderColor: C.indigo, background: '#F5F7FF' }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                Lot d'origine · {originatingDraft.id}
+              </div>
+              <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                {GSM_GROUPED_OPTIONS.find((option) => option.id === originatingDraft.mode)?.title || originatingDraft.mode}
+                {' '}· {originatingDraft.lignes.length} instruction(s) · {originatingDraft.statut || 'Brouillon'}
+              </p>
+              {originatingLine && (
+                <p className="text-xs mt-2 font-semibold" style={{ color: C.indigo }}>
+                  Instruction ciblée : {originatingLine.id} · {originatingLine.client} ·
+                  {' '}{originatingLine.sens} {originatingLine.titre} ·
+                  {' '}{fmt(originatingLine.quantite)} titre(s) · limite {fmtPrice(originatingLine.bornePrix)} {originatingLine.devise}
+                </p>
+              )}
+              <p className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Consultation de l'instantané enregistré ; les transactions passées restent non modifiables.
+                Pour ajuster le reliquat, revenez à la fiche de l'instruction dans le carnet.
+              </p>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Btn tone="navy" onClick={() => go('carnet', { orderId: originatingLine?.id || initial?.instructionId })}>
+                Revenir à la fiche / modifier
+              </Btn>
+              <Btn tone="ghost" onClick={() => go('carnet')}>Carnet complet</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2" role="group" aria-label="Circuit d'exécution">
         {GSM_GROUPED_OPTIONS.map((option) => (
@@ -16415,6 +16459,10 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
   const [requestedPrice, setRequestedPrice] = useState('');
   const [manageMessage, setManageMessage] = useState('');
   const [pendingCancellation, setPendingCancellation] = useState(null);
+  const [detailOrderId, setDetailOrderId] = useState(initial?.orderId || null);
+  useEffect(() => {
+    if (initial?.orderId) setDetailOrderId(initial.orderId);
+  }, [initial?.orderId]);
   const groupedRows = groupedDrafts.flatMap((draft) => draft.lignes.map((line) => {
     const filled = gsmCarnetFilledInstruction(draft, line.id);
     const remaining = Math.max(0, Number(line.quantite || 0) - filled);
@@ -16453,8 +16501,39 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
   const rows = sourceRows.filter((o) =>
     (f === 'Tous' || o.marche === f) &&
     (!instrumentFilter || o.titre === instrumentFilter));
+  // Référence durable par instruction : la fiche reste consultable après
+  // modification, annulation ou exécution complète, même si un filtre la masque.
+  const detailOrder = sourceRows.find((order) => String(order.id) === String(detailOrderId));
+  const detailDraft = detailOrder?.typeGestion === 'grouped'
+    ? groupedDrafts.find((draft) => draft.id === detailOrder.lotId) : null;
+  const detailLine = detailDraft?.lignes?.find((line) => line.id === detailOrderId);
+  const detailGroups = detailDraft?.mode === 'precarnet'
+    ? (detailDraft?.precarnet?.groupes || [])
+    : (detailDraft?.simulationMarche?.groupes || []);
+  const detailExecutions = detailGroups.flatMap((group) => (group.executions || []).flatMap((execution) =>
+    (execution.allocations || [])
+      .filter((allocation) => allocation.referenceInstruction === detailOrderId)
+      .map((allocation) => ({
+        groupe: group.id, id: execution.id, at: execution.at,
+        quantite: Number(allocation.quantite || 0),
+        prix: Number(execution.prix || 0), devise: group.devise,
+        montant: Number(allocation.quantite || 0) * Number(execution.prix || 0),
+        referenceAffectation: allocation.referenceAffectation || '',
+      }))));
+  const detailHistory = detailLine?.historiqueModifications ||
+    detailOrder?.historiqueModifications || [];
+  const openDetails = (order) => {
+    setDetailOrderId(order.id);
+    setEditing(null);
+    setPendingCancellation(null);
+    setManageMessage('');
+    if (typeof window !== 'undefined') window.requestAnimationFrame(() => {
+      document.getElementById('gsm-carnet-fiche-ordre')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
   const openEdit = (order) => {
     setManageMessage('');
+    setDetailOrderId(order.id);
     setEditing(order);
     setRequestedRemainder(String(order.reliquat));
     setRequestedPrice(String(order.prixSecurite ?? order.prix ?? ''));
@@ -16562,6 +16641,151 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
       {manageMessage && <div role="status" className="p-3 rounded-xl border text-xs font-semibold"
         style={{ borderColor: C.line, color: manageMessage.includes('impossible') || manageMessage.includes('invalide') ? C.coral : C.navy,
           background: '#F5F7FF' }}>{manageMessage}</div>}
+      {detailOrder && (
+        <Card className="p-4 space-y-4" style={{ borderColor: C.indigo }}>
+          <div id="gsm-carnet-fiche-ordre" className="flex items-start justify-between gap-3 flex-wrap scroll-mt-6">
+            <div>
+              <Eyebrow>Fiche détaillée · instruction conservée</Eyebrow>
+              <div className="text-base font-bold" style={{ color: C.ink }}>
+                Ordre {detailOrder.id}
+              </div>
+              <div className="flex gap-2 flex-wrap mt-2 items-center">
+                <Badge tone={detailOrder.sens === 'Achat' ? 'teal' : 'coral'}>{detailOrder.sens}</Badge>
+                <Badge tone="navy">{detailOrder.marche}</Badge>
+                <Badge tone="gold">{detailOrder.statut || 'Statut non renseigné'}</Badge>
+                {detailDraft && <Badge tone="slate">{gsmModeRepartition(detailDraft) === 'individuelle' ? 'Répartition individuelle' : 'Répartition prorata'}</Badge>}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {detailOrder.editable && (
+                <Btn tone="navy" onClick={() => openEdit(detailOrder)}>Modifier cette instruction</Btn>
+              )}
+              {detailDraft && (
+                <Btn tone="ghost" onClick={() => go('ordres-groupes', {
+                  lotId: detailDraft.id, instructionId: detailOrder.id,
+                })}>Voir le lot d'origine</Btn>
+              )}
+              <button type="button" onClick={() => { setDetailOrderId(null); setEditing(null); }}
+                className="px-3 py-2 text-xs font-semibold rounded-xl border"
+                style={{ color: C.sub, borderColor: C.line }} aria-label="Fermer la fiche de l'ordre">
+                Fermer la fiche
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              ['Titre', detailOrder.titre],
+              ['Portefeuille / client', detailOrder.pf || '—'],
+              ['Marché et devise', `${detailOrder.marche || '—'} · ${detailOrder.devise || '—'}`],
+              ['Origine', detailOrder.origine || 'Ordre interne'],
+              ['Quantité demandée actuelle', fmt(detailOrder.qte || 0)],
+              ['Quantité exécutée', fmt(detailOrder.execute || 0)],
+              ['Quantité encore ouverte', fmt(detailOrder.reliquat || 0)],
+              ['Quantité annulée', fmt(detailOrder.annule || 0)],
+              ['Prix limite / sécurité', detailOrder.prixSecurite != null
+                ? `${fmtPrice(detailOrder.prixSecurite)} ${detailOrder.devise || ''} (borne Valorix 999)`
+                : detailOrder.prix == null ? 'Non renseigné'
+                : `${fmtPrice(detailOrder.prix)} ${detailOrder.devise || ''}`],
+              ['Instruction initiale', fmt(detailOrder.qteInitiale ?? detailOrder.qte ?? 0)],
+              ['Date de création', detailDraft?.createdAt
+                ? new Date(detailDraft.createdAt).toLocaleString('fr-FR') : 'Ordre historique de démonstration'],
+              ['Référence du lot', detailDraft?.id || 'Ordre hors lot'],
+            ].map(([label, value]) => (
+              <div key={label} className="p-3 rounded-xl border" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+                <div className="text-[10px] font-semibold" style={{ color: C.sub }}>{label}</div>
+                <div className="text-xs font-semibold mt-1 break-words" style={{ color: C.ink }}>{value}</div>
+              </div>
+            ))}
+          </div>
+          {detailLine && (
+            <div className="rounded-xl p-3 border space-y-2" style={{ borderColor: C.line }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>Instruction enregistrée et paramètres d'origine</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs" style={{ color: C.sub }}>
+                <div><b>Mode de saisie :</b> {detailLine.modeSaisie || detailDraft?.modeOrdreCommun || 'Quantité'}</div>
+                <div><b>Pourcentage liquidité :</b> {detailLine.pourcentageLiquidite == null ? '—' : `${detailLine.pourcentageLiquidite} %`}</div>
+                <div><b>Pourcentage titres :</b> {detailLine.pourcentageTitres == null ? '—' : `${detailLine.pourcentageTitres} %`}</div>
+                <div><b>Référence de tranche :</b> {detailLine.tranche || detailLine.palier || detailLine.code || '—'}</div>
+                <div><b>Validité :</b> {detailDraft?.precarnet?.validite || 'Jour (simulation)'}</div>
+                <div><b>État du pré-carnet :</b> {detailDraft?.precarnet?.statut || 'Sans pré-carnet'}</div>
+                <div><b>Contrôle pré-carnet :</b> {detailDraft?.precarnet?.controle ? 'Validé' : 'Non validé / non applicable'}</div>
+                <div><b>Valorix 999 :</b> {detailDraft?.negociationAlgorithmique?.statut || (detailDraft?.mode === 'valorix999' ? 'Non lancé' : 'Non applicable')}</div>
+              </div>
+              {detailDraft?.mode === 'valorix999' && detailDraft.negociateur && (
+                <p className="text-[11px]" style={{ color: C.sub }}>
+                  Superviseur : {detailDraft.negociateur.supervisor || '—'} ·
+                  {' '}Tranche max. : {detailDraft.negociateur.sliceSize || '—'} ·
+                  {' '}Participation : {detailDraft.negociateur.participation || '—'} % ·
+                  {' '}Délai virtuel : {detailDraft.negociateur.minDelay || '—'} s
+                </p>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="border rounded-xl p-3 space-y-2" style={{ borderColor: C.line }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                Exécutions affectées à cette instruction ({detailExecutions.length})
+              </div>
+              {detailExecutions.length ? (
+                <div className="overflow-x-auto"><table className="w-full text-xs" style={{ minWidth: 470 }}>
+                  <thead><tr><Th>Exécution</Th><Th>Date</Th><Th>Qté</Th><Th>Prix</Th><Th>Montant</Th></tr></thead>
+                  <tbody>{detailExecutions.map((fill, index) => (
+                    <tr key={`${fill.id}-${index}`} className="border-t" style={{ borderColor: C.line }}>
+                      <Td mono>{fill.id}</Td>
+                      <Td>{fill.at ? new Date(fill.at).toLocaleString('fr-FR') : '—'}</Td>
+                      <Td mono>{fmt(fill.quantite)}</Td>
+                      <Td mono>{fmtPrice(fill.prix)} {fill.devise}</Td>
+                      <Td mono>{fmtPrice(fill.montant)} {fill.devise}</Td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              ) : <p className="text-[11px]" style={{ color: C.sub }}>Aucune exécution attribuée à cette instruction dans la simulation.</p>}
+              {detailExecutions.length > 0 && (
+                <p className="text-[11px] font-semibold" style={{ color: C.ink }}>
+                  Total affecté : {fmt(detailExecutions.reduce((total, fill) => total + fill.quantite, 0))} titres ·
+                  {' '}{fmtPrice(detailExecutions.reduce((total, fill) => total + fill.montant, 0))} {detailOrder.devise}
+                </p>
+              )}
+            </div>
+            <div className="border rounded-xl p-3 space-y-2" style={{ borderColor: C.line }}>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                Historique des modifications ({detailHistory.length})
+              </div>
+              {detailHistory.length ? detailHistory.slice().reverse().map((entry, index) => (
+                <div key={`${entry.at}-${index}`} className="border-b pb-2 text-[11px]" style={{ borderColor: C.line, color: C.sub }}>
+                  <div className="font-semibold" style={{ color: C.ink }}>
+                    {entry.action === 'annuler' ? 'Annulation du reliquat' : "Modification de l'instruction"} ·
+                    {' '}{entry.at ? new Date(entry.at).toLocaleString('fr-FR') : '—'}
+                  </div>
+                  {entry.ancienTotal != null && <div>Qté totale : {fmt(entry.ancienTotal)} → {fmt(entry.nouvelleQuantite)}</div>}
+                  {entry.quantiteAvant != null && <div>Qté : {fmt(entry.quantiteAvant)} → {fmt(entry.quantiteApres ?? 0)}</div>}
+                  {entry.reliquatAvant != null && <div>Reliquat : {fmt(entry.reliquatAvant)} → {fmt(entry.reliquatApres)}</div>}
+                  {entry.ancienPrix != null && <div>Prix : {fmtPrice(entry.ancienPrix)} → {fmtPrice(entry.nouveauPrix)} {detailOrder.devise}</div>}
+                  {entry.prixAvant != null && <div>Prix : {fmtPrice(entry.prixAvant)} → {fmtPrice(entry.prixApres)} {detailOrder.devise}</div>}
+                </div>
+              )) : <p className="text-[11px]" style={{ color: C.sub }}>Aucune modification enregistrée pour cette référence.</p>}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t" style={{ borderColor: C.line }}>
+            <p className="text-[10px]" style={{ color: C.sub }}>
+              Fiche de suivi local / marché fictif : aucune transmission à une SGI ou à Valorix.
+              Les exécutions passées et leurs affectations ne sont pas réécrites.
+            </p>
+            {detailOrder.editable ? (
+              <div className="flex gap-2 flex-wrap">
+                <Btn tone="navy" onClick={() => openEdit(detailOrder)}>Modifier le reliquat / prix</Btn>
+                <button type="button" className="px-3 py-2 text-xs font-semibold rounded-xl border"
+                  style={{ color: C.coral, borderColor: C.coral }}
+                  onClick={() => { setEditing(null); setPendingCancellation(detailOrder); }}>
+                  Annuler le reliquat
+                </button>
+              </div>
+            ) : <p className="text-[11px]" style={{ color: C.sub }}>
+              Consultation uniquement : instruction soldée, annulée ou gérée dans un circuit distinct.
+              {detailOrder.reason ? ` ${detailOrder.reason}.` : ''}
+            </p>}
+          </div>
+        </Card>
+      )}
       {editing && <Card className="p-4 space-y-3" style={{ borderColor: C.indigo }}>
         <div className="flex items-center justify-between gap-2">
           <div><div className="font-bold text-sm" style={{ color: C.ink }}>Modifier l'ordre {editing.id}</div>
@@ -16684,7 +16908,12 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
                   background: i % 2 ? '#FCFCFD' : '#fff',
                 }}
               >
-                <Td mono>{o.id}</Td>
+                <Td mono>
+                  <button type="button" onClick={() => openDetails(o)}
+                    className="text-xs font-semibold hover:underline underline-offset-2"
+                    aria-label={`Voir le détail de l'ordre ${o.id}`}
+                    style={{ color: C.indigo }}>{o.id}</button>
+                </Td>
                 <Td>
                   <Badge tone={o.sens === 'Achat' ? 'teal' : 'coral'}>
                     {o.sens}
@@ -16724,13 +16953,18 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
                   </div>}
                 </Td>
                 <Td>
-                  {o.editable ? <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button type="button" onClick={() => openDetails(o)}
+                      className="text-xs font-semibold whitespace-nowrap"
+                      style={{ color: C.navy }}>Voir détail</button>
+                    {o.editable ? <div className="flex items-center gap-2">
                     <button type="button" onClick={() => openEdit(o)} className="text-xs font-semibold"
                       style={{ color: C.indigo }}>Modifier</button>
                     <button type="button" onClick={() => { setManageMessage(''); setPendingCancellation(o); }}
                       className="text-xs font-semibold" style={{ color: C.coral }}>Annuler</button>
                   </div> : <span className="text-[10px]" title={o.reason || 'Ordre soldé, annulé ou géré dans un autre module'}
-                    style={{ color: C.sub }}>—</span>}
+                    style={{ color: C.sub }}>Lecture seule</span>}
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -40910,6 +41144,7 @@ export default function App() {
                 {screen === 'ordres-groupes' && (
                   <OrdresGroupes
                     go={go}
+                    initial={ctx}
                     drafts={groupedDrafts}
                     onSaveDraft={saveGroupedDraft}
                     onDeleteDraft={deleteGroupedDraft}
