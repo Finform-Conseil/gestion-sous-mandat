@@ -40,6 +40,8 @@ import {
   BookOpen,
   Download,
   ExternalLink,
+  MessageSquare,
+  Smartphone,
 } from 'lucide-react';
 
 /* ---------------------------------- THEME ---------------------------------- */
@@ -5145,6 +5147,7 @@ const CLIENT_NAV = [
   },
   { id: 'client-watchlist', label: 'Watchlist', icon: Star },
   { id: 'client-orders', label: 'Mes ordres', icon: ListOrdered },
+  { id: 'client-chat-invest', label: 'Chat Invest · mobile', icon: Smartphone },
   { id: 'client-grouped-orders', label: 'Ordres groupés', icon: ListOrdered },
   { id: 'client-avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'client-cashflows', label: 'Liquidité & revenus', icon: Droplets },
@@ -5205,7 +5208,7 @@ const clientPortfolioValueIn = (portefeuille, devise) =>
 const clientCashIn = (portefeuille, devise) =>
   convertCurrency(portefeuille.compteEspeces, portefeuille.devise, devise);
 
-const CLIENT_OPEN_ORDER_STATUSES = ['En attente', 'En cours'];
+const CLIENT_OPEN_ORDER_STATUSES = ['En attente', 'En cours', 'Partiel · fictif'];
 
 const clientReservedCash = (portefeuille, orders = []) => {
   const montantReserve = orders
@@ -5217,7 +5220,7 @@ const clientReservedCash = (portefeuille, orders = []) => {
     )
     .reduce(
       (somme, ordre) =>
-        somme + Number(ordre.qte || 0) * Number(ordre.prix || 0),
+        somme + Number(ordre.qteRestante ?? ordre.qte ?? 0) * Number(ordre.prix || 0),
       0
     );
 
@@ -6842,6 +6845,7 @@ const NAV = [
   { id: 'cession-retrait', label: 'Cession_Retrait', icon: ArrowDownRight },
   { id: 'ordres-groupes', label: 'Ordre groupé', icon: ListOrdered },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
+  { id: 'sgi-chat-invest', label: 'Réception Chat Invest', icon: MessageSquare },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
   { id: 'marches', label: 'Marchés Obligataire', icon: Building2 },
@@ -16630,6 +16634,7 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
           <Btn tone="navy" onClick={() => go?.('ordres-groupes')}>+ Ordre groupé</Btn>
+          <Btn tone="ghost" onClick={() => go?.('sgi-chat-invest')}>Réception Chat Invest →</Btn>
           {instrumentFilter && (
             <button
               onClick={() => setInstrumentFilter(null)}
@@ -35082,7 +35087,7 @@ const gsmClientGroupedBalances = (portefeuille, singleOrders = [], batches = [],
   const reservesVente = {};
   singleOrders.filter((o) => o.portefeuilleId === portefeuille.id && o.sens === 'Vente' &&
     CLIENT_OPEN_ORDER_STATUSES.includes(o.statut)).forEach((o) => {
-    reservesVente[o.instrument] = (reservesVente[o.instrument] || 0) + Number(o.qte || 0);
+    reservesVente[o.instrument] = (reservesVente[o.instrument] || 0) + Number(o.qteRestante ?? o.qte ?? 0);
   });
   batches.filter((b) => b.id !== excludeId && b.proprietaireId === CLIENT_GESTION_LIBRE.id).forEach((batch) => {
     const report = batch.simulationMarche ? gsmFictiveReport(batch) : null;
@@ -35471,6 +35476,379 @@ function ClientGroupedOrders({ goClient, orders = [], batches = [], onSaveBatch,
       )}
     </div>
   );
+}
+
+/* ---------------------- CHAT INVEST — PARCOURS MOBILE / SGI ---------------------- */
+/* Démonstration locale uniquement : ni authentification forte, ni signature
+ * électronique, ni WhatsApp Business API, ni routage réel vers Valorix. */
+const GSM_CHAT_INVEST_STORAGE = 'opcvm-gsm-chat-invest-v1';
+const GSM_CHAT_CLIENT_ORDERS_STORAGE = 'opcvm-gsm-client-orders-chat-v1';
+const GSM_CHAT_ACCESS_STORAGE = 'opcvm-gsm-chat-invest-access-v1';
+const GSM_CHAT_PENDING_STATES = ['recu_sgi', 'en_controle'];
+const gsmChatDate = () => new Date().toISOString();
+const gsmChatReference = () => `CI-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+const gsmChatLoad = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const data = JSON.parse(window.localStorage.getItem(GSM_CHAT_INVEST_STORAGE) || '[]');
+    return Array.isArray(data) ? data.filter((item) => item && item.reference && item.clientId === CLIENT_GESTION_LIBRE.id) : [];
+  } catch { return []; }
+};
+const gsmChatLoadClientOrders = () => {
+  if (typeof window === 'undefined') return INITIAL_CLIENT_ORDERS;
+  try {
+    const data = JSON.parse(window.localStorage.getItem(GSM_CHAT_CLIENT_ORDERS_STORAGE) || 'null');
+    return Array.isArray(data) ? data : INITIAL_CLIENT_ORDERS;
+  } catch { return INITIAL_CLIENT_ORDERS; }
+};
+const gsmChatLoadAccess = () => {
+  if (typeof window === 'undefined') return true;
+  try { return window.localStorage.getItem(GSM_CHAT_ACCESS_STORAGE) !== 'disabled'; }
+  catch { return true; }
+};
+const gsmChatStatus = {
+  recu_sgi: 'Reçu par la SGI',
+  en_controle: 'Contrôle en cours',
+  accepte: 'Accepté par la SGI',
+  rejete: 'Rejeté',
+  route_simule: 'Routé · marché fictif',
+  execute: 'Exécuté · fictif',
+  partiel: 'Partiellement exécuté · fictif',
+  non_execute: 'Non exécuté · fictif',
+  annule: 'Annulé sur instruction client',
+};
+const gsmChatAddEvent = (request, action, actor, detail = '') => ({
+  ...request,
+  updatedAt: gsmChatDate(),
+  journal: [...(request.journal || []), { at: gsmChatDate(), action, actor, detail }],
+});
+const gsmChatParseInstruction = (message) => {
+  const phrase = String(message || '').trim();
+  const normalize = (value) => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const normalized = normalize(phrase);
+  const sideMatch = normalized.match(/\b(ACHETER|ACHETE|ACHAT|VENDRE|VENDS|VENTE)\b/);
+  const sens = sideMatch ? (/VEN/.test(sideMatch[1]) ? 'Vente' : 'Achat') : '';
+  const quantity = normalized.match(/\b(?:ACHETER|ACHETE|ACHAT|VENDRE|VENDS|VENTE)\s+(\d[\d\s]*)\s*(?:ACTIONS?|TITRES?|OBLIGATIONS?)?/);
+  const qte = quantity ? Number(quantity[1].replace(/\s/g, '')) : 0;
+  const candidates = CLIENT_TRADABLE_MARKETS.filter((item) => normalized.includes(normalize(item.nom)));
+  const market = [...candidates].sort((a, b) => b.nom.length - a.nom.length)[0];
+  const priceMatch = normalized.match(/\b(?:A|LIMITE|MAXIMUM|MINIMUM|PRIX\s+LIMITE)\s*[:=]?\s*(\d[\d\s]*(?:[.,]\d+)?)/);
+  const prix = priceMatch ? Number(priceMatch[1].replace(/\s/g, '').replace(',', '.')) : 0;
+  return { sens, qte, instrument: market?.nom || '', prix, marche: market?.marche || '', devise: market?.devise || '' };
+};
+const gsmChatRequestValidation = (request, orders = [], batches = [], requests = []) => {
+  const pf = CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.id === request.portefeuilleId);
+  const instrument = clientMarket(request.instrument, request.marche);
+  const qty = Number(request.qte);
+  const price = Number(request.prix);
+  if (!pf) return 'Portefeuille non autorisé.';
+  if (!instrument || pf.marche !== instrument.marche) return 'Titre incompatible avec le marché du portefeuille.';
+  if (!['Achat', 'Vente'].includes(request.sens)) return 'Sens invalide.';
+  if (!Number.isSafeInteger(qty) || qty <= 0) return 'Quantité entière positive requise.';
+  if (!Number.isFinite(price) || price <= 0) return 'Prix limite strictement positif requis.';
+  const balance = gsmClientGroupedBalances(pf, orders, batches);
+  const autres = requests.filter((r) =>
+    r.reference !== request.reference && r.portefeuilleId === pf.id && GSM_CHAT_PENDING_STATES.includes(r.statut));
+  const reservedCash = autres.filter((r) => r.sens === 'Achat').reduce((sum, r) => sum + Number(r.qte) * Number(r.prix), 0);
+  const reservedQty = autres.filter((r) => r.sens === 'Vente' && r.instrument === request.instrument)
+    .reduce((sum, r) => sum + Number(r.qte), 0);
+  if (request.sens === 'Achat' && qty * price > balance.especes - reservedCash + 1e-8)
+    return 'Espèces insuffisantes après prise en compte des ordres et instructions déjà en attente.';
+  if (request.sens === 'Vente' && qty > Number(balance.disponibleTitres[request.instrument] || 0) - reservedQty)
+    return 'Titres disponibles insuffisants après prise en compte des engagements existants.';
+  return '';
+};
+const gsmChatExportRegister = (requests) => {
+  const headers = ['Référence', 'Date réception UTC', 'Client', 'SGI', 'Portefeuille', 'Canal', 'Sens', 'Titre', 'Quantité', 'Prix limite', 'Devise', 'Statut', 'Quantité exécutée', 'Reliquat', 'Dernière MAJ UTC'];
+  const csv = [headers, ...requests.map((r) => {
+    const pf = CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.id === r.portefeuilleId);
+    return [r.reference, r.createdAt, CLIENT_GESTION_LIBRE.nom, pf?.sgi || '', pf?.nom || '', r.canal, r.sens,
+      r.instrument, r.qte, r.prix, r.devise, gsmChatStatus[r.statut] || r.statut,
+      r.qteExecutee || 0, r.reliquat ?? r.qte, r.updatedAt];
+  })].map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  exportDownloadBlob(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }), 'registre-chat-invest-simulation.csv');
+};
+
+function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnabled = true, goClient, orders = [], groupedBatches = [] }) {
+  const [canal, setCanal] = useState('Chat Invest');
+  const [texte, setTexte] = useState('');
+  const [draft, setDraft] = useState(null);
+  const [checked, setChecked] = useState(false);
+  const [message, setMessage] = useState('');
+  const [mobileOpen, setMobileOpen] = useState(true);
+  const [conversationTab, setConversationTab] = useState('chat');
+  const [selectedRef, setSelectedRef] = useState(null);
+  const [changeMode, setChangeMode] = useState('');
+  const [changeQty, setChangeQty] = useState('');
+  const [changePrice, setChangePrice] = useState('');
+  const market = clientMarket(draft?.instrument, draft?.marche);
+  const compatible = CLIENT_GESTION_LIBRE.portefeuilles.filter((p) => p.marche === market?.marche);
+  const recent = requests.filter((r) => r.clientId === CLIENT_GESTION_LIBRE.id);
+  const sendText = () => {
+    if (!accessEnabled) { setMessage('Accès Chat Invest désactivé dans cette simulation.'); return; }
+    if (!texte.trim()) { setMessage('Saisissez votre instruction.'); return; }
+    const parsed = gsmChatParseInstruction(texte);
+    const firstPf = CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.marche === parsed.marche);
+    setDraft({ ...parsed, portefeuilleId: firstPf?.id || '', texteOriginal: texte.trim() });
+    setChecked(false);
+    setMessage('Vérifiez et complétez tous les champs avant de confirmer. Aucune instruction n’a encore été envoyée.');
+  };
+  const submit = () => {
+    if (!draft || !accessEnabled) return;
+    if (!checked) { setMessage('La confirmation explicite du client est obligatoire.'); return; }
+    const request = {
+      ...draft, reference: gsmChatReference(), clientId: CLIENT_GESTION_LIBRE.id,
+      canal, statut: 'recu_sgi', createdAt: gsmChatDate(), updatedAt: gsmChatDate(),
+      qteExecutee: 0, reliquat: Number(draft.qte),
+      journal: [{ at: gsmChatDate(), actor: 'Client (simulation)', action: 'confirmation',
+        detail: 'Instruction structurée confirmée dans la maquette ; authentification forte non implémentée.' }],
+    };
+    const error = gsmChatRequestValidation(request, orders, groupedBatches, requests);
+    if (error) { setMessage(error); return; }
+    const result = onSubmit?.(request);
+    if (result === false) { setMessage('Le stockage local a refusé l’instruction.'); return; }
+    setDraft(null); setTexte(''); setChecked(false);
+    setSelectedRef(request.reference);
+    setMessage(`Instruction ${request.reference} horodatée et transmise à la boîte SGI simulée.`);
+  };
+  const currentRequest = recent.find((r) => r.reference === selectedRef);
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', 'Chat Invest']} />
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div><Eyebrow>Gestion libre · Canal digital</Eyebrow>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Chat Invest · expérience mobile</h2>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>Une instruction confirmée est reçue par la SGI ; elle n'est pas automatiquement exécutée.</div>
+        </div>
+        <div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={() => setMobileOpen((v) => !v)}>{mobileOpen ? 'Masquer' : 'Afficher'} le téléphone</Btn>
+          <Btn tone="ghost" onClick={() => goClient?.('client-orders')}>Mes ordres →</Btn></div>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
+        {mobileOpen && <div className="mx-auto w-full" style={{ maxWidth: 400 }}>
+          <div className="rounded-[35px] p-2.5 shadow-xl" style={{ background: '#0D1C30', border: '5px solid #233852' }}>
+            <div className="rounded-[27px] overflow-hidden" style={{ background: '#F7F9FC', minHeight: 590 }}>
+              <div className="px-5 pt-3 pb-4 text-white" style={{ background: '#102A43' }}>
+                <div className="flex justify-between text-[11px] mb-4"><span>9:41 · Aperçu</span><span>●●● ▰</span></div>
+                <div className="flex justify-between items-center"><div><div className="font-bold text-base">Chat Invest</div>
+                  <div className="text-[11px] opacity-75">{CLIENT_GESTION_LIBRE.nom} · Accès {accessEnabled ? 'activé' : 'désactivé'}</div></div>
+                  <Badge tone="gold">Démo</Badge></div>
+              </div>
+              <div className="p-3 space-y-3">
+                <div className="flex gap-2">{['chat', 'ordres'].map((tab) => <button key={tab} type="button"
+                  onClick={() => setConversationTab(tab)}
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold"
+                  style={{ background: conversationTab === tab ? C.navy : '#E8EDF3', color: conversationTab === tab ? '#fff' : C.sub }}>
+                  {tab === 'chat' ? 'Conversation' : `Mes instructions (${recent.length})`}</button>)}</div>
+                {conversationTab === 'chat' ? <>
+                  <div className="rounded-2xl p-3 text-xs" style={{ background: '#E7EBF2', color: C.ink }}>
+                    Bonjour ! Décrivez votre ordre, par exemple : « Acheter 100 actions SONATEL à 14200 ».
+                    Un ticket structuré sera soumis à votre validation.
+                  </div>
+                  {texte.trim() && <div className="ml-8 rounded-2xl p-3 text-xs" style={{ background: '#DCEFE8', color: C.ink }}>{texte}</div>}
+                  <div className="flex flex-wrap gap-2">{['Chat Invest', 'WhatsApp Invest · démo'].map((value) => <button key={value}
+                    type="button" onClick={() => setCanal(value)} className="rounded-full px-3 py-1.5 text-[11px] font-semibold"
+                    style={{ background: canal === value ? '#DCEFE8' : '#E8EDF3', color: C.ink }}>{value}</button>)}</div>
+                  <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={3}
+                    className="w-full rounded-xl border p-3 text-xs" placeholder="Votre instruction de bourse…" aria-label="Instruction de bourse" />
+                  <button type="button" disabled={!accessEnabled} onClick={sendText}
+                    className="w-full rounded-xl py-2.5 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.navy }}>Analyser l'instruction →</button>
+                  {draft && <div className="rounded-2xl p-3 space-y-2" style={{ background: '#fff', border: `1px solid ${C.line}` }}>
+                    <div className="text-xs font-bold" style={{ color: C.ink }}>Ticket à confirmer</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-[11px]" style={{ color: C.sub }}>Sens
+                        <select className="w-full border rounded-lg p-2 text-xs mt-1" value={draft.sens} onChange={(e) => {setDraft({...draft,sens:e.target.value});setChecked(false);}}>
+                          <option value="">Choisir…</option><option>Achat</option><option>Vente</option></select></label>
+                      <label className="text-[11px]" style={{ color: C.sub }}>Titre
+                        <select className="w-full border rounded-lg p-2 text-xs mt-1" value={draft.instrument}
+                          onChange={(e) => { const i=clientMarket(e.target.value); const pf=CLIENT_GESTION_LIBRE.portefeuilles.find(p=>p.marche===i?.marche);
+                            setDraft({...draft,instrument:i?.nom||'',marche:i?.marche||'',devise:i?.devise||'',portefeuilleId:pf?.id||'',prix:Number(i?.cours||0)});setChecked(false); }}>
+                          <option value="">Choisir…</option>{CLIENT_TRADABLE_MARKETS.map((i) => <option key={i.nom} value={i.nom}>{i.nom}</option>)}</select></label>
+                      <label className="text-[11px]" style={{ color: C.sub }}>Quantité
+                        <input type="number" min="1" step="1" className="w-full border rounded-lg p-2 text-xs mt-1" value={draft.qte || ''}
+                          onChange={(e)=>{setDraft({...draft,qte:e.target.value});setChecked(false);}} /></label>
+                      <label className="text-[11px]" style={{ color: C.sub }}>Prix limite ({draft.devise || 'devise'})
+                        <input type="number" min="0.01" step="any" className="w-full border rounded-lg p-2 text-xs mt-1" value={draft.prix || ''}
+                          onChange={(e)=>{setDraft({...draft,prix:e.target.value});setChecked(false);}} /></label>
+                    </div>
+                    <label className="block text-[11px]" style={{ color: C.sub }}>Mon portefeuille / SGI
+                      <select className="w-full border rounded-lg p-2 text-xs mt-1" value={draft.portefeuilleId}
+                        onChange={(e)=>{setDraft({...draft,portefeuilleId:e.target.value});setChecked(false);}}>
+                        <option value="">Choisir…</option>{compatible.map((p)=><option key={p.id} value={p.id}>{p.sgi} · {p.nom}</option>)}</select></label>
+                    <div className="text-xs font-bold" style={{ color: C.ink }}>Montant maximal hors frais : {fmtPrice(Number(draft.qte || 0)*Number(draft.prix || 0))} {draft.devise}</div>
+                    <label className="flex items-start gap-2 text-[11px]" style={{ color: C.ink }}><input type="checkbox" checked={checked} onChange={(e)=>setChecked(e.target.checked)} />
+                      Je confirme personnellement les paramètres de cette instruction de démonstration.</label>
+                    <div className="flex gap-2"><button type="button" onClick={()=>{setDraft(null);setChecked(false);setMessage('Ticket abandonné, rien n’a été envoyé.');}}
+                      className="flex-1 rounded-xl py-2 text-xs" style={{ background: '#E8EDF3' }}>Abandonner</button>
+                      <button type="button" onClick={submit} disabled={!checked || !accessEnabled}
+                        className="flex-1 rounded-xl py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.teal }}>Confirmer & transmettre</button></div>
+                  </div>}
+                </> : <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                  {recent.length === 0 && <div className="text-xs" style={{ color: C.sub }}>Aucune instruction transmise.</div>}
+                  {recent.map((r) => <button key={r.reference} type="button" onClick={() => setSelectedRef(r.reference)}
+                    className="w-full text-left rounded-xl border p-3" style={{ borderColor: selectedRef === r.reference ? C.teal : C.line, background: '#fff' }}>
+                    <div className="font-semibold text-xs">{r.sens} {r.qte} · {r.instrument}</div>
+                    <div className="text-[10px] mt-1" style={{ color: C.sub }}>{r.reference} · {gsmChatStatus[r.statut] || r.statut}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>Exécuté {r.qteExecutee || 0} / {r.qte} · Reliquat {r.reliquat ?? r.qte}</div></button>)}</div>}
+                {message && <div role="status" className="rounded-lg p-2 text-[11px]" style={{ background:'#FBF1DD', color:'#684C13' }}>{message}</div>}
+                <div className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
+                  Simulation locale : aucun message WhatsApp n'est envoyé, aucune identité n'est authentifiée, aucun ordre réel n'est routé.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>}
+        <div className="space-y-3">
+          <Card className="p-4"><Eyebrow>Parcours de l'instruction</Eyebrow>
+            <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>Du mobile au poste de négociation</div>
+            {['1 · Préparation du ticket', '2 · Confirmation par le client', '3 · Réception et horodatage SGI', '4 · Contrôle & validation SGI', '5 · Routage / exécution fictifs', '6 · Retour de résultat au client'].map((step) =>
+              <div key={step} className="py-2 text-xs" style={{ borderTop:`1px solid ${C.line}`, color:C.sub }}>{step}</div>)}
+          </Card>
+          <Card className="p-4"><div className="flex justify-between items-center gap-2"><b className="text-sm">Suivi & accusés de réception</b><Badge tone="gold">{recent.length} instruction(s)</Badge></div>
+            <div className="space-y-2 mt-3 max-h-[460px] overflow-y-auto">
+              {recent.length === 0 && <div className="text-xs" style={{color:C.sub}}>Les instructions confirmées apparaîtront ici et dans le registre SGI.</div>}
+              {recent.map((r) => <button type="button" key={r.reference} onClick={()=>setSelectedRef(r.reference)}
+                className="w-full text-left rounded-xl p-3" style={{ border: `1px solid ${selectedRef === r.reference ? C.indigo : C.line}` }}>
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-semibold" style={{color:C.ink}}>{r.reference}</span><Badge tone={r.statut==='rejete'?'coral':r.statut==='execute'?'teal':'gold'}>{gsmChatStatus[r.statut]}</Badge></div>
+                <div className="text-xs mt-2" style={{color:C.sub}}>{r.sens} {fmt(r.qte)} {r.instrument} · {fmtPrice(r.prix)} {r.devise}</div>
+                <div className="text-[11px] mt-1" style={{color:C.sub}}>Exécuté : {fmt(r.qteExecutee||0)} · Reliquat : {fmt(r.reliquat ?? r.qte)}</div>
+                <div className="text-[10px] mt-1" style={{color:C.sub}}>Reçu : {new Date(r.createdAt).toLocaleString('fr-FR')} · {r.canal}</div>
+                </button>)}
+            </div>
+            {currentRequest && ['recu_sgi', 'en_controle'].includes(currentRequest.statut) && <div className="mt-3 pt-3 space-y-2" style={{borderTop:`1px solid ${C.line}`}}>
+              <div className="text-xs font-semibold">Demande de modification / annulation</div>
+              {currentRequest.demandeChangement ? <div className="text-xs" style={{color:C.sub}}>
+                Demande {currentRequest.demandeChangement.type} transmise ; en attente de décision SGI.
+              </div> : <>
+                <div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={()=>{setChangeMode('modification');setChangeQty(String(currentRequest.qte));setChangePrice(String(currentRequest.prix));}}>
+                  Modifier</Btn><Btn tone="ghost" onClick={()=>setChangeMode('annulation')}>Demander annulation</Btn></div>
+                {changeMode==='modification' && <div className="flex gap-2 flex-wrap">
+                  <label className="text-xs">Quantité<input type="number" min="1" step="1" aria-label="Nouvelle quantité" className="block border rounded-lg p-2 w-32" value={changeQty} onChange={(e)=>setChangeQty(e.target.value)}/></label>
+                  <label className="text-xs">Prix limite<input type="number" min="0.01" step="any" aria-label="Nouveau prix limite" className="block border rounded-lg p-2 w-32" value={changePrice} onChange={(e)=>setChangePrice(e.target.value)}/></label>
+                  <div className="self-end"><Btn onClick={()=>{const result=onRequestChange?.(currentRequest.reference,{type:'modification',qte:changeQty,prix:changePrice});setMessage(result?.message||'Demande transmise à la SGI.');setChangeMode('');}}>Envoyer la demande</Btn></div>
+                </div>}
+                {changeMode==='annulation'&&<div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={()=>setChangeMode('')}>Retour</Btn>
+                  <Btn onClick={()=>{const result=onRequestChange?.(currentRequest.reference,{type:'annulation'});setMessage(result?.message||'Demande transmise.');setChangeMode('');}}>Confirmer la demande</Btn></div>}
+              </>}
+            </div>}
+            {currentRequest && <div className="mt-3 pt-3" style={{borderTop:`1px solid ${C.line}`}}>
+              <div className="text-xs font-semibold mb-2">Historique · {currentRequest.reference}</div>
+              {(currentRequest.journal||[]).map((e,i)=><div key={i} className="text-[11px] py-1" style={{color:C.sub}}>
+                {new Date(e.at).toLocaleString('fr-FR')} · {e.actor} : {e.action}{e.detail ? ` — ${e.detail}` : ''}</div>)}
+            </div>}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SgiChatInvestInbox({ requests = [], onAction, accessEnabled, onSetAccess, orders = [], groupedBatches = [], go }) {
+  const [filtre, setFiltre] = useState('Tous');
+  const [sgiFilter, setSgiFilter] = useState('Toutes');
+  const [selectedRef, setSelectedRef] = useState(null);
+  const [raison, setRaison] = useState('');
+  const [qteFill, setQteFill] = useState('0');
+  const [prixFill, setPrixFill] = useState('');
+  const [message, setMessage] = useState('');
+  const [onglet, setOnglet] = useState('reception');
+  const sgiNames = [...new Set(CLIENT_GESTION_LIBRE.portefeuilles.map((p) => p.sgi))];
+  const filtered = requests.filter((r) => (filtre === 'Tous' || r.statut === filtre) &&
+    (sgiFilter === 'Toutes' || CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.id === r.portefeuilleId)?.sgi === sgiFilter));
+  const selected = requests.find((r) => r.reference === selectedRef) || filtered[0];
+  const pf = CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.id === selected?.portefeuilleId);
+  const doAction = (action, payload = {}) => {
+    if (!selected) return;
+    try {
+      const result = onAction(selected.reference, action, payload);
+      setMessage(result?.message || `Étape « ${action} » enregistrée.`);
+    } catch (err) { setMessage(err?.message || 'Action impossible.'); }
+  };
+  return <div className="space-y-5">
+    <Breadcrumb items={['Accueil', 'Réception Chat Invest']} />
+    <div className="flex flex-wrap gap-3 items-end justify-between"><div><Eyebrow>SGI · Registre de réception numérique fictif</Eyebrow>
+      <h2 className="text-xl font-bold" style={{...F_DISPLAY,color:C.ink}}>Boîte des instructions Chat Invest</h2>
+      <div className="text-xs mt-1" style={{color:C.sub}}>Ordres reçus depuis la vue mobile, vérifiés et supervisés avant toute simulation d'exécution.</div></div>
+      <div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={()=>setOnglet(onglet==='reception'?'registre':'reception')}>{onglet==='reception'?'Voir le registre':'Retour à la réception'}</Btn>
+        <Btn tone="ghost" onClick={()=>gsmChatExportRegister(requests)}>Exporter CSV</Btn></div></div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {[['À contrôler', requests.filter(r=>r.statut==='recu_sgi'||r.statut==='en_controle').length],
+        ['Acceptés / routés',requests.filter(r=>r.statut==='accepte'||r.statut==='route_simule').length],
+        ['Résultats / rejets',requests.filter(r=>['execute','partiel','non_execute','rejete'].includes(r.statut)).length]].map(([label,count])=>
+        <Card key={label} className="p-4"><div className="text-[11px]" style={{color:C.sub}}>{label}</div><div className="text-xl font-bold mt-1">{count}</div></Card>)}
+    </div>
+    <Card className="p-4 flex flex-wrap gap-3 items-center justify-between"><div><div className="font-semibold text-sm">Assistance à l'ouverture du Chat en agence</div>
+      <div className="text-xs mt-1" style={{color:C.sub}}>Compte de démonstration : {CLIENT_GESTION_LIBRE.nom} · accès {accessEnabled?'actif':'désactivé'}. Confirmation par le client indispensable.</div></div>
+      <Btn tone="ghost" onClick={()=>onSetAccess?.(!accessEnabled)}>{accessEnabled?'Désactiver':'Activer'} l'accès test</Btn></Card>
+    {message && <div role="status" className="rounded-xl p-3 text-xs" style={{background:'#FBF1DD',color:'#684C13'}}>{message}</div>}
+    <Card className="p-4"><div className="flex flex-wrap gap-3 items-end mb-3">
+      <label className="text-xs" style={{color:C.sub}}>Statut
+        <select className="block border rounded-lg mt-1 p-2 text-xs" value={filtre} onChange={(e)=>setFiltre(e.target.value)}><option>Tous</option>
+          {Object.entries(gsmChatStatus).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
+      <label className="text-xs" style={{color:C.sub}}>SGI
+        <select className="block border rounded-lg mt-1 p-2 text-xs" value={sgiFilter} onChange={(e)=>setSgiFilter(e.target.value)}>
+          <option>Toutes</option>{sgiNames.map(s=><option key={s}>{s}</option>)}</select></label>
+      <span className="text-xs" style={{color:C.sub}}>{filtered.length} instruction(s)</span>
+    </div>
+    <div className="overflow-x-auto"><table className="w-full" style={{minWidth:810}}><thead style={{background:'#FAFAFC'}}><tr>
+      <Th>Référence</Th><Th>Réception</Th><Th>Portefeuille / SGI</Th><Th>Instruction</Th><Th>Statut</Th><Th>Action</Th></tr></thead>
+      <tbody>{filtered.map((r)=><tr key={r.reference} style={{borderTop:`1px solid ${C.line}`}}>
+        <Td mono>{r.reference}</Td><Td>{new Date(r.createdAt).toLocaleString('fr-FR')}</Td>
+        <Td>{CLIENT_GESTION_LIBRE.portefeuilles.find(p=>p.id===r.portefeuilleId)?.sgi||'—'}</Td>
+        <Td>{r.sens} {fmt(r.qte)} {r.instrument}</Td>
+        <Td><Badge tone={r.statut==='rejete'?'coral':r.statut==='execute'?'teal':'gold'}>{gsmChatStatus[r.statut]||r.statut}</Badge></Td>
+        <Td><button type="button" onClick={()=>{setSelectedRef(r.reference);setQteFill('0');setPrixFill(String(r.prix));setRaison('');setOnglet('reception');}}
+          className="text-xs font-semibold" style={{color:C.indigo}}>Examiner →</button></Td></tr>)}
+        {filtered.length===0&&<tr><Td>Aucune instruction pour ces filtres.</Td></tr>}</tbody></table></div></Card>
+    {selected && <Card className="p-5"><div className="flex gap-2 flex-wrap justify-between items-center"><div>
+      <Eyebrow>{onglet==='registre'?'Registre d’événements':'Fiche d’instruction'}</Eyebrow>
+      <div className="font-bold text-base" style={{color:C.ink}}>{selected.reference}</div>
+      <div className="text-xs" style={{color:C.sub}}>{CLIENT_GESTION_LIBRE.nom} · {pf?.sgi} · {selected.canal} · {gsmChatStatus[selected.statut]}</div></div>
+      <Badge tone="slate">Reçu {new Date(selected.createdAt).toLocaleString('fr-FR')}</Badge></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-xs">
+        {[['Portefeuille',pf?.nom||'—'],['Instrument',selected.instrument],['Sens',selected.sens],['Quantité',fmt(selected.qte)],
+          ['Prix limite',`${fmtPrice(selected.prix)} ${selected.devise}`],['Exécuté',fmt(selected.qteExecutee||0)],
+          ['Reliquat',fmt(selected.reliquat??selected.qte)],['Marché',selected.marche]].map(([label,value])=><div key={label}
+            className="p-3 rounded-xl" style={{background:'#F5F6F9'}}><div style={{color:C.sub}}>{label}</div><div className="font-semibold mt-1">{value}</div></div>)}
+      </div>
+      <div className="text-xs mt-4 p-3 rounded-lg" style={{background:'#F5F6F9',color:C.ink}}>
+        <b>Texte d'origine :</b> {selected.texteOriginal || 'Instruction structurée'}
+      </div>
+      {selected.demandeChangement && <div className="rounded-xl p-3 mt-4" style={{background:'#FBF1DD'}}>
+        <div className="text-sm font-semibold">Demande client en attente : {selected.demandeChangement.type}</div>
+        {selected.demandeChangement.type==='modification'&&<div className="text-xs mt-1">Quantité : {selected.demandeChangement.qte} · Prix limite : {selected.demandeChangement.prix} {selected.devise}</div>}
+        <div className="flex gap-2 mt-3"><Btn onClick={()=>doAction('traiter_changement',{decision:'accepter'})}>Approuver</Btn>
+          <Btn tone="ghost" onClick={()=>doAction('traiter_changement',{decision:'refuser'})}>Refuser</Btn></div>
+      </div>}
+      {!selected.demandeChangement && <div className="flex gap-2 flex-wrap mt-4">
+        {selected.statut==='recu_sgi'&&<Btn onClick={()=>doAction('controler')}>Ouvrir le contrôle</Btn>}
+        {selected.statut==='en_controle'&&<Btn onClick={()=>doAction('accepter')}>Accepter l'instruction</Btn>}
+        {selected.statut==='accepte'&&<Btn onClick={()=>doAction('router')}>Router vers le marché fictif</Btn>}
+        {['recu_sgi','en_controle'].includes(selected.statut)&&<div className="flex items-center gap-2 flex-wrap">
+          <input aria-label="Motif de rejet" className="border rounded-lg p-2 text-xs" placeholder="Motif du rejet" value={raison} onChange={(e)=>setRaison(e.target.value)}/>
+          <Btn tone="ghost" onClick={()=>doAction('rejeter',{raison})}>Rejeter</Btn></div>}
+      </div>}
+      {selected.statut==='en_controle'&&<div className="text-xs mt-2" style={{color:C.sub}}>
+        Le contrôle réévalue espèces, titres disponibles et engagements. La confirmation client seule ne vaut pas acceptation par la SGI.</div>}
+      {selected.statut==='route_simule'&&<div className="rounded-xl p-4 mt-4" style={{border:`1px solid ${C.line}`}}>
+        <div className="font-semibold text-sm mb-3">Retour d'exécution simulée (Négo)</div>
+        <div className="flex gap-3 items-end flex-wrap">
+          <label className="text-xs" style={{color:C.sub}}>Quantité exécutée
+            <input aria-label="Quantité exécutée" type="number" step="1" min="0" max={selected.qte}
+              className="block border rounded-lg p-2 mt-1 w-36" value={qteFill} onChange={(e)=>setQteFill(e.target.value)}/></label>
+          <label className="text-xs" style={{color:C.sub}}>Prix d'exécution
+            <input aria-label="Prix d'exécution" type="number" step="any" min="0.01"
+              className="block border rounded-lg p-2 mt-1 w-40" value={prixFill} onChange={(e)=>setPrixFill(e.target.value)}/></label>
+          <Btn onClick={()=>doAction('execution',{qte:qteFill,prix:prixFill})}>Enregistrer le résultat fictif</Btn>
+        </div>
+        <div className="text-[11px] mt-2" style={{color:C.sub}}>Quantité comprise entre 0 et {selected.qte}. Prix ≤ limite à l'achat ; prix ≥ limite à la vente.</div>
+      </div>}
+      <div className="font-semibold text-xs mt-5 mb-2">Registre d'événements de l'instruction</div>
+      <div className="space-y-2">{(selected.journal||[]).map((e,i)=><div key={i} className="text-[11px] p-2 rounded-lg" style={{background:'#F7F8FB',color:C.sub}}>
+        {new Date(e.at).toLocaleString('fr-FR')} · <b>{e.actor}</b> — {e.action}{e.detail?` : ${e.detail}`:''}</div>)}</div>
+      <div className="text-[11px] mt-3" style={{color:C.sub}}>Horodatage et registre en localStorage, sans garantie d'inaltérabilité juridique. Aucune opération réelle sur le marché.</div>
+      <div className="mt-3"><Btn tone="ghost" onClick={()=>{go?.('carnet');}}>Consulter le carnet sous mandat →</Btn></div>
+    </Card>}
+  </div>;
 }
 
 function ClientOrderTicket({
@@ -37341,7 +37719,7 @@ function ClientAvis({ orders, devise }) {
   );
 }
 
-function ClientOrders({ orders, groupedBatches = [], goClient }) {
+function ClientOrders({ orders, groupedBatches = [], chatRequests = [], goClient }) {
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Mes ordres']} />
@@ -37360,6 +37738,19 @@ function ClientOrders({ orders, groupedBatches = [], goClient }) {
         <Badge tone="gold">{orders.length} ordre(s)</Badge>
       </div>
 
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div><div className="text-sm font-semibold" style={{ color: C.ink }}>Mes instructions Chat Invest</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              {chatRequests.length} instruction(s) confirmée(s) via l'aperçu mobile, avec accusés de réception et historique.
+            </div></div>
+          <Btn tone="navy" onClick={() => goClient?.('client-chat-invest')}>Ouvrir Chat Invest →</Btn>
+        </div>
+        {chatRequests.slice(0,3).map((r) => <div key={r.reference} className="text-xs py-2 mt-2 flex justify-between gap-2"
+          style={{ borderTop: `1px solid ${C.line}`, color: C.sub }}>
+          <span>{r.reference} · {r.sens} {r.instrument}</span><span>{gsmChatStatus[r.statut] || r.statut}</span>
+        </div>)}
+      </Card>
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
@@ -37414,7 +37805,7 @@ function ClientOrders({ orders, groupedBatches = [], goClient }) {
                       {ordre.sens}
                     </Badge>
                   </Td>
-                  <Td mono>{fmt(ordre.qte)}</Td>
+                  <Td mono>{fmt(ordre.qte)}{ordre.referenceChat && <div className="text-[10px]" style={{color:C.sub}}>Exécuté {fmt(ordre.qteExecutee||0)} · Restant {fmt(ordre.qteRestante??ordre.qte)}</div>}</Td>
                   <Td mono>
                     {fmtPrice(ordre.prix)} {ordre.devise}
                   </Td>
@@ -40379,7 +40770,14 @@ export default function App() {
   const [reportOpen, setReportOpen] = useState({});
   const [siteDevise, setSiteDevise] = useState('XOF');
   const [dark, setDark] = useState(false);
-  const [clientOrders, setClientOrders] = useState(INITIAL_CLIENT_ORDERS);
+  const [clientOrders, setClientOrders] = useState(gsmChatLoadClientOrders);
+  const [chatRequests, setChatRequests] = useState(gsmChatLoad);
+  const [chatAccessEnabled, setChatAccessEnabled] = useState(gsmChatLoadAccess);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { window.localStorage.setItem(GSM_CHAT_CLIENT_ORDERS_STORAGE, JSON.stringify(clientOrders)); }
+    catch { console.warn('[Chat Invest] Impossible de persister les ordres clients dans ce navigateur.'); }
+  }, [clientOrders]);
   const [clientGroupedBatches, setClientGroupedBatches] = useState(gsmClientLoadGrouped);
   const saveClientGroupedBatch = (batch) => {
     const next = [batch, ...clientGroupedBatches.filter((b) => b.id !== batch.id)];
@@ -40906,6 +41304,135 @@ export default function App() {
     ]);
   };
 
+  const submitChatInstruction = (request) => {
+    if (!chatAccessEnabled || chatRequests.some((r) => r.reference === request.reference)) return false;
+    const error = gsmChatRequestValidation(request, clientOrders, clientGroupedBatches, chatRequests);
+    if (error) return false;
+    const next = [request, ...chatRequests];
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(GSM_CHAT_INVEST_STORAGE, JSON.stringify(next)); }
+    catch { return false; }
+    setChatRequests(next);
+    return true;
+  };
+  const setChatAccess = (enabled) => {
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(GSM_CHAT_ACCESS_STORAGE, enabled ? 'enabled' : 'disabled'); }
+    catch { return false; }
+    setChatAccessEnabled(enabled);
+    return true;
+  };
+  const requestChatChange = (reference, change) => {
+    const existing = chatRequests.find((r) => r.reference === reference);
+    if (!existing || !['recu_sgi', 'en_controle'].includes(existing.statut))
+      return { message: 'Cette instruction n’est plus modifiable dans le circuit Chat Invest.' };
+    if (existing.demandeChangement) return { message: 'Une demande est déjà en cours.' };
+    const type = change?.type;
+    if (!['modification', 'annulation'].includes(type)) return { message: 'Demande inconnue.' };
+    if (type === 'modification') {
+      const qty = Number(change.qte), price = Number(change.prix);
+      if (!Number.isSafeInteger(qty) || qty < 1 || !Number.isFinite(price) || price <= 0)
+        return { message: 'Quantité entière positive et prix limite strictement positif requis.' };
+    }
+    const nextRequest = gsmChatAddEvent({ ...existing, demandeChangement: {
+      type, qte: type === 'modification' ? Number(change.qte) : null,
+      prix: type === 'modification' ? Number(change.prix) : null, at: gsmChatDate(),
+    } }, `demande_${type}`, 'Client (simulation)', 'Demande à examiner par la SGI.');
+    const next = chatRequests.map((r) => r.reference === reference ? nextRequest : r);
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(GSM_CHAT_INVEST_STORAGE, JSON.stringify(next)); }
+    catch { return { message: 'Stockage indisponible : demande non enregistrée.' }; }
+    setChatRequests(next);
+    return { message: `Demande de ${type} ${reference} transmise à la SGI.` };
+  };
+  const sgiChatAction = (reference, action, payload = {}) => {
+    const oldRequest = chatRequests.find((r) => r.reference === reference);
+    if (!oldRequest) throw new Error('Instruction introuvable.');
+    const allowed = {
+      controler: ['recu_sgi'], accepter: ['en_controle'],
+      rejeter: ['recu_sgi', 'en_controle'], router: ['accepte'], execution: ['route_simule'],
+      traiter_changement: ['recu_sgi', 'en_controle'],
+    };
+    if (!(allowed[action] || []).includes(oldRequest.statut))
+      throw new Error(`Transition « ${action} » interdite depuis ${gsmChatStatus[oldRequest.statut] || oldRequest.statut}.`);
+    if (oldRequest.demandeChangement && action !== 'traiter_changement')
+      throw new Error('Traitez d’abord la modification ou annulation demandée par le client.');
+    if (action === 'traiter_changement' && !oldRequest.demandeChangement)
+      throw new Error('Aucune demande de modification ou annulation en attente.');
+    let nextRequest = { ...oldRequest };
+    if (action === 'traiter_changement') {
+      const decision = payload.decision;
+      if (!['accepter', 'refuser'].includes(decision)) throw new Error('Décision inconnue.');
+      if (decision === 'accepter') {
+        const req = oldRequest.demandeChangement;
+        if (req.type === 'annulation') { nextRequest.statut = 'annule'; nextRequest.reliquat = 0; }
+        else {
+          const tentative = { ...oldRequest, qte: req.qte, prix: req.prix };
+          const error = gsmChatRequestValidation(tentative, clientOrders, clientGroupedBatches, chatRequests);
+          if (error) throw new Error(`Modification refusée au contrôle : ${error}`);
+          nextRequest = { ...nextRequest, qte: req.qte, prix: req.prix, reliquat: req.qte, statut: 'en_controle' };
+        }
+      }
+      nextRequest.demandeChangement = null;
+    }
+    if (action === 'controler') nextRequest.statut = 'en_controle';
+    if (action === 'rejeter') {
+      if (!String(payload.raison || '').trim()) throw new Error('Un motif de rejet est obligatoire.');
+      nextRequest.statut = 'rejete'; nextRequest.motifRejet = String(payload.raison).trim();
+    }
+    if (action === 'accepter') {
+      const error = gsmChatRequestValidation(oldRequest, clientOrders, clientGroupedBatches, chatRequests);
+      if (error) throw new Error(`Contrôle SGI : ${error}`);
+      if (clientOrders.some((o) => o.id === reference)) throw new Error('Référence déjà présente parmi les ordres clients.');
+      nextRequest.statut = 'accepte';
+    }
+    if (action === 'router') nextRequest.statut = 'route_simule';
+    if (action === 'execution') {
+      const quantity = Number(payload.qte), price = Number(payload.prix);
+      if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > Number(oldRequest.qte))
+        throw new Error('Quantité exécutée invalide : elle doit être entière, positive ou nulle, sans dépasser le demandé.');
+      if (quantity > 0 && (!Number.isFinite(price) || price <= 0)) throw new Error('Prix d’exécution positif requis.');
+      if (quantity > 0 && oldRequest.sens === 'Achat' && price > Number(oldRequest.prix))
+        throw new Error("Le prix d'achat dépasse la limite fixée par le client.");
+      if (quantity > 0 && oldRequest.sens === 'Vente' && price < Number(oldRequest.prix))
+        throw new Error('Le prix de vente est inférieur à la limite fixée par le client.');
+      nextRequest.qteExecutee = quantity;
+      nextRequest.reliquat = Number(oldRequest.qte) - quantity;
+      nextRequest.prixExecution = quantity ? price : null;
+      nextRequest.statut = quantity === 0 ? 'non_execute' : quantity === Number(oldRequest.qte) ? 'execute' : 'partiel';
+    }
+    const desc = action === 'execution'
+      ? `${nextRequest.qteExecutee} titre(s) exécuté(s) ; reliquat ${nextRequest.reliquat} ; prix ${nextRequest.prixExecution ?? '—'} ${nextRequest.devise}`
+      : action === 'rejeter' ? nextRequest.motifRejet
+      : action === 'traiter_changement' ? `Demande ${oldRequest.demandeChangement.type} ${payload.decision === 'accepter' ? 'approuvée' : 'refusée'}`
+      : gsmChatStatus[nextRequest.statut];
+    nextRequest = gsmChatAddEvent(nextRequest, action, 'SGI / Négo (simulation)', desc);
+    const nextRequests = chatRequests.map((r) => r.reference === reference ? nextRequest : r);
+    // Le registre est enregistré avant que les interfaces client / SGI ne soient actualisées.
+    try { if (typeof window !== 'undefined') window.localStorage.setItem(GSM_CHAT_INVEST_STORAGE, JSON.stringify(nextRequests)); }
+    catch { throw new Error('Stockage local indisponible. Aucune transition enregistrée.'); }
+    if (action === 'accepter') {
+      setClientOrders((current) => [{
+        id: reference, date: new Date(oldRequest.createdAt).toLocaleDateString('fr-FR'),
+        portefeuilleId: oldRequest.portefeuilleId, instrument: oldRequest.instrument,
+        marche: oldRequest.marche, devise: oldRequest.devise, sens: oldRequest.sens,
+        qte: Number(oldRequest.qte), qteRestante: Number(oldRequest.qte), qteExecutee: 0,
+        typeOrdre: 'Ordre limite · Chat Invest', prix: Number(oldRequest.prix), statut: 'En attente',
+        canalOrigine: oldRequest.canal, referenceChat: reference,
+      }, ...current.filter((o) => o.id !== reference)]);
+    }
+    if (action === 'router' || action === 'execution') {
+      setClientOrders((current) => current.map((o) => o.id !== reference ? o : {
+        ...o,
+        statut: action === 'router' ? 'En cours'
+          : nextRequest.statut === 'execute' ? 'Exécuté'
+          : nextRequest.statut === 'partiel' ? 'Partiel · fictif' : 'Non exécuté · fictif',
+        qteExecutee: nextRequest.qteExecutee || 0,
+        qteRestante: nextRequest.reliquat ?? nextRequest.qte,
+        prixExecution: nextRequest.prixExecution,
+      }));
+    }
+    setChatRequests(nextRequests);
+    return { message: `Instruction ${reference} : ${gsmChatStatus[nextRequest.statut]}.` };
+  };
+
   const switchWorkspace = () => {
     setWorkspace((current) =>
       current === 'gestionnaire' ? 'client' : 'gestionnaire'
@@ -40913,6 +41440,16 @@ export default function App() {
     remonterEnHaut();
   };
 
+  // Le ticket simple et les lots respectent aussi les instructions Chat
+  // confirmées mais non encore acceptées par la SGI.
+  const clientOrdersForAvailability = [
+    ...clientOrders,
+    ...chatRequests.filter((r) => GSM_CHAT_PENDING_STATES.includes(r.statut)).map((r) => ({
+      id: r.reference, portefeuilleId: r.portefeuilleId,
+      instrument: r.instrument, sens: r.sens, prix: Number(r.prix), qte: Number(r.qte),
+      statut: 'En attente',
+    })),
+  ];
   const activeClient = ctx.clientId
     ? CLIENTS.find((c) => c.id === ctx.clientId)
     : null;
@@ -41285,6 +41822,9 @@ export default function App() {
                     initialInstrument={ctx.instrument}
                   />
                 )}
+                {screen === 'sgi-chat-invest' && <SgiChatInvestInbox requests={chatRequests} orders={clientOrders}
+                  groupedBatches={clientGroupedBatches} accessEnabled={chatAccessEnabled}
+                  onSetAccess={setChatAccess} onAction={sgiChatAction} go={go} />}
                 {screen === 'alertes' && <Alertes go={go} />}
                 {screen === 'money-management' && (
                   <MoneyManagement go={go} devise={siteDevise} />
@@ -41374,7 +41914,7 @@ export default function App() {
                   <ClientOrderTicket
                     goClient={goClient}
                     onCreateOrder={createClientOrder}
-                    orders={clientOrders}
+                    orders={clientOrdersForAvailability}
                     groupedBatches={clientGroupedBatches}
                     initialInstrument={clientCtx.instrument}
                     initialMarket={clientCtx.marche}
@@ -41391,14 +41931,21 @@ export default function App() {
                 {clientScreen === 'client-grouped-orders' && (
                   <ClientGroupedOrders
                     goClient={goClient}
-                    orders={clientOrders}
+                    orders={clientOrdersForAvailability}
                     batches={clientGroupedBatches}
                     onSaveBatch={saveClientGroupedBatch}
                     onDeleteBatch={deleteClientGroupedBatch}
                   />
                 )}
+                {clientScreen === 'client-chat-invest' && (
+                  <ClientChatInvest requests={chatRequests} onSubmit={submitChatInstruction}
+                    onRequestChange={requestChatChange}
+                    accessEnabled={chatAccessEnabled} goClient={goClient} orders={clientOrders}
+                    groupedBatches={clientGroupedBatches} />
+                )}
                 {clientScreen === 'client-orders' && (
-                  <ClientOrders orders={clientOrders} groupedBatches={clientGroupedBatches} goClient={goClient} />
+                  <ClientOrders orders={clientOrders} groupedBatches={clientGroupedBatches}
+                    chatRequests={chatRequests} goClient={goClient} />
                 )}
                 {clientScreen === 'client-avis' && (
                   <ClientAvis orders={clientOrders} devise={siteDevise} />
