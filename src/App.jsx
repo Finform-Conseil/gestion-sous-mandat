@@ -33188,6 +33188,12 @@ function Comite({
   const [filtreSecteur, setFiltreSecteur] = useState('Tous');
   const [filtreClient, setFiltreClient] = useState('');
   const [onglet, setOnglet] = useState('seance');
+  const [allocationAnneeInitiale, setAllocationAnneeInitiale] = useState(
+    Math.max(2024, new Date().getFullYear() - 2)
+  );
+  const [allocationAnneeFinale, setAllocationAnneeFinale] = useState(
+    new Date().getFullYear()
+  );
   const [editerRapport, setEditerRapport] = useState(false);
   const [ouvrirSelectionDecisions, setOuvrirSelectionDecisions] = useState(false);
   const [message, setMessage] = useState('');
@@ -33442,6 +33448,189 @@ function Comite({
       c.devise, devise
     ), 0
   );
+
+  /* ------------------------------------------------------------------------
+   * COMPARAISON HISTORIQUE — ALLOCATION DES FONDS
+   *
+   * La base de démonstration contient les dates d'entrée et les encours
+   * courants, mais pas encore tous les snapshots comptables de fin d'année.
+   * La valorisation historique est donc reconstituée avec le moteur
+   * déterministe déjà utilisé par la maquette (`liquidityHistoricalAmount`).
+   * Le nombre de clients, lui, repose directement sur les dates d'entrée.
+   * En production, remplacer la valorisation reconstituée par les snapshots
+   * historisés réels de chaque portefeuille.
+   * ---------------------------------------------------------------------- */
+  const allocationDateReference = (() => {
+    const date = parseIsoLocalDate(config.dateComite || formatIsoLocalDate(new Date()));
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  })();
+  const allocationAnneeReference = allocationDateReference.getFullYear();
+  const allocationPremiereAnnee = Math.min(
+    allocationAnneeReference,
+    ...clientsGeres
+      .map((client) => Number(String(client.dateEntree || '').slice(0, 4)))
+      .filter((year) => Number.isFinite(year) && year >= 2000)
+  );
+  const allocationAnneesDisponibles = Array.from(
+    {
+      length: Math.max(
+        1,
+        allocationAnneeReference -
+          (Number.isFinite(allocationPremiereAnnee)
+            ? allocationPremiereAnnee
+            : allocationAnneeReference - 2) +
+          1
+      ),
+    },
+    (_, index) =>
+      (Number.isFinite(allocationPremiereAnnee)
+        ? allocationPremiereAnnee
+        : allocationAnneeReference - 2) + index
+  ).slice(-6);
+
+  const allocationAnneeInitialeActive = allocationAnneesDisponibles.includes(
+    allocationAnneeInitiale
+  )
+    ? allocationAnneeInitiale
+    : allocationAnneesDisponibles[0] || allocationAnneeReference;
+  const allocationAnneeFinaleActive = allocationAnneesDisponibles.includes(
+    allocationAnneeFinale
+  )
+    ? allocationAnneeFinale
+    : allocationAnneesDisponibles[allocationAnneesDisponibles.length - 1] ||
+      allocationAnneeReference;
+
+  const allocationDatePourAnnee = (year) => {
+    if (Number(year) === allocationAnneeReference) return allocationDateReference;
+    return new Date(Number(year), 11, 31, 12, 0, 0, 0);
+  };
+
+  const allocationClientActifA = (client, year) => {
+    if (!client?.dateEntree) return true;
+    const entree = parseIsoLocalDate(client.dateEntree);
+    return entree <= allocationDatePourAnnee(year);
+  };
+
+  const allocationValeurClientA = (client, year) => {
+    if (!allocationClientActifA(client, year)) return 0;
+    const dateSituation = allocationDatePourAnnee(year);
+    const valeurHistorique = liquidityHistoricalAmount(
+      Number(client.encours || 0),
+      `comite-allocation-${client.id || client.nom}`,
+      dateSituation,
+      allocationDateReference,
+      1
+    );
+    return comiteConvertirMontant(valeurHistorique, client.devise, devise);
+  };
+
+  const allocationVariationPct = (initial, final) => {
+    const base = Number(initial || 0);
+    const resultat = Number(final || 0);
+    if (Math.abs(base) < 1e-9) return resultat === 0 ? 0 : null;
+    return ((resultat - base) / Math.abs(base)) * 100;
+  };
+
+  const allocationSegment = (id, label, predicate) => {
+    const population = clients.filter(predicate);
+    const actifsInitial = population.filter((client) =>
+      allocationClientActifA(client, allocationAnneeInitialeActive)
+    );
+    const actifsFinal = population.filter((client) =>
+      allocationClientActifA(client, allocationAnneeFinaleActive)
+    );
+    const valorisationInitiale = actifsInitial.reduce(
+      (sum, client) =>
+        sum + allocationValeurClientA(client, allocationAnneeInitialeActive),
+      0
+    );
+    const valorisationFinale = actifsFinal.reduce(
+      (sum, client) =>
+        sum + allocationValeurClientA(client, allocationAnneeFinaleActive),
+      0
+    );
+    const deltaValorisation = valorisationFinale - valorisationInitiale;
+    const deltaClients = actifsFinal.length - actifsInitial.length;
+    return {
+      id,
+      label,
+      valorisationInitiale,
+      valorisationFinale,
+      deltaValorisation,
+      variationValorisation: allocationVariationPct(
+        valorisationInitiale,
+        valorisationFinale
+      ),
+      clientsInitiaux: actifsInitial.length,
+      clientsFinaux: actifsFinal.length,
+      deltaClients,
+      variationClients: allocationVariationPct(
+        actifsInitial.length,
+        actifsFinal.length
+      ),
+    };
+  };
+
+  const allocationSegmentsComparaison = [
+    allocationSegment('global', 'Global', () => true),
+    allocationSegment(
+      'institutionnel',
+      'Institutionnel',
+      (client) =>
+        (PROFILE_TYPE_LABEL[client.type] || client.type) === 'Institutionnel'
+    ),
+    allocationSegment(
+      'particulier',
+      'Particulier',
+      (client) =>
+        (PROFILE_TYPE_LABEL[client.type] || client.type) === 'Particulier'
+    ),
+  ];
+  const allocationGlobalComparaison = allocationSegmentsComparaison[0];
+
+  const allocationCouleurVariation = (variation) => {
+    if (variation == null || Math.abs(Number(variation)) < 0.01) return C.gold;
+    return Number(variation) > 0 ? C.teal : C.coral;
+  };
+
+  const renderAllocationRing = (variation, size = 68) => {
+    const value = variation == null ? 0 : Number(variation || 0);
+    const progress = Math.min(100, Math.abs(value));
+    const color = allocationCouleurVariation(variation);
+    return (
+      <div
+        className="relative shrink-0 rounded-full flex items-center justify-center"
+        style={{
+          width: size,
+          height: size,
+          background: `conic-gradient(${color} 0 ${progress * 3.6}deg, #E3E6EC ${
+            progress * 3.6
+          }deg 360deg)`,
+        }}
+        title={
+          variation == null
+            ? 'Variation non calculable : base initiale nulle.'
+            : `Variation ${value >= 0 ? '+' : ''}${value.toFixed(2)} %`
+        }
+      >
+        <div
+          className="rounded-full flex items-center justify-center text-center font-bold"
+          style={{
+            width: size - 14,
+            height: size - 14,
+            background: '#fff',
+            color: value >= 0 ? C.ink : C.coral,
+            ...F_MONO,
+            fontSize: size >= 76 ? 11 : 9,
+          }}
+        >
+          {variation == null
+            ? 'N/D'
+            : `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`}
+        </div>
+      </div>
+    );
+  };
 
   // IMPORTANT : ces agrégats étaient auparavant définis dans AnalysePortefeuille,
   // et étaient donc hors portée de Comite (ReferenceError, écran vide).
@@ -34054,6 +34243,7 @@ function Comite({
         ))}
       </div>
 
+      {!['seance', 'presence'].includes(onglet) && (
       <Card className="p-4 gsm-comite-no-print">
         <div className="flex items-end gap-3 flex-wrap">
           <label className="flex-1 min-w-[190px] space-y-1">
@@ -34084,46 +34274,164 @@ function Comite({
         </div>
       </Card>
 
+      )}
+
       {onglet === 'seance' && (
-        <div className="space-y-4 gsm-comite-interactive">
-          <Card className="p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><Eyebrow>Conduite de séance · timing & décisions</Eyebrow>
-                <h3 className="text-base font-bold" style={{ color: C.ink }}>Ordre du jour minuté</h3>
-                <p className="text-xs mt-1" style={{ color: C.sub }}>Les horaires prévisionnels se recalculent automatiquement. Lancez puis clôturez chaque point pour enregistrer ses horaires réels.</p>
+        <div className="space-y-4 gsm-comite-interactive" id="gsm-comite-cockpit">
+          {/* Les paramètres et le statut restent dans le thème clair de la plateforme GSM. */}
+          <Card className="p-4 md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Eyebrow>Pilotage du comité · séance interactive</Eyebrow>
+                <h3 className="text-lg font-bold" style={{ color: C.ink, ...F_DISPLAY }}>
+                  Tableau de bord de séance
+                </h3>
+                <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+                  Sélectionnez un point à gauche pour retrouver ses analyses, les décisions d’investissement, les commentaires et le vote dans le dossier central.
+                  Les créneaux s’ajustent aux durées prévues et les horodatages réels sont conservés.
+                </p>
               </div>
-              <Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge>
+                <Badge tone={pointEnCours ? 'gold' : 'slate'}>{pointEnCours ? 'Séance active' : 'Séance à piloter'}</Badge>
+              </div>
             </div>
-            <div className="flex flex-wrap items-end gap-3 mt-4">
-              <label className="space-y-1"><span className="block text-xs font-semibold">Début prévu</span><input type="time" className="border rounded-xl px-3 py-2 text-sm" style={{ borderColor: C.line }} value={seance.heureDebut} onChange={(e) => modifierSeance('heureDebut', e.target.value)} /></label>
-              <label className="space-y-1"><span className="block text-xs font-semibold">Quorum requis (strictement supérieur à)</span>
-                <select value={seance.seuilQuorumPct} onChange={(e) => modifierSeance('seuilQuorumPct', Number(e.target.value))} className="border rounded-xl px-3 py-2 text-sm" style={{ borderColor: C.line }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+              <label className="space-y-1">
+                <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Date du comité</span>
+                <input type="date" value={config.dateComite || ''} onChange={(e) => setConfig((c) => ({ ...c, dateComite: e.target.value }))}
+                  className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line, background: C.card, color: C.ink }} />
+              </label>
+              <label className="space-y-1">
+                <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Heure de début prévue</span>
+                <input type="time" className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line, background: C.card, color: C.ink }}
+                  value={seance.heureDebut} onChange={(e) => modifierSeance('heureDebut', e.target.value)} />
+              </label>
+              <label className="space-y-1">
+                <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Règle de quorum (strictement supérieur à)</span>
+                <select value={seance.seuilQuorumPct} onChange={(e) => modifierSeance('seuilQuorumPct', Number(e.target.value))}
+                  className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line, background: C.card, color: C.ink }}>
                   <option value={50}>50 % des convoqués</option><option value={66}>66 % des convoqués</option><option value={75}>75 % des convoqués</option>
                 </select>
               </label>
-              <Btn tone="ghost" onClick={() => setOnglet('presence')}>Faire l’appel ({personnesPresentes.length}/{personnesConvoquees.length})</Btn>
-              <span className="text-xs" style={{ color: C.sub }}>Fin prévue : {comiteHeure(minutesPlanifiees)}</span>
+              <div className="flex items-end">
+                <button type="button" onClick={() => setOnglet('presence')}
+                  className="w-full rounded-xl border px-3 py-2 text-xs font-semibold flex justify-between items-center gap-2"
+                  style={{ borderColor: C.line, background: '#F6F8FC', color: C.navy }}>
+                  <span>Faire l'appel</span><span>{personnesPresentes.length} / {personnesConvoquees.length} →</span>
+                </button>
+              </div>
             </div>
           </Card>
-          {agendaPlanifie.map((point) => {
-            const vote = votesParPoint(point);
-            const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === point.recommandationId);
-            const ouvert = pointOuvert === point.id;
-            const dureeReelle = point.demarreAt
-              ? Math.max(0, Math.floor(((point.termineAt ? new Date(point.termineAt).getTime() : horlogeSeance) - new Date(point.demarreAt).getTime()) / 60000))
-              : null;
-            const decisionsLiees = decisionsPourRapport.filter((d) => (point.decisionsIds || []).includes(String(d.id)));
-            return <Card key={point.id} className="p-4 md:p-5">
+
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+            {/* Colonne d'agenda stable : un seul dossier affiché à droite. */}
+            <aside className="xl:col-span-4 space-y-4 min-w-0">
+              <Card className="p-4 md:p-5">
+                <div className="flex justify-between gap-3 items-start flex-wrap">
+                  <div>
+                    <Eyebrow>Programme de la réunion</Eyebrow>
+                    <h3 className="text-base font-bold" style={{ color: C.ink, ...F_DISPLAY }}>Ordre du jour</h3>
+                    <p className="text-[11px] mt-1" style={{ color: C.sub }}>{agendaPlanifie.length} points · {dureePrevue} min · fin estimée {comiteHeure(minutesPlanifiees)}</p>
+                  </div>
+                  <Badge tone="navy">{agendaPlanifie.filter((p) => !!p.termineAt).length}/{agendaPlanifie.length} traités</Badge>
+                </div>
+                <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full" style={{ background: '#E8EBF2' }} role="progressbar"
+                  aria-label="Progression de l'ordre du jour" aria-valuenow={agendaPlanifie.filter((p) => !!p.termineAt).length}
+                  aria-valuemin={0} aria-valuemax={agendaPlanifie.length}>
+                  <div className="h-full rounded-full" style={{ background: C.teal, width: `${agendaPlanifie.length ? (agendaPlanifie.filter((p) => !!p.termineAt).length / agendaPlanifie.length) * 100 : 0}%` }} />
+                </div>
+                <nav aria-label="Points de l'ordre du jour" className="mt-4 space-y-2 max-h-[700px] overflow-y-auto pr-1">
+                  {agendaPlanifie.map((p) => {
+                    const selectionne = (agendaPlanifie.find((item) => item.id === pointOuvert) || agendaPlanifie[0])?.id === p.id;
+                    const statut = p.termineAt ? 'Traité' : p.demarreAt ? 'En cours' : 'À traiter';
+                    const colorStatut = p.termineAt ? C.teal : p.demarreAt ? C.gold : C.sub;
+                    return (
+                      <button type="button" key={p.id} onClick={() => setPointOuvert(p.id)}
+                        aria-current={selectionne ? 'step' : undefined}
+                        className="w-full text-left rounded-xl border p-3 transition-colors focus-visible:outline focus-visible:outline-2"
+                        style={{ borderColor: selectionne ? C.gold : C.line, background: selectionne ? '#FFF9ED' : '#FAFBFD', boxShadow: selectionne ? `inset 3px 0 0 ${C.gold}` : 'none' }}>
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="font-semibold text-[11px]" style={{ color: selectionne ? C.navy : C.sub }}>
+                            {p.debut}–{p.fin}
+                          </span>
+                          <span className="text-[10px] font-semibold" style={{ color: colorStatut }}>{statut}</span>
+                        </div>
+                        <div className="flex items-start gap-2 mt-1.5">
+                          <span className="shrink-0 w-6 h-6 rounded-lg text-[11px] font-bold flex items-center justify-center"
+                            style={{ background: selectionne ? C.navy : '#EBEEF4', color: selectionne ? '#fff' : C.navy }}>{p.index + 1}</span>
+                          <span className="text-xs font-semibold leading-5 min-w-0" style={{ color: C.ink }}>{p.titre}</span>
+                        </div>
+                        <div className="flex gap-2 mt-2 items-center justify-between">
+                          <span className="text-[10px]" style={{ color: C.sub }}>{p.duree} min prévues</span>
+                          {p.id === COMITE_SUIVI_PRECEDENT_ID && <span className="text-[9px] font-bold" style={{ color: '#A4771B' }}>Suivi obligatoire</span>}
+                          {selectionne && <span className="text-[10px] font-bold" style={{ color: C.indigo }}>Dossier ouvert →</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </Card>
+              <Card className="p-4 md:p-5">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold" style={{ color: C.ink }}>Présences & quorum</h4>
+                  <Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Atteint' : 'À confirmer'}</Badge>
+                </div>
+                <p className="text-xs mt-2" style={{ color: C.sub }}>
+                  {personnesPresentes.length} présents sur {personnesConvoquees.length} convoqués · seuil {seuilQuorum} · taux {tauxPresence.toFixed(1)} %
+                </p>
+                <div className="w-full h-1.5 rounded-full overflow-hidden mt-3" style={{ background: '#E8EBF2' }}>
+                  <div className="h-full" style={{ background: quorumAtteint ? C.teal : C.gold, width: `${Math.min(100, tauxPresence)}%` }} />
+                </div>
+                <div className="space-y-2 mt-3 max-h-44 overflow-y-auto">
+                  {personnesConvoquees.slice(0, 12).map((p) => <div key={p.id} className="flex justify-between gap-2 text-[11px]">
+                    <span className="truncate" style={{ color: C.ink }}>{p.nom}</span>
+                    <span className="font-semibold shrink-0" style={{ color: seance.presences?.[p.id] === 'present' ? C.teal : C.sub }}>
+                      {seance.presences?.[p.id] === 'present' ? 'Présent' : seance.presences?.[p.id] === 'excuse' ? 'Excusé' : seance.presences?.[p.id] === 'absent' ? 'Absent' : 'Non pointé'}
+                    </span>
+                  </div>)}
+                  {!personnesConvoquees.length && <p className="text-xs" style={{ color: C.sub }}>Aucun participant convoqué pour cette séance.</p>}
+                </div>
+                <button type="button" className="text-xs font-bold mt-3" style={{ color: C.indigo }} onClick={() => setOnglet('presence')}>
+                  Feuille de présence complète →
+                </button>
+              </Card>
+              <Card className="p-4 md:p-5">
+                <Eyebrow>Préparation des décisions</Eyebrow>
+                <h4 className="text-sm font-bold" style={{ color: C.ink }}>Allocation des fonds clients</h4>
+                <p className="text-xs mt-2" style={{ color: C.sub }}>Encours {fmt(Math.round(totalRef))} {devise} · {clients.length} portefeuille(s)</p>
+                <div className="mt-3 space-y-2">
+                  {assetMixAnalyse.map((part) => <div key={part.name}>
+                    <div className="flex justify-between gap-2 text-[11px]"><span>{part.name}</span><b>{part.value.toFixed(1)} %</b></div>
+                    <div className="w-full h-1.5 rounded-full overflow-hidden mt-1" style={{ background: '#E8EBF2' }}>
+                      <div className="h-full" style={{ background: part.name === 'Liquidité' ? C.teal : part.name === 'Actions' ? C.navy : C.gold, width: `${Math.min(100, Math.max(0, part.value))}%` }} />
+                    </div>
+                  </div>)}
+                </div>
+                <button type="button" onClick={() => { setPointOuvert('allocation-fonds'); setOnglet('allocation'); }}
+                  className="mt-4 text-xs font-bold" style={{ color: C.indigo }}>Présentation détaillée des allocations →</button>
+              </Card>
+            </aside>
+            <section className="xl:col-span-8 min-w-0 space-y-4" aria-label="Dossier du point sélectionné">
+              {agendaPlanifie.filter((p) => p.id === (agendaPlanifie.find((item) => item.id === pointOuvert) || agendaPlanifie[0])?.id).map((point) => {
+                const vote = votesParPoint(point);
+                const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === point.recommandationId);
+                const ouvert = true;
+                const dureeReelle = point.demarreAt
+                  ? Math.max(0, Math.floor(((point.termineAt ? new Date(point.termineAt).getTime() : horlogeSeance) - new Date(point.demarreAt).getTime()) / 60000))
+                  : null;
+                const decisionsLiees = decisionsPourRapport.filter((d) => (point.decisionsIds || []).includes(String(d.id)));
+            return <Card key={point.id} className="p-4 md:p-5 min-w-0">
               <div className="flex items-start gap-3 flex-wrap">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white" style={{ background: pointEnCours?.id === point.id ? C.teal : C.navy }}>{point.index + 1}</div>
                 <div className="flex-1 min-w-[210px]">
-                  <div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-bold" style={{ color: C.ink }}>{point.titre}</span>
+                  <div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-bold" style={{ color: C.ink, ...F_DISPLAY }}>{point.titre}</span>
                     {point.id === COMITE_SUIVI_PRECEDENT_ID && <Badge tone="gold">Obligatoire · avant clôture</Badge>}
                     <Badge tone={point.termineAt ? 'teal' : point.demarreAt ? 'gold' : 'slate'}>{point.termineAt ? 'Traité' : point.demarreAt ? 'En cours' : 'À traiter'}</Badge>
                   </div>
                   <div className="text-xs mt-1" style={{ color: C.sub }}>{point.debut}–{point.fin} · {point.duree} min prévues · {dureeReelle === null ? 'Non démarré' : `${dureeReelle} min réelles`}</div>
                 </div>
-                <button type="button" className="px-3 py-2 text-xs rounded-xl font-semibold" style={{ background: '#EEF0F6', color: C.ink }} onClick={() => setPointOuvert(ouvert ? '' : point.id)}>{ouvert ? 'Réduire ▲' : 'Préparer / traiter ▼'}</button>
+                <Badge tone={vote.resultat === 'Adopté' ? 'teal' : vote.resultat === 'Rejeté' ? 'coral' : 'slate'}>{vote.resultat}</Badge>
               </div>
               {ouvert && <div className="mt-4 space-y-4 border-t pt-4" style={{ borderColor: C.line }}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -34174,11 +34482,38 @@ function Comite({
                 </div>
               </div>}
             </Card>;
-          })}
-          <Card className="p-4 gsm-comite-no-print">
-            <div className="flex flex-wrap items-end gap-3"><label className="flex-1 min-w-[230px] space-y-1"><span className="block text-xs font-bold">Ajouter un point avant le suivi du comité précédent</span><input className="w-full p-2 border rounded-xl text-xs" style={{ borderColor: C.line }} value={nouveauPoint} onChange={(e) => setNouveauPoint(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ajouterPoint(); }} placeholder="Ex. Risque de concentration et mesures proposées" /></label><Btn onClick={ajouterPoint} disabled={!nouveauPoint.trim()}>Ajouter</Btn></div>
-            <p className="text-[11px] mt-2" style={{ color: C.sub }}>Le suivi des grandes décisions du comité précédent et la clôture sont des étapes permanentes : elles ne peuvent pas être supprimées ni déplacées après la clôture.</p>
-          </Card>
+              })}
+              <Card className="p-4 md:p-5 gsm-comite-no-print">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <Eyebrow>Préparation de l'ordre du jour</Eyebrow>
+                    <h4 className="text-sm font-bold" style={{ color: C.ink }}>Ajouter un dossier à examiner</h4>
+                    <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                      Le suivi du comité précédent reste toujours l'avant-dernier point, juste avant la clôture.
+                    </p>
+                  </div>
+                  <Badge tone="gold">Suivi obligatoire conservé</Badge>
+                </div>
+                <div className="flex items-end flex-wrap gap-3 mt-3">
+                  <label className="flex-1 min-w-[210px] space-y-1">
+                    <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Intitulé du nouveau point</span>
+                    <input className="w-full p-2 border rounded-xl text-xs" style={{ borderColor: C.line }}
+                      value={nouveauPoint} onChange={(e) => setNouveauPoint(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') ajouterPoint(); }}
+                      placeholder="Ex. Limites de concentration sectorielle" />
+                  </label>
+                  <Btn onClick={ajouterPoint} disabled={!nouveauPoint.trim()}>Ajouter au programme</Btn>
+                </div>
+              </Card>
+              <div className="flex flex-wrap justify-between gap-3 items-center rounded-2xl border p-4 gsm-comite-no-print" style={{ borderColor: C.line, background: '#F6F8FC' }}>
+                <div>
+                  <div className="text-xs font-bold" style={{ color: C.ink }}>Procès-verbal de la séance</div>
+                  <p className="text-[11px] mt-1" style={{ color: C.sub }}>Présences, analyses, votes, décisions et suivi du comité précédent alimentent automatiquement le projet de PV.</p>
+                </div>
+                <Btn tone="gold" onClick={genererProcesVerbal}>Générer le PV (.doc)</Btn>
+              </div>
+            </section>
+          </div>
         </div>
       )}
 
@@ -34191,13 +34526,415 @@ function Comite({
         </Card>
       </div>}
 
-      {onglet === 'allocation' && <div className="space-y-4 gsm-comite-interactive">
-        <Card className="p-5"><div className="flex justify-between gap-3 flex-wrap"><div><Eyebrow>Présentation en séance</Eyebrow><h3 className="text-base font-bold">Allocation des fonds des clients</h3><p className="text-xs mt-1" style={{ color: C.sub }}>Pondérations calculées à partir des encours et des répartitions disponibles ; données indicatives pour la séance.</p></div><Badge tone="navy">{clients.length} portefeuille(s)</Badge></div>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4"><div><Donut data={assetMixAnalyse} size={220} /></div><div className="space-y-3">{assetMixAnalyse.map((part) => <div key={part.name}><div className="flex justify-between text-xs mb-1"><b>{part.name}</b><span>{part.value.toFixed(1)} %</span></div><div className="h-2 rounded-full overflow-hidden" style={{ background: '#E8ECF2' }}><div className="h-2 rounded-full" style={{ width: `${Math.max(0, Math.min(100, part.value))}%`, background: C.teal }} /></div><p className="text-[11px] mt-1" style={{ color: C.sub }}>{fmt(Math.round(totalRef * part.value / 100))} {devise} (indicatif)</p></div>)}</div></div>
-        </Card>
-        <Card className="p-5"><Eyebrow>Allocation réelle chargée / cible d’investissement par compte</Eyebrow><div className="overflow-x-auto mt-3"><table className="w-full" style={{ minWidth: 980 }}><thead><tr>{['Client / portefeuille', 'Marché', 'Encours natif', 'Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité', 'Cible Actions', 'Écart Actions'].map((titre) => <Th key={titre}>{titre}</Th>)}</tr></thead><tbody>{clients.map((c) => { const ecart = Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0); return <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}><Td className="font-semibold">{c.nom}</Td><Td>{c.marche}</Td><Td mono>{fmt(c.encours)} {c.devise}</Td><Td>{c.alloc?.Actions || 0}%</Td><Td>{c.alloc?.['Obl. souveraines'] || 0}%</Td><Td>{c.alloc?.['Obl. privées'] || 0}%</Td><Td>{c.alloc?.Liquidité || 0}%</Td><Td>{c.cible?.Actions || 0}%</Td><Td><Badge tone={Math.abs(ecart) >= 5 ? 'coral' : 'teal'}>{ecart > 0 ? '+' : ''}{ecart.toFixed(1)} pts</Badge></Td></tr>; })}</tbody></table></div></Card>
-        <Card className="p-5"><p className="text-sm font-bold">Orientations et commentaires d’allocation</p><textarea className="w-full border rounded-xl p-3 text-xs mt-2" style={{ borderColor: C.line }} rows={4} placeholder="Priorités de réallocation, contraintes clients, décisions soumises au vote…" value={seance.commentairesAllocation || ''} onChange={(e) => modifierSeance('commentairesAllocation', e.target.value)} /><div className="flex flex-wrap gap-2 mt-3"><Btn tone="ghost" onClick={() => { setOnglet('seance'); setPointOuvert('allocation-fonds'); }}>Délibérer sur l’allocation dans l’ordre du jour</Btn><Btn onClick={() => go('decisions-comite')}>Ouvrir Prise de décisions</Btn></div></Card>
-      </div>}
+      {onglet === 'allocation' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <Card className="p-4 md:p-5" style={{ borderColor: C.navy }}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <Eyebrow>Comparaison historique · allocation des fonds</Eyebrow>
+                <h3 className="text-base font-bold" style={{ color: C.ink }}>
+                  Évolution de la valorisation et de la clientèle
+                </h3>
+                <p className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+                  Lecture inspirée du reporting historique : choisissez une année initiale et
+                  une année finale pour mesurer l’évolution globale, institutionnelle et
+                  particulière avant d’examiner l’allocation courante des fonds.
+                </p>
+              </div>
+              <Badge tone="navy">Gestion sous mandat · {devise}</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 mt-4">
+              <div className="xl:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border p-3" style={{ borderColor: C.line }}>
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>
+                    Année initiale
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 mt-2">
+                    {allocationAnneesDisponibles.map((year) => {
+                      const disabled = year >= allocationAnneeFinaleActive;
+                      const active = year === allocationAnneeInitialeActive;
+                      return (
+                        <button
+                          key={`allocation-initiale-${year}`}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setAllocationAnneeInitiale(year)}
+                          className="px-2 py-2 rounded-lg border text-[11px] font-semibold"
+                          style={{
+                            borderColor: active ? C.navy : C.line,
+                            background: active ? C.navy : '#fff',
+                            color: active ? '#fff' : disabled ? '#B3B8C2' : C.sub,
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {year}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border p-3" style={{ borderColor: C.line }}>
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>
+                    Année finale
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 mt-2">
+                    {allocationAnneesDisponibles.map((year) => {
+                      const disabled = year <= allocationAnneeInitialeActive;
+                      const active = year === allocationAnneeFinaleActive;
+                      return (
+                        <button
+                          key={`allocation-finale-${year}`}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setAllocationAnneeFinale(year)}
+                          className="px-2 py-2 rounded-lg border text-[11px] font-semibold"
+                          style={{
+                            borderColor: active ? C.navy : C.line,
+                            background: active ? C.navy : '#fff',
+                            color: active ? '#fff' : disabled ? '#B3B8C2' : C.sub,
+                            cursor: disabled ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {year}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="xl:col-span-3 rounded-xl border p-4 flex items-center justify-between gap-4"
+                style={{ borderColor: C.navy, background: '#FAFAFC' }}
+              >
+                <div>
+                  <div className="text-[10px] uppercase font-semibold" style={{ color: C.sub }}>
+                    Variation globale de la valorisation
+                  </div>
+                  <div
+                    className="text-xl font-bold mt-1"
+                    style={{
+                      ...F_MONO,
+                      color: allocationCouleurVariation(
+                        allocationGlobalComparaison.variationValorisation
+                      ),
+                    }}
+                  >
+                    {allocationGlobalComparaison.deltaValorisation >= 0 ? '+' : '-'}
+                    {fmtCompactMontant(
+                      Math.abs(allocationGlobalComparaison.deltaValorisation)
+                    )}{' '}
+                    {devise}
+                  </div>
+                  <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                    {allocationAnneeInitialeActive} → {allocationAnneeFinaleActive}
+                  </div>
+                </div>
+                {renderAllocationRing(
+                  allocationGlobalComparaison.variationValorisation,
+                  82
+                )}
+              </div>
+
+              <div
+                className="xl:col-span-5 rounded-xl border p-4"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                <div className="text-[10px] uppercase font-semibold" style={{ color: C.sub }}>
+                  Lecture globale
+                </div>
+                <p className="text-sm mt-2 leading-relaxed" style={{ color: C.ink }}>
+                  Entre <b>{allocationAnneeInitialeActive}</b> et{' '}
+                  <b>{allocationAnneeFinaleActive}</b>, la valorisation des portefeuilles
+                  sous mandat affiche{' '}
+                  <b
+                    style={{
+                      color: allocationCouleurVariation(
+                        allocationGlobalComparaison.variationValorisation
+                      ),
+                    }}
+                  >
+                    {allocationGlobalComparaison.deltaValorisation >= 0
+                      ? 'une progression'
+                      : 'un recul'}{' '}
+                    de {fmtCompactMontant(
+                      Math.abs(allocationGlobalComparaison.deltaValorisation)
+                    )}{' '}
+                    {devise}
+                  </b>
+                  , soit{' '}
+                  <b>
+                    {allocationGlobalComparaison.variationValorisation == null
+                      ? 'N/D'
+                      : `${
+                          allocationGlobalComparaison.variationValorisation >= 0 ? '+' : ''
+                        }${allocationGlobalComparaison.variationValorisation.toFixed(2)} %`}
+                  </b>. Le nombre de portefeuilles actifs passe de{' '}
+                  <b>{allocationGlobalComparaison.clientsInitiaux}</b> à{' '}
+                  <b>{allocationGlobalComparaison.clientsFinaux}</b>.
+                </p>
+                <div className="text-[9px] mt-2" style={{ color: C.sub }}>
+                  Valorisation historique reconstituée dans la maquette ; les dates d’entrée
+                  clients sont, elles, utilisées directement pour les effectifs.
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-4">
+            <Card className="p-4 md:p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <Eyebrow>Progression de la valorisation</Eyebrow>
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>
+                    Global · Institutionnel · Particulier
+                  </div>
+                </div>
+                <Badge tone="slate">
+                  {allocationAnneeInitialeActive} → {allocationAnneeFinaleActive}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                {allocationSegmentsComparaison.map((segment) => {
+                  const hausse = segment.deltaValorisation >= 0;
+                  return (
+                    <div
+                      key={`valorisation-${segment.id}`}
+                      className="rounded-xl border p-3"
+                      style={{
+                        borderColor: C.line,
+                        background: segment.id === 'global' ? '#FAFAFC' : '#fff',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div
+                            className="text-xs uppercase font-bold"
+                            style={{ color: segment.id === 'global' ? C.navy : C.coral }}
+                          >
+                            {segment.label}
+                          </div>
+                          <Badge tone="navy">Géré</Badge>
+                        </div>
+                        {renderAllocationRing(segment.variationValorisation, 62)}
+                      </div>
+                      <div
+                        className="text-base font-bold mt-2"
+                        style={{
+                          ...F_MONO,
+                          color: allocationCouleurVariation(segment.variationValorisation),
+                        }}
+                      >
+                        {hausse ? '+' : '-'}
+                        {fmtCompactMontant(Math.abs(segment.deltaValorisation))}{' '}
+                        {devise}
+                      </div>
+                      <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
+                        {hausse ? 'Augmentation' : 'Diminution'} de la valorisation de{' '}
+                        <b style={{ color: C.ink }}>
+                          {segment.variationValorisation == null
+                            ? 'N/D'
+                            : `${Math.abs(segment.variationValorisation).toFixed(2)} %`}
+                        </b>{' '}
+                        pour le segment {segment.label.toLowerCase()}.
+                      </div>
+                      <div
+                        className="text-[9px] mt-2 pt-2"
+                        style={{ color: C.sub, borderTop: `1px solid ${C.line}` }}
+                      >
+                        {fmtCompactMontant(segment.valorisationInitiale)} →{' '}
+                        {fmtCompactMontant(segment.valorisationFinale)} {devise}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            <Card className="p-4 md:p-5">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <Eyebrow>Progression du nombre de clients</Eyebrow>
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>
+                    Global · Institutionnel · Particulier
+                  </div>
+                </div>
+                <Badge tone="slate">
+                  {allocationAnneeInitialeActive} → {allocationAnneeFinaleActive}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                {allocationSegmentsComparaison.map((segment) => {
+                  const hausse = segment.deltaClients >= 0;
+                  return (
+                    <div
+                      key={`clients-${segment.id}`}
+                      className="rounded-xl border p-3"
+                      style={{
+                        borderColor: C.line,
+                        background: segment.id === 'global' ? '#FAFAFC' : '#fff',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div
+                            className="text-xs uppercase font-bold"
+                            style={{ color: segment.id === 'global' ? C.navy : C.coral }}
+                          >
+                            {segment.label}
+                          </div>
+                          <Badge tone="navy">Géré</Badge>
+                        </div>
+                        {renderAllocationRing(segment.variationClients, 62)}
+                      </div>
+                      <div
+                        className="text-xl font-bold mt-2"
+                        style={{
+                          ...F_MONO,
+                          color: allocationCouleurVariation(segment.variationClients),
+                        }}
+                      >
+                        {segment.deltaClients >= 0 ? '+' : ''}{segment.deltaClients}
+                      </div>
+                      <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
+                        {segment.deltaClients === 0
+                          ? 'Effectif stable'
+                          : hausse
+                          ? 'Augmentation du nombre de clients'
+                          : 'Diminution du nombre de clients'}{' '}
+                        sur le segment {segment.label.toLowerCase()}.
+                      </div>
+                      <div
+                        className="text-[9px] mt-2 pt-2"
+                        style={{ color: C.sub, borderTop: `1px solid ${C.line}` }}
+                      >
+                        {segment.clientsInitiaux} → {segment.clientsFinaux} portefeuille(s)
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="p-5">
+            <div className="flex justify-between gap-3 flex-wrap">
+              <div>
+                <Eyebrow>Présentation en séance</Eyebrow>
+                <h3 className="text-base font-bold">Allocation des fonds des clients</h3>
+                <p className="text-xs mt-1" style={{ color: C.sub }}>
+                  Pondérations calculées à partir des encours et des répartitions disponibles ;
+                  données indicatives pour la séance.
+                </p>
+              </div>
+              <Badge tone="navy">{clients.length} portefeuille(s)</Badge>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              <div><Donut data={assetMixAnalyse} size={220} /></div>
+              <div className="space-y-3">
+                {assetMixAnalyse.map((part) => (
+                  <div key={part.name}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <b>{part.name}</b><span>{part.value.toFixed(1)} %</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: '#E8ECF2' }}>
+                      <div
+                        className="h-2 rounded-full"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, part.value))}%`,
+                          background:
+                            part.name === 'Liquidité'
+                              ? C.teal
+                              : part.name === 'Actions'
+                              ? C.navy
+                              : C.gold,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                      {fmt(Math.round(totalRef * part.value / 100))} {devise} (indicatif)
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <Eyebrow>Allocation réelle chargée / cible d’investissement par compte</Eyebrow>
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full" style={{ minWidth: 980 }}>
+                <thead>
+                  <tr>
+                    {[
+                      'Client / portefeuille',
+                      'Marché',
+                      'Encours natif',
+                      'Actions',
+                      'Obl. souveraines',
+                      'Obl. privées',
+                      'Liquidité',
+                      'Cible Actions',
+                      'Écart Actions',
+                    ].map((titre) => <Th key={titre}>{titre}</Th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {clients.map((c) => {
+                    const ecart =
+                      Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0);
+                    return (
+                      <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                        <Td className="font-semibold">{c.nom}</Td>
+                        <Td>{c.marche}</Td>
+                        <Td mono>{fmt(c.encours)} {c.devise}</Td>
+                        <Td>{c.alloc?.Actions || 0}%</Td>
+                        <Td>{c.alloc?.['Obl. souveraines'] || 0}%</Td>
+                        <Td>{c.alloc?.['Obl. privées'] || 0}%</Td>
+                        <Td>{c.alloc?.Liquidité || 0}%</Td>
+                        <Td>{c.cible?.Actions || 0}%</Td>
+                        <Td>
+                          <Badge tone={Math.abs(ecart) >= 5 ? 'coral' : 'teal'}>
+                            {ecart > 0 ? '+' : ''}{ecart.toFixed(1)} pts
+                          </Badge>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <p className="text-sm font-bold">Orientations et commentaires d’allocation</p>
+            <textarea
+              className="w-full border rounded-xl p-3 text-xs mt-2"
+              style={{ borderColor: C.line }}
+              rows={4}
+              placeholder="Priorités de réallocation, contraintes clients, décisions soumises au vote…"
+              value={seance.commentairesAllocation || ''}
+              onChange={(e) => modifierSeance('commentairesAllocation', e.target.value)}
+            />
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Btn
+                tone="ghost"
+                onClick={() => {
+                  setOnglet('seance');
+                  setPointOuvert('allocation-fonds');
+                }}
+              >
+                Délibérer sur l’allocation dans l’ordre du jour
+              </Btn>
+              <Btn onClick={() => go('decisions-comite')}>Ouvrir Prise de décisions</Btn>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {onglet === 'synthese' && (
         <div className="space-y-4 gsm-comite-interactive">
