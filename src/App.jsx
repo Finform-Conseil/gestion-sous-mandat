@@ -35569,6 +35569,120 @@ const gsmChatExportRegister = (requests) => {
   exportDownloadBlob(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }), 'registre-chat-invest-simulation.csv');
 };
 
+/* ------------------------------------ APERÇU IPHONE CHAT INVEST ------------------------------------ */
+/* La hauteur est fixe : les détails des instructions défilent exclusivement dans l'écran. */
+const GSM_CHAT_IPHONE_CSS = `
+.gsm-chat-iphone {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  max-width: 390px;
+  height: 810px;
+  min-height: 810px;
+  max-height: 810px;
+  padding: 7px;
+  border: 6px solid #16191e;
+  border-radius: 54px;
+  background: linear-gradient(135deg, #333942 0%, #101216 45%, #262a30 100%);
+  box-shadow: 0 26px 65px rgba(15, 27, 51, .25), 0 6px 19px rgba(15, 27, 51, .12),
+    inset 0 0 0 1px rgba(255,255,255,.12);
+  isolation: isolate;
+}
+.gsm-chat-iphone-screen {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  border-radius: 42px;
+  overflow: hidden;
+  background: #f7f9fc;
+}
+.gsm-chat-iphone-top {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  background: #102a43;
+  color: #fff;
+}
+.gsm-chat-iphone-island {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 9px;
+  width: 118px;
+  height: 30px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #050609;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  gap: 8px;
+  pointer-events: none;
+}
+.gsm-chat-iphone-island-camera {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #244163, #0a1524 70%);
+  box-shadow: 0 0 0 2px #12151b;
+}
+.gsm-chat-iphone-statusbar {
+  height: 52px;
+  padding: 12px 23px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .01em;
+}
+.gsm-chat-iphone-scroll {
+  box-sizing: border-box;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #b4c1cf transparent;
+}
+.gsm-chat-iphone-scroll::-webkit-scrollbar { width: 5px; }
+.gsm-chat-iphone-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: #b4c1cf; }
+.gsm-chat-iphone-bottom {
+  flex: 0 0 27px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f7f9fc;
+}
+.gsm-chat-iphone-home {
+  width: 112px;
+  height: 5px;
+  border-radius: 999px;
+  background: #1f2937;
+}
+.gsm-chat-iphone-side {
+  position: absolute;
+  width: 3px;
+  background: #303842;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.gsm-chat-iphone-side--mute { left: -9px; top: 112px; height: 24px; }
+.gsm-chat-iphone-side--volume { left: -9px; top: 156px; height: 69px; }
+.gsm-chat-iphone-side--power { right: -9px; top: 178px; height: 75px; }
+@media (max-width: 420px) {
+  .gsm-chat-iphone { border-radius: 48px; padding: 6px; }
+  .gsm-chat-iphone-screen { border-radius: 37px; }
+  .gsm-chat-iphone-side { display: none; }
+}
+`;
+
 function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnabled = true, goClient, orders = [], groupedBatches = [] }) {
   const [canal, setCanal] = useState('Chat Invest');
   const [texte, setTexte] = useState('');
@@ -35581,6 +35695,10 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
   const [changeMode, setChangeMode] = useState('');
   const [changeQty, setChangeQty] = useState('');
   const [changePrice, setChangePrice] = useState('');
+  const phoneScrollRef = useRef(null);
+  useEffect(() => {
+    if (phoneScrollRef.current) phoneScrollRef.current.scrollTop = 0;
+  }, [conversationTab]);
   const market = clientMarket(draft?.instrument, draft?.marche);
   const compatible = CLIENT_GESTION_LIBRE.portefeuilles.filter((p) => p.marche === market?.marche);
   const recent = requests.filter((r) => r.clientId === CLIENT_GESTION_LIBRE.id);
@@ -35614,6 +35732,7 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
   const currentRequest = recent.find((r) => r.reference === selectedRef);
   return (
     <div className="space-y-5">
+      <style>{GSM_CHAT_IPHONE_CSS}</style>
       <ClientBreadcrumb items={['Espace Client', 'Chat Invest']} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div><Eyebrow>Gestion libre · Canal digital</Eyebrow>
@@ -35624,16 +35743,23 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
           <Btn tone="ghost" onClick={() => goClient?.('client-orders')}>Mes ordres →</Btn></div>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 items-start">
-        {mobileOpen && <div className="mx-auto w-full" style={{ maxWidth: 400 }}>
-          <div className="rounded-[35px] p-2.5 shadow-xl" style={{ background: '#0D1C30', border: '5px solid #233852' }}>
-            <div className="rounded-[27px] overflow-hidden" style={{ background: '#F7F9FC', minHeight: 590 }}>
-              <div className="px-5 pt-3 pb-4 text-white" style={{ background: '#102A43' }}>
-                <div className="flex justify-between text-[11px] mb-4"><span>9:41 · Aperçu</span><span>●●● ▰</span></div>
-                <div className="flex justify-between items-center"><div><div className="font-bold text-base">Chat Invest</div>
-                  <div className="text-[11px] opacity-75">{CLIENT_GESTION_LIBRE.nom} · Accès {accessEnabled ? 'activé' : 'désactivé'}</div></div>
-                  <Badge tone="gold">Démo</Badge></div>
+        {mobileOpen && <div className="mx-auto w-full flex justify-center" style={{ maxWidth: 410 }}>
+          <div className="gsm-chat-iphone" role="region" aria-label="Aperçu iPhone · Chat Invest (simulation)">
+            <span className="gsm-chat-iphone-side gsm-chat-iphone-side--mute" aria-hidden="true" />
+            <span className="gsm-chat-iphone-side gsm-chat-iphone-side--volume" aria-hidden="true" />
+            <span className="gsm-chat-iphone-side gsm-chat-iphone-side--power" aria-hidden="true" />
+            <div className="gsm-chat-iphone-screen">
+              <div className="gsm-chat-iphone-top">
+                <span className="gsm-chat-iphone-island" aria-hidden="true"><span className="gsm-chat-iphone-island-camera" /></span>
+                <div className="gsm-chat-iphone-statusbar"><span>9:41</span><span className="flex items-center gap-1.5" aria-label="Réseau et batterie"><span>5G</span><span>▂▄▆</span><span>▰</span></span></div>
+                <div className="px-5 pt-1 pb-4">
+                  <div className="flex justify-between items-center gap-2"><div className="min-w-0"><div className="font-bold text-base">Chat Invest</div>
+                    <div className="text-[11px] opacity-75 truncate">{CLIENT_GESTION_LIBRE.nom} · Accès {accessEnabled ? 'activé' : 'désactivé'}</div></div>
+                    <Badge tone="gold">Démo</Badge></div>
+                </div>
               </div>
-              <div className="p-3 space-y-3">
+              <div className="gsm-chat-iphone-scroll" ref={phoneScrollRef} tabIndex={0} role="region" aria-label="Contenu défilant de l'application Chat Invest">
+                <div className="p-3 space-y-3">
                 <div className="flex gap-2">{['chat', 'ordres'].map((tab) => <button key={tab} type="button"
                   onClick={() => setConversationTab(tab)}
                   className="flex-1 py-2 rounded-xl text-xs font-semibold"
@@ -35682,7 +35808,7 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
                       <button type="button" onClick={submit} disabled={!checked || !accessEnabled}
                         className="flex-1 rounded-xl py-2 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.teal }}>Confirmer & transmettre</button></div>
                   </div>}
-                </> : <div className="space-y-2 max-h-[520px] overflow-y-auto">
+                </> : <div className="space-y-2">
                   {recent.length === 0 && <div className="text-xs" style={{ color: C.sub }}>Aucune instruction transmise.</div>}
                   {recent.map((r) => <button key={r.reference} type="button" onClick={() => setSelectedRef(r.reference)}
                     className="w-full text-left rounded-xl border p-3" style={{ borderColor: selectedRef === r.reference ? C.teal : C.line, background: '#fff' }}>
@@ -35693,7 +35819,9 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
                 <div className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
                   Simulation locale : aucun message WhatsApp n'est envoyé, aucune identité n'est authentifiée, aucun ordre réel n'est routé.
                 </div>
+                </div>
               </div>
+              <div className="gsm-chat-iphone-bottom" aria-hidden="true"><span className="gsm-chat-iphone-home" /></div>
             </div>
           </div>
         </div>}
