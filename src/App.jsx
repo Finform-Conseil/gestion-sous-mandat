@@ -34864,51 +34864,6 @@ function Comite({
             </div>
           </Card>
 
-          <Card className="p-5">
-            <Eyebrow>Allocation réelle chargée / cible d’investissement par compte</Eyebrow>
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full" style={{ minWidth: 980 }}>
-                <thead>
-                  <tr>
-                    {[
-                      'Client / portefeuille',
-                      'Marché',
-                      'Encours natif',
-                      'Actions',
-                      'Obl. souveraines',
-                      'Obl. privées',
-                      'Liquidité',
-                      'Cible Actions',
-                      'Écart Actions',
-                    ].map((titre) => <Th key={titre}>{titre}</Th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {clients.map((c) => {
-                    const ecart =
-                      Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0);
-                    return (
-                      <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                        <Td className="font-semibold">{c.nom}</Td>
-                        <Td>{c.marche}</Td>
-                        <Td mono>{fmt(c.encours)} {c.devise}</Td>
-                        <Td>{c.alloc?.Actions || 0}%</Td>
-                        <Td>{c.alloc?.['Obl. souveraines'] || 0}%</Td>
-                        <Td>{c.alloc?.['Obl. privées'] || 0}%</Td>
-                        <Td>{c.alloc?.Liquidité || 0}%</Td>
-                        <Td>{c.cible?.Actions || 0}%</Td>
-                        <Td>
-                          <Badge tone={Math.abs(ecart) >= 5 ? 'coral' : 'teal'}>
-                            {ecart > 0 ? '+' : ''}{ecart.toFixed(1)} pts
-                          </Badge>
-                        </Td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
 
           <Card className="p-5">
             <p className="text-sm font-bold">Orientations et commentaires d’allocation</p>
