@@ -7123,7 +7123,7 @@ function Td({ children, mono, className = '' }) {
     </td>
   );
 }
-function Btn({ children, onClick, tone = 'navy' }) {
+function Btn({ children, onClick, tone = 'navy', disabled = false }) {
   const tones = {
     navy: { bg: C.navy, fg: '#fff' },
     gold: { bg: C.gold, fg: '#fff' },
@@ -7131,8 +7131,10 @@ function Btn({ children, onClick, tone = 'navy' }) {
   }[tone];
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="px-3.5 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97]"
+      disabled={disabled}
+      className="px-3.5 py-2 rounded-xl text-sm font-semibold transition-transform active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
       style={{
         background: tones.bg,
         color: tones.fg,
@@ -33124,6 +33126,58 @@ const comiteCsvCellule = (value) => {
   return `"${str.replace(/"/g, '""')}"`;
 };
 
+/* ------------------ COMITÉ : SÉANCE, QUORUM ET PV ------------------ */
+const COMITE_SEANCE_STORAGE_KEY = 'opcvm-gsm-comite-seance-v1';
+const COMITE_ARCHIVES_STORAGE_KEY = 'opcvm-gsm-comite-archives-v1';
+const COMITE_SUIVI_PRECEDENT_ID = 'suivi-comite-precedent';
+const COMITE_CLOTURE_ID = 'cloture-seance';
+const COMITE_AGENDA_INITIAL = [
+  { id: 'ouverture', titre: 'Ouverture, présence et validation du quorum', duree: 10, nature: 'information' },
+  { id: 'marche-analyse', titre: 'Conjoncture et recommandations techniques / fondamentales', duree: 20, nature: 'analyse' },
+  { id: 'risques-liquidite', titre: 'Risques, liquidité et contraintes des portefeuilles', duree: 15, nature: 'analyse' },
+  { id: 'allocation-fonds', titre: 'Présentation de l’allocation des fonds des clients', duree: 20, nature: 'decision' },
+  { id: 'arbitrages', titre: 'Décisions d’investissement et arbitrages proposés', duree: 30, nature: 'decision' },
+  { id: COMITE_SUIVI_PRECEDENT_ID, titre: 'Suivi des grandes décisions du comité précédent', duree: 15, nature: 'suivi' },
+  { id: COMITE_CLOTURE_ID, titre: 'Synthèse, responsables, prochaines échéances et clôture', duree: 10, nature: 'information' },
+];
+const comiteAgendaNormalise = (agenda) => {
+  const valeurs = Array.isArray(agenda) ? agenda : COMITE_AGENDA_INITIAL;
+  const distincts = [...new Map(valeurs.filter((p) => p && p.id)
+    .map((p) => [String(p.id), p])).values()];
+  const obligatoire = (id) => distincts.find((p) => p.id === id)
+    || COMITE_AGENDA_INITIAL.find((p) => p.id === id);
+  return [
+    ...distincts.filter((p) => ![COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(p.id)),
+    obligatoire(COMITE_SUIVI_PRECEDENT_ID),
+    obligatoire(COMITE_CLOTURE_ID),
+  ];
+};
+const comiteMinutes = (heure) => {
+  const [h, m] = String(heure || '09:00').split(':').map(Number);
+  return (Number.isFinite(h) ? h : 9) * 60 + (Number.isFinite(m) ? m : 0);
+};
+const comiteHeure = (minutes) => `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+const comiteEchapperHtml = (v) => String(v ?? '').replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const comiteResultatVote = (point, votants, quorumAtteint) => {
+  const voix = votants.reduce((acc, p) => {
+    const vote = point.votes?.[p.id];
+    if (vote === 'pour') acc.pour++;
+    if (vote === 'contre') acc.contre++;
+    if (vote === 'abstention') acc.abstention++;
+    return acc;
+  }, { pour: 0, contre: 0, abstention: 0 });
+  const exprimes = voix.pour + voix.contre;
+  const votesEmis = exprimes + voix.abstention;
+  const participationMinimale = Math.floor(votants.length / 2) + 1;
+  const resultat = !quorumAtteint ? 'Quorum non atteint' :
+    votesEmis < participationMinimale ? 'Vote incomplet' :
+    exprimes === 0 ? 'Aucun suffrage exprimé' :
+    voix.pour > voix.contre ? 'Adopté' :
+    voix.pour === voix.contre ? 'Égalité — non adopté' : 'Rejeté';
+  return { ...voix, exprimes, votesEmis, participationMinimale, resultat };
+};
+
 function Comite({
   devise = 'XOF',
   go,
@@ -33133,7 +33187,7 @@ function Comite({
   const [filtreBourse, setFiltreBourse] = useState('Toutes');
   const [filtreSecteur, setFiltreSecteur] = useState('Tous');
   const [filtreClient, setFiltreClient] = useState('');
-  const [onglet, setOnglet] = useState('synthese');
+  const [onglet, setOnglet] = useState('seance');
   const [editerRapport, setEditerRapport] = useState(false);
   const [ouvrirSelectionDecisions, setOuvrirSelectionDecisions] = useState(false);
   const [message, setMessage] = useState('');
@@ -33173,6 +33227,75 @@ function Comite({
   const [suivi, setSuivi] = useState(() =>
     comiteLireStockage(COMITE_RAPPORT_SUIVI_KEY, {})
   );
+  const [seance, setSeance] = useState(() => {
+    const stocke = comiteLireStockage(COMITE_SEANCE_STORAGE_KEY, {});
+    return {
+      heureDebut: '09:00', seuilQuorumPct: 50, presences: {},
+      agenda: COMITE_AGENDA_INITIAL.map((p) => ({ ...p })),
+      sujetPrecedent: '', commentairesAllocation: '', ...stocke,
+      agenda: comiteAgendaNormalise(stocke.agenda),
+    };
+  });
+  const [archivesComite, setArchivesComite] = useState(() => {
+    const archivees = comiteLireStockage(COMITE_ARCHIVES_STORAGE_KEY, []);
+    return Array.isArray(archivees) ? archivees : [];
+  });
+  const [horlogeSeance, setHorlogeSeance] = useState(Date.now());
+  const [nouveauPoint, setNouveauPoint] = useState('');
+  const [pointOuvert, setPointOuvert] = useState('marche-analyse');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try { window.localStorage.setItem(COMITE_SEANCE_STORAGE_KEY, JSON.stringify(seance)); }
+    catch { /* Les choix restent en mémoire. */ }
+  }, [seance]);
+  useEffect(() => {
+    if (!seance.agenda.some((p) => p.demarreAt && !p.termineAt)) return undefined;
+    const interval = window.setInterval(() => setHorlogeSeance(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [seance.agenda]);
+
+  const modifierSeance = (champ, value) => setSeance((v) => ({ ...v, [champ]: value }));
+  const modifierPoint = (id, changements) => setSeance((courant) => ({
+    ...courant,
+    agenda: comiteAgendaNormalise(courant.agenda.map((p) => p.id === id ? { ...p, ...changements } : p)),
+  }));
+  const ajouterPoint = () => {
+    const titre = nouveauPoint.trim();
+    if (!titre) return;
+    setSeance((courant) => ({ ...courant, agenda: comiteAgendaNormalise([
+      ...courant.agenda, { id: `point-${Date.now()}`, titre, duree: 10, nature: 'decision' },
+    ]) }));
+    setNouveauPoint('');
+  };
+  const retirerPoint = (id) => {
+    if ([COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(id)) return;
+    setSeance((courant) => ({ ...courant, agenda: comiteAgendaNormalise(courant.agenda.filter((p) => p.id !== id)) }));
+  };
+  const changerVote = (idPoint, idPersonne, vote) => setSeance((courant) => ({
+    ...courant,
+    agenda: courant.agenda.map((p) => p.id !== idPoint ? p : {
+      ...p, votes: { ...(p.votes || {}), [idPersonne]: vote },
+    }),
+  }));
+  const tournerPoint = (id, action) => setSeance((courant) => ({
+    ...courant,
+    agenda: courant.agenda.map((p) => p.id !== id ? p : action === 'demarrer'
+      ? { ...p, demarreAt: new Date().toISOString(), termineAt: null }
+      : { ...p, termineAt: new Date().toISOString() }),
+  }));
+  const preparerNouvelleSeance = () => {
+    if (typeof window !== 'undefined' && !window.confirm('Préparer une nouvelle séance ? La séance affichée sera réinitialisée ; exportez d’abord son PV si nécessaire.')) return;
+    setSeance({
+      heureDebut: '09:00', seuilQuorumPct: 50, presences: {},
+      agenda: COMITE_AGENDA_INITIAL.map((p) => ({ ...p })),
+      sujetPrecedent: '', commentairesAllocation: '',
+    });
+    setPointOuvert('ouverture');
+    setOnglet('seance');
+    setMessage('Nouvelle séance préparée : renseignez sa date et les présences. Les PV précédents exportés restent archivés.');
+    setEditerRapport(true);
+  };
   const [decisions, setDecisions] = useState(() => lireDecisionsComite());
   const [decisionSelectionnee, setDecisionSelectionnee] = useState(() =>
     lireDecisionsComite()[0]?.id || ''
@@ -33206,6 +33329,28 @@ function Comite({
         .map((personne) => `${personne.nom} — ${personne.fonction}`)
         .join(' ; ')
     : String(config.participants || '');
+  const personnesConvoquees = personnesSelectionnees;
+  const personnesPresentes = personnesConvoquees.filter((p) =>
+    seance.presences?.[p.id] === 'present');
+  const seuilQuorum = Math.max(1, Math.floor(personnesConvoquees.length * Number(seance.seuilQuorumPct || 50) / 100) + 1);
+  const quorumAtteint = personnesConvoquees.length > 0 && personnesPresentes.length >= seuilQuorum;
+  const tauxPresence = personnesConvoquees.length ? 100 * personnesPresentes.length / personnesConvoquees.length : 0;
+  const changerPresence = (id, valeur) => setSeance((courant) => ({ ...courant,
+    presences: { ...(courant.presences || {}), [id]: valeur },
+  }));
+  let minutesPlanifiees = comiteMinutes(seance.heureDebut);
+  const agendaPlanifie = comiteAgendaNormalise(seance.agenda).map((p, index) => {
+    const debut = comiteHeure(minutesPlanifiees);
+    const duree = Math.min(240, Math.max(5, Number(p.duree || 10)));
+    minutesPlanifiees += duree;
+    return { ...p, index, debut, fin: comiteHeure(minutesPlanifiees), duree };
+  });
+  const dureePrevue = agendaPlanifie.reduce((somme, p) => somme + p.duree, 0);
+  const pointEnCours = agendaPlanifie.find((p) => p.demarreAt && !p.termineAt);
+  const precedentArchive = [...archivesComite]
+    .filter((archive) => archive.date && archive.date < config.dateComite)
+    .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  const votesParPoint = (point) => comiteResultatVote(point, personnesPresentes, quorumAtteint);
   const employesFiltres = annuaireComite.filter((personne) =>
     `${personne.nom} ${personne.fonction}`
       .toLocaleLowerCase('fr')
@@ -33480,6 +33625,15 @@ function Comite({
       ['Retraits actifs', demandesActives.length],
       ['Besoin de trésorerie des retraits', Math.round(besoinTotal)],
       [],
+      ['QUORUM ET PRESENCES', 'Convoqués', personnesConvoquees.length, 'Présents', personnesPresentes.length, 'Quorum atteint', quorumAtteint ? 'Oui' : 'Non'],
+      ...personnesConvoquees.map((p) => ['Présence', p.nom, p.fonction, seance.presences?.[p.id] || 'non-renseigne']),
+      [],
+      ['ORDRE DU JOUR', 'Horaire début', 'Horaire fin', 'Durée min', 'Rapporteur', 'Pour', 'Contre', 'Abstention', 'Conclusion', 'Décision / commentaire'],
+      ...agendaPlanifie.map((p) => { const vote = votesParPoint(p); return [p.titre, p.debut, p.fin, p.duree, p.rapporteur || '', vote.pour, vote.contre, vote.abstention, vote.resultat, p.compteRendu || '']; }),
+      [],
+      ['COMITE PRECEDENT', precedentArchive?.date || 'Sans archive', precedentArchive?.decisions?.join(' | ') || '', seance.sujetPrecedent],
+      ['ORIENTATION ALLOCATION CLIENTS', seance.commentairesAllocation],
+      [],
       ['PORTEFEUILLES', 'Compte', 'Marché', 'Profil', 'Devise native', 'Encours natif', 'Performance indicative (%)', 'Allocation Actions (%)', 'Allocation Obligations souveraines (%)', 'Allocation Obligations privées (%)', 'Allocation Liquidité (%)'],
       ...clients.map((c) => [
         c.nom, c.numeroCompte || c.id || '', c.marche, c.profilRisque,
@@ -33514,7 +33668,52 @@ function Comite({
     );
   };
 
+  const genererProcesVerbal = () => {
+    const e = comiteEchapperHtml;
+    const partsHtml = agendaPlanifie.map((p) => {
+      const v = votesParPoint(p);
+      const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === p.recommandationId);
+      const idsLies = Array.isArray(p.decisionsIds) ? p.decisionsIds : [];
+      const decisionsLiees = decisionsPourRapport.filter((d) => idsLies.includes(String(d.id)));
+      return `<section><h3>${p.index + 1}. ${e(p.titre)} <small>(${p.debut}–${p.fin}, ${p.duree} min)</small></h3>
+        <p><b>Type :</b> ${e(p.nature || 'information')} · <b>Rapporteur :</b> ${e(p.rapporteur || 'Non renseigné')}</p>
+        ${rec ? `<p><b>Analyse technique :</b> ${e(rec.technique?.signal || 'Non renseignée')} · RSI ${e(rec.technique?.rsi ?? '—')}<br/><b>Analyse fondamentale :</b> ${e(rec.fondamentale?.signal || 'Non renseignée')} · PER ${e(rec.fondamentale?.per ?? '—')} · Cours/objectif ${e(rec.cours)} / ${e(rec.objectif)} ${e(rec.devise)}</p>` : '<p>Recommandation spécifique : non sélectionnée.</p>'}
+        <p><b>Décisions d’investissement associées :</b> ${decisionsLiees.length ? decisionsLiees.map((d) => e(d.id) + ' (' + (d.allocations || []).map((a) => e(a.sens + ' ' + a.instrument)).join(', ') + ')').join(' ; ') : 'Aucune'}</p>
+        <p><b>Votes :</b> Pour ${v.pour}, contre ${v.contre}, abstention ${v.abstention}. <b>Conclusion :</b> ${e(v.resultat)}.</p>
+        <p><b>Décision / commentaire de séance :</b> ${e(p.compteRendu || 'Non renseigné')}</p>
+      </section>`;
+    }).join('');
+    const allocationHtml = clients.map((c) => `<tr><td>${e(c.nom)}</td><td>${e(c.marche)}</td><td>${e(fmt(c.encours))} ${e(c.devise)}</td><td>${e(c.alloc?.Actions || 0)}%</td><td>${e(c.alloc?.['Obl. souveraines'] || 0)}%</td><td>${e(c.alloc?.['Obl. privées'] || 0)}%</td><td>${e(c.alloc?.Liquidité || 0)}%</td></tr>`).join('');
+    const presenceHtml = personnesConvoquees.map((p) => `<tr><td>${e(p.nom)}</td><td>${e(p.fonction)}</td><td>${e(seance.presences?.[p.id] === 'present' ? 'Présent' : seance.presences?.[p.id] === 'excuse' ? 'Excusé' : 'Absent')}</td></tr>`).join('');
+    const contenu = `<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>PV Comité GSM ${e(config.dateComite)}</title><style>body{font:12px Arial,sans-serif;color:#182235;margin:36px}h1{font-size:22px;color:#0f1b33}h2{font-size:15px;border-bottom:2px solid #0f1b33;padding-bottom:5px;margin-top:24px}h3{font-size:13px;margin:18px 0 7px}small{font-size:10px;font-weight:normal;color:#666}table{border-collapse:collapse;width:100%;margin:10px 0}td,th{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#eef2f7}section{page-break-inside:avoid;border-bottom:1px solid #e5e7eb;padding-bottom:9px}p{line-height:1.5}.avertissement{background:#fff8e7;padding:12px;font-size:11px}</style></head><body>
+    <h1>PROJET DE PROCÈS-VERBAL — COMITÉ DE GESTION</h1><p><b>Date :</b> ${e(config.dateComite)} · <b>Période :</b> ${e(config.periode)} · <b>Horaire prévisionnel :</b> ${e(seance.heureDebut)}–${e(comiteHeure(minutesPlanifiees))} · <b>Rapporteur :</b> ${e(config.gestionnaire || 'Non renseigné')}</p>
+    <p><b>Présence :</b> ${personnesPresentes.length} / ${personnesConvoquees.length} convoqué(s), seuil ${seuilQuorum} ; <b>quorum ${quorumAtteint ? 'atteint' : 'non atteint'}</b>.</p>
+    <h2>1. Feuille de présence</h2><table><tr><th>Nom</th><th>Fonction</th><th>État</th></tr>${presenceHtml || '<tr><td colspan="3">Aucun participant renseigné</td></tr>'}</table>
+    <h2>2. Ordre du jour, analyses, votes et décisions</h2>${partsHtml}
+    <h2>3. Allocation des fonds des clients</h2><p>Encours : ${e(fmt(Math.round(totalRef)))} ${e(devise)} · Perf. indicative : ${e(performancePonderee.toFixed(2))}% · Liquidité estimée : ${e(fmt(Math.round(liquiditeEstimee)))} ${e(devise)}</p>
+    <table><tr><th>Client</th><th>Marché</th><th>Encours</th><th>Actions</th><th>Obl. souv.</th><th>Obl. privées</th><th>Liquidité</th></tr>${allocationHtml}</table><p>${e(seance.commentairesAllocation || '')}</p>
+    <h2>4. Comité précédent — suivi obligatoire</h2><p>${e(precedentArchive ? `PV du ${precedentArchive.date} : ${(precedentArchive.decisions || []).join(' ; ') || 'Aucune décision adoptée consignée.'}` : 'Aucun PV précédent archivé localement.')}</p><p>${e(seance.sujetPrecedent || 'Aucun commentaire de suivi saisi.')}</p>
+    <h2>5. Observations générales</h2><p>${e(config.commentaires || 'Non renseignées')}</p><p>Président : _____________________ &nbsp;&nbsp;&nbsp; Rapporteur : _____________________</p>
+    <p class="avertissement"><b>Document non signé, issu d’une simulation locale.</b> Les votes, les cours, les rendements, les décisions et l’exécution des ordres doivent être vérifiés et formellement validés par la SGI. Le téléchargement ne vaut pas approbation réglementaire.</p></body></html>`;
+    exportDownloadBlob(new Blob(['\ufeff', contenu], { type: 'application/msword;charset=utf-8' }), `PV-comite-GSM-${config.dateComite || 'seance'}.doc`);
+    // Archiver le contenu observé, et non une validation réglementaire : permet
+    // à la séance suivante de retrouver ses grandes décisions à discuter.
+    const grandesDecisions = agendaPlanifie.filter((p) => p.nature === 'decision' && votesParPoint(p).resultat === 'Adopté')
+      .map((p) => `${p.titre}${p.compteRendu ? ` : ${p.compteRendu}` : ''}`);
+    const prochain = [...archivesComite.filter((a) => a.date !== config.dateComite), {
+      date: config.dateComite, genereLe: new Date().toISOString(), decisions: grandesDecisions,
+    }].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 24);
+    setArchivesComite(prochain);
+    try { window.localStorage.setItem(COMITE_ARCHIVES_STORAGE_KEY, JSON.stringify(prochain)); }
+    catch { /* PV téléchargé même si l’archive locale échoue. */ }
+    enregistrerConfig();
+    setMessage('Projet de PV Word téléchargé. Archive de séance enregistrée localement ; signature et validation restent à réaliser.');
+  };
+
   const tabs = [
+    ['seance', 'Ordre du jour & votes'],
+    ['presence', 'Présences & quorum'],
+    ['allocation', 'Allocation des fonds'],
     ['synthese', 'Synthèse & marchés'],
     ['portefeuilles', 'Portefeuilles & risques'],
     ['liquidite', 'Liquidité & cessions'],
@@ -33554,10 +33753,28 @@ function Comite({
             {editerRapport ? 'Fermer paramètres' : 'Éditer le rapport'}
           </Btn>
           <Btn tone="ghost" onClick={exporterCsv}>Exporter CSV</Btn>
-          <Btn tone="gold" onClick={() => window.print()}>Imprimer / PDF</Btn>
+          <Btn tone="gold" onClick={genererProcesVerbal}>Générer le PV (.doc)</Btn>
+          <Btn tone="ghost" onClick={() => window.print()}>Imprimer / PDF</Btn>
         </div>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 gsm-comite-no-print">
+        {[
+          ['Présents / convoqués', `${personnesPresentes.length} / ${personnesConvoquees.length}`,
+            quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'],
+          ['Horaire prévu', `${seance.heureDebut}–${comiteHeure(minutesPlanifiees)}`, `${dureePrevue} minutes`],
+          ['Points traités', `${agendaPlanifie.filter((p) => p.termineAt).length} / ${agendaPlanifie.length}`,
+            pointEnCours ? `En cours : ${pointEnCours.index + 1}` : 'Aucun point en cours'],
+          ['Décisions rattachées', `${allocationsPourRapport.length} allocation(s)`,
+            `${agendaPlanifie.filter((p) => votesParPoint(p).resultat === 'Adopté').length} point(s) adopté(s)`],
+        ].map(([libelle, valeur, detail]) => (
+          <Card key={libelle} className="p-4">
+            <div className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>{libelle}</div>
+            <div className="text-lg font-bold mt-1" style={{ color: C.navy, ...F_DISPLAY }}>{valeur}</div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>{detail}</div>
+          </Card>
+        ))}
+      </div>
       {message && (
         <div className="px-4 py-3 rounded-xl text-xs font-semibold" style={{ color: C.teal, background: '#E4F5EF' }}>
           {message}
@@ -33690,11 +33907,11 @@ function Comite({
               <div>
                 <div className="text-xs font-bold" style={{ color: C.ink }}>Participants au comité</div>
                 <p className="text-[11px] mt-1" style={{ color: C.sub }}>
-                  Cochez les collaborateurs présents : leurs noms et leurs fonctions figureront dans le compte rendu.
+                  Constituez la liste des collaborateurs convoqués. Indiquez ensuite leur présence réelle dans l’onglet « Présences & quorum ».
                 </p>
               </div>
               <Badge tone={personnesSelectionnees.length ? 'teal' : 'slate'}>
-                {personnesSelectionnees.length} participant(s) sélectionné(s)
+                {personnesSelectionnees.length} personne(s) convoquée(s)
               </Badge>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -33866,6 +34083,121 @@ function Comite({
           <Btn tone="ghost" onClick={() => { setFiltreBourse('Toutes'); setFiltreSecteur('Tous'); setFiltreClient(''); }}>Effacer filtres</Btn>
         </div>
       </Card>
+
+      {onglet === 'seance' && (
+        <div className="space-y-4 gsm-comite-interactive">
+          <Card className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><Eyebrow>Conduite de séance · timing & décisions</Eyebrow>
+                <h3 className="text-base font-bold" style={{ color: C.ink }}>Ordre du jour minuté</h3>
+                <p className="text-xs mt-1" style={{ color: C.sub }}>Les horaires prévisionnels se recalculent automatiquement. Lancez puis clôturez chaque point pour enregistrer ses horaires réels.</p>
+              </div>
+              <Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge>
+            </div>
+            <div className="flex flex-wrap items-end gap-3 mt-4">
+              <label className="space-y-1"><span className="block text-xs font-semibold">Début prévu</span><input type="time" className="border rounded-xl px-3 py-2 text-sm" style={{ borderColor: C.line }} value={seance.heureDebut} onChange={(e) => modifierSeance('heureDebut', e.target.value)} /></label>
+              <label className="space-y-1"><span className="block text-xs font-semibold">Quorum requis (strictement supérieur à)</span>
+                <select value={seance.seuilQuorumPct} onChange={(e) => modifierSeance('seuilQuorumPct', Number(e.target.value))} className="border rounded-xl px-3 py-2 text-sm" style={{ borderColor: C.line }}>
+                  <option value={50}>50 % des convoqués</option><option value={66}>66 % des convoqués</option><option value={75}>75 % des convoqués</option>
+                </select>
+              </label>
+              <Btn tone="ghost" onClick={() => setOnglet('presence')}>Faire l’appel ({personnesPresentes.length}/{personnesConvoquees.length})</Btn>
+              <span className="text-xs" style={{ color: C.sub }}>Fin prévue : {comiteHeure(minutesPlanifiees)}</span>
+            </div>
+          </Card>
+          {agendaPlanifie.map((point) => {
+            const vote = votesParPoint(point);
+            const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === point.recommandationId);
+            const ouvert = pointOuvert === point.id;
+            const dureeReelle = point.demarreAt
+              ? Math.max(0, Math.floor(((point.termineAt ? new Date(point.termineAt).getTime() : horlogeSeance) - new Date(point.demarreAt).getTime()) / 60000))
+              : null;
+            const decisionsLiees = decisionsPourRapport.filter((d) => (point.decisionsIds || []).includes(String(d.id)));
+            return <Card key={point.id} className="p-4 md:p-5">
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white" style={{ background: pointEnCours?.id === point.id ? C.teal : C.navy }}>{point.index + 1}</div>
+                <div className="flex-1 min-w-[210px]">
+                  <div className="flex items-center gap-2 flex-wrap"><span className="text-xs font-bold" style={{ color: C.ink }}>{point.titre}</span>
+                    {point.id === COMITE_SUIVI_PRECEDENT_ID && <Badge tone="gold">Obligatoire · avant clôture</Badge>}
+                    <Badge tone={point.termineAt ? 'teal' : point.demarreAt ? 'gold' : 'slate'}>{point.termineAt ? 'Traité' : point.demarreAt ? 'En cours' : 'À traiter'}</Badge>
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: C.sub }}>{point.debut}–{point.fin} · {point.duree} min prévues · {dureeReelle === null ? 'Non démarré' : `${dureeReelle} min réelles`}</div>
+                </div>
+                <button type="button" className="px-3 py-2 text-xs rounded-xl font-semibold" style={{ background: '#EEF0F6', color: C.ink }} onClick={() => setPointOuvert(ouvert ? '' : point.id)}>{ouvert ? 'Réduire ▲' : 'Préparer / traiter ▼'}</button>
+              </div>
+              {ouvert && <div className="mt-4 space-y-4 border-t pt-4" style={{ borderColor: C.line }}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="space-y-1"><span className="text-xs font-semibold">Sujet de l’ordre du jour</span><input className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line }} value={point.titre} onChange={(e) => modifierPoint(point.id, { titre: e.target.value })} /></label>
+                  <label className="space-y-1"><span className="text-xs font-semibold">Durée (minutes)</span><input type="number" min="5" max="240" className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line }} value={point.duree} onChange={(e) => modifierPoint(point.id, { duree: Math.max(5, Math.min(240, Number(e.target.value) || 5)) })} /></label>
+                  <label className="space-y-1"><span className="text-xs font-semibold">Rapporteur du point</span><input className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line }} value={point.rapporteur || ''} onChange={(e) => modifierPoint(point.id, { rapporteur: e.target.value })} placeholder="Nom / fonction" /></label>
+                </div>
+                <div className="rounded-xl p-4" style={{ background: '#F6F8FC' }}>
+                  <p className="font-bold text-xs" style={{ color: C.ink }}>Critères d'aide à la décision : analyse technique et fondamentale</p>
+                  <p className="text-[11px] mt-1 mb-3" style={{ color: C.sub }}>Choisissez une valeur étudiée. Les recommandations proviennent du référentiel de démonstration RECOS : elles ne représentent pas une validation professionnelle.</p>
+                  <select className="w-full border rounded-xl px-3 py-2 text-xs bg-white" style={{ borderColor: C.line }} value={point.recommandationId || ''} onChange={(e) => modifierPoint(point.id, { recommandationId: e.target.value })}>
+                    <option value="">Aucune valeur à analyser pour ce point</option>
+                    {RECOS.filter((r) => (filtreBourse === 'Toutes' || r.marche === filtreBourse)).map((r) => <option key={`${r.marche}::${r.titre}`} value={`${r.marche}::${r.titre}`}>{r.titre} · {r.marche} · {r.sens}</option>)}
+                  </select>
+                  {rec ? <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                    <div className="bg-white rounded-xl border p-3" style={{ borderColor: C.line }}><b className="text-xs">Analyse technique</b><p className="text-xs mt-1">Signal : {rec.technique?.signal || 'Non renseigné'}</p><p className="text-xs">RSI : {rec.technique?.rsi ?? '—'} · Cours : {fmtPrice(rec.cours)} {rec.devise}</p></div>
+                    <div className="bg-white rounded-xl border p-3" style={{ borderColor: C.line }}><b className="text-xs">Analyse fondamentale</b><p className="text-xs mt-1">Signal : {rec.fondamentale?.signal || 'Non renseigné'}</p><p className="text-xs">PER : {rec.fondamentale?.per ?? '—'} · Objectif : {fmtPrice(rec.objectif)} {rec.devise}</p></div>
+                  </div> : <p className="mt-3 text-[11px]" style={{ color: C.sub }}>Aucune analyse liée à ce point. Renseignez une valeur si une recommandation doit appuyer le vote.</p>}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
+                    <p className="text-xs font-bold">Décisions d’investissement associées à ce point</p>
+                    <p className="text-[11px] mt-1 mb-3" style={{ color: C.sub }}>Décisions conservées depuis le module « Prise de décisions ». Cochez celles discutées ici.</p>
+                    {decisionsPourRapport.length ? decisionsPourRapport.map((d) => <label key={d.id} className="flex gap-2 items-start text-xs py-1"><input type="checkbox" className="mt-0.5" checked={(point.decisionsIds || []).includes(String(d.id))} onChange={(e) => modifierPoint(point.id, { decisionsIds: e.target.checked ? [...new Set([...(point.decisionsIds || []), String(d.id)])] : (point.decisionsIds || []).filter((id) => id !== String(d.id)) })} /><span>{d.id} — {(d.allocations || []).map((a) => `${a.sens} ${a.instrument} (${a.pourcentageOperation}%)`).join(' ; ') || 'Sans allocation'}</span></label>) : <p className="text-xs mt-2" style={{ color: C.sub }}>Aucune décision liée au rapport. Choisissez les décisions dans « Éditer le rapport ».</p>}
+                    <div className="flex flex-wrap gap-2 mt-3"><Btn tone="ghost" onClick={() => setEditerRapport(true)}>Choisir les décisions</Btn><Btn tone="ghost" onClick={() => go('decisions-comite')}>Créer une décision</Btn></div>
+                    {decisionsLiees.length > 0 && <p className="text-[11px] mt-2" style={{ color: C.teal }}>{decisionsLiees.length} décision(s) rattachée(s).</p>}
+                  </div>
+                  <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
+                    <p className="font-bold text-xs mb-2">Compte rendu, décision ou commentaire</p>
+                    <textarea className="w-full border rounded-xl p-3 text-xs" style={{ borderColor: C.line }} rows={5} value={point.compteRendu || ''} onChange={(e) => modifierPoint(point.id, { compteRendu: e.target.value })} placeholder="Motion soumise, décision, réserves, responsables, échéance, commentaires…" />
+                    {point.id === 'allocation-fonds' && <button type="button" className="text-xs mt-2 font-semibold" style={{ color: C.indigo }} onClick={() => setOnglet('allocation')}>Ouvrir la présentation des allocations →</button>}
+                    {point.id === COMITE_SUIVI_PRECEDENT_ID && <div className="mt-3 border-t pt-3" style={{ borderColor: C.line }}><p className="text-xs font-semibold">Comité précédent : {precedentArchive?.date || 'Aucune archive'}</p>
+                      {precedentArchive?.decisions?.length ? <ul className="mt-2 text-xs list-disc pl-4">{precedentArchive.decisions.map((texte, i) => <li key={i}>{texte}</li>)}</ul> : <p className="text-[11px] mt-1" style={{ color: C.sub }}>Aucune décision précédente archivée dans ce navigateur.</p>}
+                      <textarea className="w-full mt-3 border rounded-lg p-2 text-xs" rows={3} placeholder="Bilan des décisions antérieures, blocages et suites…" value={seance.sujetPrecedent || ''} onChange={(e) => modifierSeance('sujetPrecedent', e.target.value)} />
+                    </div>}
+                  </div>
+                </div>
+                <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
+                  <div className="flex flex-wrap justify-between gap-3"><div><p className="font-bold text-xs">Vote du quorum présent</p><p className="text-[11px] mt-1" style={{ color: C.sub }}>{personnesPresentes.length} votant(s) présents · seuil du quorum : {seuilQuorum} · vote requis de {vote.participationMinimale} présent(s) au minimum</p></div><Badge tone={vote.resultat === 'Adopté' ? 'teal' : vote.resultat === 'Vote incomplet' ? 'gold' : 'slate'}>{vote.resultat}</Badge></div>
+                  {!quorumAtteint && <p className="text-xs mt-2" style={{ color: C.coral }}>Vote non validable tant que le quorum de présence n’est pas atteint. Rendez-vous dans « Présences & quorum ».</p>}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 mt-3">
+                    {personnesPresentes.map((p) => <label key={p.id} className="p-2 rounded-lg border text-xs" style={{ borderColor: C.line }}><span className="block truncate font-semibold">{p.nom}</span><select className="w-full mt-1 p-1 border rounded-lg text-xs" value={point.votes?.[p.id] || ''} onChange={(e) => changerVote(point.id, p.id, e.target.value)}><option value="">Non voté</option><option value="pour">Pour</option><option value="contre">Contre</option><option value="abstention">Abstention</option></select></label>)}
+                  </div>
+                  <p className="text-xs mt-3" style={{ color: C.sub }}>Pour : {vote.pour} · Contre : {vote.contre} · Abstention : {vote.abstention} · Suffrages exprimés : {vote.exprimes}</p>
+                </div>
+                <div className="flex gap-2 flex-wrap items-center"><Btn onClick={() => tournerPoint(point.id, 'demarrer')} disabled={!!point.demarreAt || !!pointEnCours}>Démarrer le point</Btn><Btn tone="ghost" onClick={() => tournerPoint(point.id, 'terminer')} disabled={!point.demarreAt || !!point.termineAt}>Terminer le point</Btn>
+                  {!([COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(point.id)) && <button type="button" onClick={() => retirerPoint(point.id)} className="text-xs ml-auto" style={{ color: C.coral }}>Retirer ce point</button>}
+                </div>
+              </div>}
+            </Card>;
+          })}
+          <Card className="p-4 gsm-comite-no-print">
+            <div className="flex flex-wrap items-end gap-3"><label className="flex-1 min-w-[230px] space-y-1"><span className="block text-xs font-bold">Ajouter un point avant le suivi du comité précédent</span><input className="w-full p-2 border rounded-xl text-xs" style={{ borderColor: C.line }} value={nouveauPoint} onChange={(e) => setNouveauPoint(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') ajouterPoint(); }} placeholder="Ex. Risque de concentration et mesures proposées" /></label><Btn onClick={ajouterPoint} disabled={!nouveauPoint.trim()}>Ajouter</Btn></div>
+            <p className="text-[11px] mt-2" style={{ color: C.sub }}>Le suivi des grandes décisions du comité précédent et la clôture sont des étapes permanentes : elles ne peuvent pas être supprimées ni déplacées après la clôture.</p>
+          </Card>
+        </div>
+      )}
+
+      {onglet === 'presence' && <div className="space-y-4 gsm-comite-interactive">
+        <Card className="p-5"><Eyebrow>Appel & contrôle du quorum</Eyebrow><h3 className="text-base font-bold">Feuille de présence</h3>
+          <p className="text-xs mt-2" style={{ color: C.sub }}>La liste des personnes convoquées est renseignée dans « Éditer le rapport ». Chaque personne convoquée doit être explicitement pointée présente, absente ou excusée avant le vote.</p>
+          <div className="flex flex-wrap items-center gap-3 mt-4"><Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge><span className="text-xs">{personnesPresentes.length} présents / {personnesConvoquees.length} convoqués · {tauxPresence.toFixed(1)} % · seuil : {seuilQuorum}</span><Btn tone="ghost" onClick={() => setEditerRapport(true)}>Gérer l’annuaire et les invitations</Btn></div>
+          <div className="overflow-x-auto mt-4"><table className="w-full" style={{ minWidth: 580 }}><thead><tr><Th>Membre</Th><Th>Fonction</Th><Th>Présence</Th></tr></thead><tbody>{personnesConvoquees.map((p) => <tr key={p.id} style={{ borderTop: `1px solid ${C.line}` }}><Td className="font-semibold">{p.nom}</Td><Td>{p.fonction}</Td><Td><select value={seance.presences?.[p.id] || 'non-renseigne'} onChange={(e) => changerPresence(p.id, e.target.value)} className="p-2 rounded-lg border text-xs" style={{ borderColor: C.line }}><option value="non-renseigne">À vérifier</option><option value="present">Présent</option><option value="absent">Absent</option><option value="excuse">Excusé</option></select></Td></tr>)}{!personnesConvoquees.length && <tr><td colSpan={3} className="text-xs p-4">Aucun membre convoqué. Ouvrez « Éditer le rapport », ajoutez les membres puis cochez les personnes invitées.</td></tr>}</tbody></table></div>
+          <p className="text-[11px] mt-3" style={{ color: C.sub }}>Règle configurable de démonstration : présence strictement supérieure au seuil choisi ; majorité des suffrages exprimés, avec participation d’au moins la majorité des présents. Le règlement intérieur réel de la SGI doit prévaloir.</p>
+        </Card>
+      </div>}
+
+      {onglet === 'allocation' && <div className="space-y-4 gsm-comite-interactive">
+        <Card className="p-5"><div className="flex justify-between gap-3 flex-wrap"><div><Eyebrow>Présentation en séance</Eyebrow><h3 className="text-base font-bold">Allocation des fonds des clients</h3><p className="text-xs mt-1" style={{ color: C.sub }}>Pondérations calculées à partir des encours et des répartitions disponibles ; données indicatives pour la séance.</p></div><Badge tone="navy">{clients.length} portefeuille(s)</Badge></div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4"><div><Donut data={assetMixAnalyse} size={220} /></div><div className="space-y-3">{assetMixAnalyse.map((part) => <div key={part.name}><div className="flex justify-between text-xs mb-1"><b>{part.name}</b><span>{part.value.toFixed(1)} %</span></div><div className="h-2 rounded-full overflow-hidden" style={{ background: '#E8ECF2' }}><div className="h-2 rounded-full" style={{ width: `${Math.max(0, Math.min(100, part.value))}%`, background: C.teal }} /></div><p className="text-[11px] mt-1" style={{ color: C.sub }}>{fmt(Math.round(totalRef * part.value / 100))} {devise} (indicatif)</p></div>)}</div></div>
+        </Card>
+        <Card className="p-5"><Eyebrow>Allocation réelle chargée / cible d’investissement par compte</Eyebrow><div className="overflow-x-auto mt-3"><table className="w-full" style={{ minWidth: 980 }}><thead><tr>{['Client / portefeuille', 'Marché', 'Encours natif', 'Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité', 'Cible Actions', 'Écart Actions'].map((titre) => <Th key={titre}>{titre}</Th>)}</tr></thead><tbody>{clients.map((c) => { const ecart = Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0); return <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}><Td className="font-semibold">{c.nom}</Td><Td>{c.marche}</Td><Td mono>{fmt(c.encours)} {c.devise}</Td><Td>{c.alloc?.Actions || 0}%</Td><Td>{c.alloc?.['Obl. souveraines'] || 0}%</Td><Td>{c.alloc?.['Obl. privées'] || 0}%</Td><Td>{c.alloc?.Liquidité || 0}%</Td><Td>{c.cible?.Actions || 0}%</Td><Td><Badge tone={Math.abs(ecart) >= 5 ? 'coral' : 'teal'}>{ecart > 0 ? '+' : ''}{ecart.toFixed(1)} pts</Badge></Td></tr>; })}</tbody></table></div></Card>
+        <Card className="p-5"><p className="text-sm font-bold">Orientations et commentaires d’allocation</p><textarea className="w-full border rounded-xl p-3 text-xs mt-2" style={{ borderColor: C.line }} rows={4} placeholder="Priorités de réallocation, contraintes clients, décisions soumises au vote…" value={seance.commentairesAllocation || ''} onChange={(e) => modifierSeance('commentairesAllocation', e.target.value)} /><div className="flex flex-wrap gap-2 mt-3"><Btn tone="ghost" onClick={() => { setOnglet('seance'); setPointOuvert('allocation-fonds'); }}>Délibérer sur l’allocation dans l’ordre du jour</Btn><Btn onClick={() => go('decisions-comite')}>Ouvrir Prise de décisions</Btn></div></Card>
+      </div>}
 
       {onglet === 'synthese' && (
         <div className="space-y-4 gsm-comite-interactive">
@@ -34140,6 +34472,16 @@ function Comite({
       )}
 
       <section id="gsm-comite-print-full" className="hidden space-y-6">
+        <h2 className="text-xl font-bold">Projet de procès-verbal · Comité de gestion</h2>
+        <p className="text-xs">Réunion du {config.dateComite} · {seance.heureDebut}–{comiteHeure(minutesPlanifiees)} · {dureePrevue} min prévues · {personnesPresentes.length}/{personnesConvoquees.length} présent(s) · quorum {quorumAtteint ? 'atteint' : 'non atteint'}</p>
+        <h3 className="font-semibold">Feuille de présence et quorum</h3>
+        <ul className="text-xs">{personnesConvoquees.map((p) => <li key={p.id}>{p.nom} — {p.fonction} — {seance.presences?.[p.id] === 'absent' ? 'Absent' : seance.presences?.[p.id] === 'excuse' ? 'Excusé' : seance.presences?.[p.id] === 'present' ? 'Présent' : 'À vérifier'}</li>)}</ul>
+        <h3 className="font-semibold">Ordre du jour, analyses, débats et votes</h3>
+        {agendaPlanifie.map((p) => { const v = votesParPoint(p); const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === p.recommandationId); return <div key={p.id} className="text-xs space-y-1" style={{ pageBreakInside: 'avoid' }}><b>{p.index + 1}. {p.titre} · {p.debut}–{p.fin} ({p.duree} min)</b><p>Rapporteur : {p.rapporteur || '—'}</p><p>Technique : {rec?.technique?.signal || '—'} ; RSI : {rec?.technique?.rsi ?? '—'} · Fondamental : {rec?.fondamentale?.signal || '—'} ; PER : {rec?.fondamentale?.per ?? '—'}</p><p>Votes : {v.pour} pour / {v.contre} contre / {v.abstention} abstention — {v.resultat}</p><p>Décision / commentaire : {p.compteRendu || 'Non renseigné'}</p></div>; })}
+        <h3 className="font-semibold">Suivi des grandes décisions du comité précédent</h3>
+        <p className="text-xs">Comité archivé : {precedentArchive?.date || 'Aucun'} · {precedentArchive?.decisions?.join(' ; ') || 'Aucune décision précédente archivée.'} · Bilan : {seance.sujetPrecedent || 'Non renseigné'}</p>
+        <h3 className="font-semibold">Présentation de l’allocation des fonds</h3>
+        <p className="text-xs">{assetMixAnalyse.map((p) => `${p.name} : ${p.value}%`).join(' · ')} · {seance.commentairesAllocation || 'Aucune orientation renseignée.'}</p>
         <h3 className="text-lg font-bold mt-5">Synthèse de gestion et périmètre</h3>
         <p className="text-xs">Période : {config.periode} · Date : {config.dateComite} · Gestionnaire : {config.gestionnaire || 'Non renseigné'} · Participants : {participantsTexte || 'Non renseignés'}</p>
         <p className="text-xs">Encours consolidé : {fmt(Math.round(totalRef))} {devise} · {clients.length} comptes · Perf. indicative : {performancePonderee.toFixed(2)}% · Liquidité indicative : {fmt(Math.round(liquiditeEstimee))} {devise}</p>
