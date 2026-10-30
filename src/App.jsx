@@ -35569,6 +35569,133 @@ const gsmChatExportRegister = (requests) => {
   exportDownloadBlob(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }), 'registre-chat-invest-simulation.csv');
 };
 
+/* ---------------- CHAT INVEST — QUESTIONS SUR LE PORTEFEUILLE ---------------- */
+/* Réponses déterministes, construites à partir des positions de démonstration.
+ * Le cours et les stocks historiques réels ne sont pas disponibles dans ce fichier.
+ * Une date antérieure produit uniquement une simulation indicative à positions
+ * constantes, jamais un relevé historique certifié ni une performance historique. */
+const GSM_CHAT_REPORT_MIN_DATE = '2025-09-01';
+const gsmChatNormalizeQuestion = (value) => String(value || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const gsmChatQuestionIntent = (value) => {
+  const q = gsmChatNormalizeQuestion(value);
+  if (/\b(acheter|achete|achat|vendre|vends|vente)\b/.test(q)) return 'ordre';
+  if (/\b(rapport|bilan|situation|releve|evaluation|valorisation|valeur totale|encours|patrimoine)\b/.test(q)) return 'rapport';
+  if (/\b(rendement|performance|rentabilite|performe|gagne|perdu|plus.value|moins.value)\b/.test(q)) return 'rendement';
+  if (/\b(combien|nombre|quantite|total)\b/.test(q) && /\b(actifs|titres|actions|obligations|lignes|positions|detiens|possede)\b/.test(q)) return 'nombre';
+  if (/\b(liste|lister|detail|composition|quels|quelles|detiens|possede|mes actifs|mes titres|mes positions|mes actions|mes obligations)\b/.test(q)) return 'actifs';
+  if (/\b(liquidite|liquidites|espece|especes|solde|disponible)\b/.test(q)) return 'liquidite';
+  if (/\b(sgi|intermediaires|comptes|portefeuilles)\b/.test(q)) return 'portefeuilles';
+  if (/\b(portefeuille|investissements|placement)\b/.test(q)) return 'rapport';
+  return 'aide';
+};
+const gsmChatExtractQuestionDate = (value) => {
+  const raw = String(value || '');
+  const iso = raw.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  const fr = raw.match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](20\d{2})\b/);
+  if (!iso && !fr) return null;
+  const year = Number(iso ? iso[1] : fr[3]);
+  const month = Number(iso ? iso[2] : fr[2]);
+  const day = Number(iso ? iso[3] : fr[1]);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return 'invalid';
+  return formatIsoLocalDate(date);
+};
+const gsmChatPortfolioSnapshot = (portefeuilleId = 'tous', date = formatIsoLocalDate(new Date())) => {
+  const now = formatIsoLocalDate(new Date());
+  if (!/^20\d{2}-\d{2}-\d{2}$/.test(date) || formatIsoLocalDate(parseIsoLocalDate(date)) !== date ||
+      date < GSM_CHAT_REPORT_MIN_DATE || date > now)
+    return { erreur: `Choisissez une date valide entre le ${GSM_CHAT_REPORT_MIN_DATE} et le ${now}.` };
+  const selected = portefeuilleId === 'tous'
+    ? CLIENT_GESTION_LIBRE.portefeuilles
+    : CLIENT_GESTION_LIBRE.portefeuilles.filter((p) => p.id === portefeuilleId);
+  if (!selected.length) return { erreur: 'Portefeuille introuvable ou non disponible.' };
+  const indicative = date !== now;
+  const rows = selected.map((p) => {
+    const lignes = p.lignes.filter((ligne) => Number(ligne.qte) > 0).map((ligne) => {
+      const instrument = clientMarket(ligne.instrument, p.marche);
+      const coursCourant = Number(instrument?.cours ?? ligne.pru ?? 0);
+      const cours = indicative
+        ? coursCourant * liquidityHistoryFactor(`${p.id}-${ligne.instrument}-cours-indicatif`, date, now)
+        : coursCourant;
+      const qty = Number(ligne.qte);
+      const cmp = clientLineCmp(ligne);
+      return {
+        nom: ligne.instrument, marche: p.marche, classe: clientAssetClass(ligne.instrument),
+        qte: qty, cmp, cours, valeur: qty * cours, plusMoins: qty * (cours - cmp),
+        devise: p.devise, portefeuilleId: p.id, portefeuille: p.nom, sgi: p.sgi,
+      };
+    });
+    const titres = lignes.reduce((s, row) => s + row.valeur, 0);
+    const cout = lignes.reduce((s, row) => s + row.qte * row.cmp, 0);
+    const liquidite = Number(p.compteEspeces || 0);
+    const total = titres + liquidite;
+    return { id: p.id, nom: p.nom, sgi: p.sgi, marche: p.marche, devise: p.devise,
+      lignes, titres, liquidite, total, cout,
+      plusMoins: titres - cout, perfYtd: Number(p.perfYtd || 0),
+      totalXof: convertCurrency(total, p.devise, 'XOF') };
+  });
+  const all = rows.flatMap((p) => p.lignes);
+  const actifsMap = new Map();
+  all.forEach((ligne) => {
+    const key = `${ligne.marche}::${ligne.nom}`;
+    const existing = actifsMap.get(key);
+    if (existing) {
+      existing.qte += ligne.qte;
+      existing.valeurXof += convertCurrency(ligne.valeur, ligne.devise, 'XOF');
+      existing.portefeuilles += 1;
+    } else {
+      actifsMap.set(key, { key, nom: ligne.nom, marche: ligne.marche, classe: ligne.classe,
+        qte: ligne.qte, valeurXof: convertCurrency(ligne.valeur, ligne.devise, 'XOF'), portefeuilles: 1 });
+    }
+  });
+  const actifs = [...actifsMap.values()].sort((a,b) => b.valeurXof - a.valeurXof);
+  const valeurXof = rows.reduce((s, p) => s + p.totalXof, 0);
+  const liquiditeXof = rows.reduce((s,p) => s + convertCurrency(p.liquidite,p.devise,'XOF'),0);
+  const plusMoinsXof = rows.reduce((s,p) => s + convertCurrency(p.plusMoins,p.devise,'XOF'),0);
+  const coutXof = rows.reduce((s,p) => s + convertCurrency(p.cout,p.devise,'XOF'),0);
+  return {
+    date, indicative, rows, actifs, valeurXof, liquiditeXof, plusMoinsXof,
+    nombreActifs: actifs.length, nombreLignes: all.length, nombrePortefeuilles: rows.length,
+    rendementYtd: !indicative && valeurXof > 0
+      ? rows.reduce((s,p) => s + p.totalXof * p.perfYtd,0)/valeurXof : null,
+    plusMoinsPct: coutXof > 0 ? (plusMoinsXof/coutXof)*100 : null,
+    allocation: ['Actions','Obligations'].map((classe) => ({
+      classe, valeurXof: all.filter((item) => item.classe === classe)
+        .reduce((s,item) => s + convertCurrency(item.valeur,item.devise,'XOF'),0),
+    })),
+  };
+};
+const gsmChatPortfolioAnswer = (question, portefeuilleId, selectedDate) => {
+  const kind = gsmChatQuestionIntent(question);
+  if (kind === 'ordre') return { kind: 'aide', texte: 'Pour un ordre de bourse, utilisez le ticket structuré : précisez le sens, le titre, la quantité et le prix limite.' };
+  if (kind === 'aide') return { kind, texte: 'Je peux répondre aux questions sur vos portefeuilles : « rapport au 30/09/2026 », « quel est mon rendement ? », « combien d’actifs ai-je ? », « liste mes actifs », « quelles sont mes liquidités ? ». Sélectionnez le portefeuille et la date ci-dessus.' };
+  const requestedDate = gsmChatExtractQuestionDate(question);
+  if (requestedDate === 'invalid') return { kind: 'erreur', texte: 'Date invalide. Utilisez JJ/MM/AAAA ou choisissez une date dans le sélecteur.' };
+  const snapshot = gsmChatPortfolioSnapshot(portefeuilleId, requestedDate || selectedDate);
+  if (snapshot.erreur) return { kind: 'erreur', texte: snapshot.erreur };
+  const label = snapshot.nombrePortefeuilles === 1 ? snapshot.rows[0].nom : 'Tous mes portefeuilles';
+  const descriptions = {
+    rapport: `Rapport de portefeuille · ${label}`,
+    rendement: `Rendement et plus/moins-values · ${label}`,
+    nombre: `Nombre d’actifs · ${label}`,
+    actifs: `Liste des titres détenus · ${label}`,
+    liquidite: `Situation de trésorerie · ${label}`,
+    portefeuilles: `Mes comptes et SGI · ${label}`,
+  };
+  return { kind, titre: descriptions[kind], snapshot };
+};
+const gsmChatExportPortfolio = (snapshot) => {
+  const csvRows = [
+    ['RAPPORT CHAT INVEST - SIMULATION', snapshot.date, snapshot.indicative ? 'Reconstitution indicative' : 'Situation des positions de démonstration'],
+    ['ATTENTION', 'Les portefeuilles et cours sont simulés ; les dates antérieures utilisent les quantités actuelles et des prix estimés.'],
+    ['Compte / SGI', 'Marché', 'Titre', 'Classe', 'Quantité', 'CMP', 'Prix de valorisation', 'Valeur', 'Plus/Moins-value', 'Devise'],
+    ...snapshot.rows.flatMap((p) => p.lignes.map((r) => [p.nom + ' / ' + p.sgi, p.marche, r.nom, r.classe, r.qte, r.cmp, r.cours, r.valeur, r.plusMoins, r.devise])),
+  ];
+  const csv = csvRows.map((row) => row.map((v) => `"${String(v ?? '').replace(/"/g,'""')}"`).join(';')).join('\r\n');
+  exportDownloadBlob(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }), `chat-invest-rapport-${snapshot.date}.csv`);
+};
+
 /* ------------------------------------ APERÇU IPHONE CHAT INVEST ------------------------------------ */
 /* La hauteur est fixe : les détails des instructions défilent exclusivement dans l'écran. */
 const GSM_CHAT_IPHONE_CSS = `
@@ -35695,16 +35822,34 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
   const [changeMode, setChangeMode] = useState('');
   const [changeQty, setChangeQty] = useState('');
   const [changePrice, setChangePrice] = useState('');
+  const [reportDate, setReportDate] = useState(() => formatIsoLocalDate(new Date()));
+  const [reportPortfolioId, setReportPortfolioId] = useState('tous');
+  const [chatHistory, setChatHistory] = useState([]);
   const phoneScrollRef = useRef(null);
+  const lastChatAnswerRef = useRef(null);
   useEffect(() => {
     if (phoneScrollRef.current) phoneScrollRef.current.scrollTop = 0;
   }, [conversationTab]);
+  useEffect(() => {
+    if (conversationTab !== 'chat' || !chatHistory.length || !phoneScrollRef.current || !lastChatAnswerRef.current) return;
+    const viewport = phoneScrollRef.current;
+    const answer = lastChatAnswerRef.current;
+    viewport.scrollTop += answer.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 8;
+  }, [chatHistory.length, conversationTab]);
   const market = clientMarket(draft?.instrument, draft?.marche);
   const compatible = CLIENT_GESTION_LIBRE.portefeuilles.filter((p) => p.marche === market?.marche);
   const recent = requests.filter((r) => r.clientId === CLIENT_GESTION_LIBRE.id);
+  const answerQuestion = (question) => {
+    if (!accessEnabled) { setMessage('Accès Chat Invest désactivé dans cette simulation.'); return; }
+    const reply = gsmChatPortfolioAnswer(question, reportPortfolioId, reportDate);
+    setChatHistory((history) => [...history, { id: `${Date.now()}-${history.length}`, question, reply }]);
+    setTexte('');
+    setMessage('');
+  };
   const sendText = () => {
     if (!accessEnabled) { setMessage('Accès Chat Invest désactivé dans cette simulation.'); return; }
-    if (!texte.trim()) { setMessage('Saisissez votre instruction.'); return; }
+    if (!texte.trim()) { setMessage('Saisissez votre message.'); return; }
+    if (gsmChatQuestionIntent(texte) !== 'ordre') { answerQuestion(texte.trim()); return; }
     const parsed = gsmChatParseInstruction(texte);
     const firstPf = CLIENT_GESTION_LIBRE.portefeuilles.find((p) => p.marche === parsed.marche);
     setDraft({ ...parsed, portefeuilleId: firstPf?.id || '', texteOriginal: texte.trim() });
@@ -35767,17 +35912,97 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
                   {tab === 'chat' ? 'Conversation' : `Mes instructions (${recent.length})`}</button>)}</div>
                 {conversationTab === 'chat' ? <>
                   <div className="rounded-2xl p-3 text-xs" style={{ background: '#E7EBF2', color: C.ink }}>
-                    Bonjour ! Décrivez votre ordre, par exemple : « Acheter 100 actions SONATEL à 14200 ».
-                    Un ticket structuré sera soumis à votre validation.
+                    Bonjour ! Je peux préparer vos ordres et répondre à vos questions :
+                    rapport à date, rendement, nombre d'actifs, liste des titres et liquidités.
+                    Les ordres nécessitent toujours votre confirmation.
                   </div>
+                  <div className="rounded-xl p-3 space-y-2" style={{ background: '#fff', border: `1px solid ${C.line}` }}>
+                    <div className="text-[11px] font-bold" style={{ color: C.ink }}>Consulter mon portefeuille</div>
+                    <label className="block text-[11px]" style={{ color: C.sub }}>Portefeuille / SGI
+                      <select value={reportPortfolioId} onChange={(e) => setReportPortfolioId(e.target.value)}
+                        className="w-full border rounded-lg p-2 mt-1 text-xs" aria-label="Portefeuille à consulter">
+                        <option value="tous">Tous mes portefeuilles (consolidé)</option>
+                        {CLIENT_GESTION_LIBRE.portefeuilles.map((p) => <option key={p.id} value={p.id}>{p.sgi} · {p.nom}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-[11px]" style={{ color: C.sub }}>Date du rapport
+                      <input type="date" min={GSM_CHAT_REPORT_MIN_DATE} max={formatIsoLocalDate(new Date())}
+                        value={reportDate} onChange={(e) => setReportDate(e.target.value)}
+                        className="w-full border rounded-lg p-2 mt-1 text-xs" aria-label="Date de valorisation souhaitée" />
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        ['Rapport à date', 'Donne-moi un rapport de mon portefeuille'],
+                        ['Rendement', 'Quel est le rendement de mon portefeuille ?'],
+                        ['Nombre d’actifs', 'Combien d’actifs est-ce que je détiens ?'],
+                        ['Liste des actifs', 'Liste tous mes actifs détenus'],
+                      ].map(([label, question]) => <button key={label} type="button" disabled={!accessEnabled}
+                        onClick={() => answerQuestion(question)} className="rounded-lg border px-2 py-2 text-[11px] font-semibold text-left disabled:opacity-50"
+                        style={{ borderColor: '#D7E1EC', background: '#F5F8FC', color: C.navy }}>{label}</button>)}
+                    </div>
+                    <div className="text-[10px] leading-relaxed" style={{ color: C.sub }}>
+                      Les dates passées utilisent une reconstitution <b>indicative</b> : les historiques de positions et de cours réels ne sont pas fournis.
+                    </div>
+                  </div>
+                  {chatHistory.map((entry, index) => <div key={entry.id} className="space-y-2">
+                    <div className="ml-8 rounded-2xl p-3 text-xs" style={{ background: '#DCEFE8', color: C.ink }}>{entry.question}</div>
+                    <div ref={index === chatHistory.length - 1 ? lastChatAnswerRef : null}
+                      className="rounded-2xl p-3 space-y-2" style={{ background: '#fff', color: C.ink, border: `1px solid ${C.line}` }}>
+                      {entry.reply.snapshot ? (() => {
+                        const s = entry.reply.snapshot;
+                        return <>
+                          <div className="font-bold text-xs">{entry.reply.titre}</div>
+                          <div className="text-[10px]" style={{ color: C.sub }}>Situation au {new Date(`${s.date}T12:00:00`).toLocaleDateString('fr-FR')}</div>
+                          {s.indicative && <div className="rounded-lg p-2 text-[10px]" style={{ color:'#80530B', background:'#FFF4D6' }}>
+                            Reconstitution fictive à date : quantités et espèces supposées constantes, prix estimés et taux de change inchangés. Ce n'est pas un relevé historique.
+                          </div>}
+                          {['rapport', 'rendement', 'liquidite'].includes(entry.reply.kind) && <div className="grid grid-cols-2 gap-2">
+                            <div className="rounded-lg p-2" style={{ background: '#F2F6FC' }}><div className="text-[10px]" style={{ color: C.sub }}>Valorisation · XOF</div><div className="text-xs font-bold">{fmtPrice(s.valeurXof)}</div></div>
+                            <div className="rounded-lg p-2" style={{ background: '#F2F6FC' }}><div className="text-[10px]" style={{ color: C.sub }}>Espèces · XOF</div><div className="text-xs font-bold">{fmtPrice(s.liquiditeXof)}</div></div>
+                          </div>}
+                          {['rapport','rendement'].includes(entry.reply.kind) && <div className="rounded-lg p-2 text-[11px]" style={{ background: '#F1F8F5' }}>
+                            <div className="font-semibold">Rendement YTD : {s.rendementYtd === null ? 'Non disponible à cette date' : `${fmtPrice(s.rendementYtd)} % (donnée de démonstration)`}</div>
+                            <div className="mt-1">Plus/moins-value latente indicative : {s.plusMoinsXof >= 0 ? '+' : ''}{fmtPrice(s.plusMoinsXof)} XOF{s.plusMoinsPct == null ? '' : ` (${fmtPrice(s.plusMoinsPct)} % du coût)`}</div>
+                            <div className="text-[10px] mt-1" style={{ color: C.sub }}>La plus/moins-value latente n'est pas un rendement total : dividendes, coupons et flux ne sont pas intégrés.</div>
+                          </div>}
+                          {['rapport','nombre','actifs'].includes(entry.reply.kind) && <div className="text-[11px]">
+                            <b>{s.nombreActifs} titre(s) distinct(s)</b> · {s.nombreLignes} ligne(s) · {s.nombrePortefeuilles} portefeuille(s)
+                          </div>}
+                          {['rapport','actifs','nombre'].includes(entry.reply.kind) && <div className="space-y-1.5">
+                            {s.actifs.map((a) => <div key={a.key} className="rounded-lg p-2" style={{ background: '#F5F7FA' }}>
+                              <div className="text-[11px] font-semibold">{a.nom}</div>
+                              <div className="text-[10px]" style={{ color: C.sub }}>{a.marche} · {a.classe} · {fmt(a.qte)} titre(s) · {a.portefeuilles} portefeuille(s)</div>
+                              <div className="text-[10px] font-semibold">≈ {fmtPrice(a.valeurXof)} XOF</div>
+                            </div>)}
+                          </div>}
+                          {['rapport','portefeuilles','liquidite'].includes(entry.reply.kind) && <div className="space-y-1.5">
+                            <div className="font-semibold text-[11px]">Détail par portefeuille</div>
+                            {s.rows.map((p) => <div key={p.id} className="rounded-lg p-2" style={{ background: '#F5F7FA' }}>
+                              <div className="text-[11px] font-semibold">{p.nom}</div>
+                              <div className="text-[10px]" style={{ color: C.sub }}>{p.sgi} · {p.marche}</div>
+                              <div className="text-[11px]">Valeur : <b>{fmtPrice(p.total)} {p.devise}</b></div>
+                              <div className="text-[10px]" style={{ color: C.sub }}>Espèces : {fmtPrice(p.liquidite)} {p.devise} · {p.lignes.length} ligne(s)</div>
+                            </div>)}
+                          </div>}
+                          <div className="text-[10px] leading-relaxed" style={{ color:C.sub }}>
+                            Source : portefeuilles GSM de démonstration. Les exécutions fictives Chat Invest ne modifient pas automatiquement les positions de référence.
+                          </div>
+                          {entry.reply.kind === 'rapport' && <button type="button" onClick={() => gsmChatExportPortfolio(s)}
+                            className="w-full rounded-lg border p-2 text-[11px] font-bold" style={{ borderColor: C.navy, color: C.navy }}>
+                            Exporter le rapport (CSV)
+                          </button>}
+                        </>;
+                      })() : <div className="text-xs leading-relaxed">{entry.reply.texte}</div>}
+                    </div>
+                  </div>)}
                   {texte.trim() && <div className="ml-8 rounded-2xl p-3 text-xs" style={{ background: '#DCEFE8', color: C.ink }}>{texte}</div>}
                   <div className="flex flex-wrap gap-2">{['Chat Invest', 'WhatsApp Invest · démo'].map((value) => <button key={value}
                     type="button" onClick={() => setCanal(value)} className="rounded-full px-3 py-1.5 text-[11px] font-semibold"
                     style={{ background: canal === value ? '#DCEFE8' : '#E8EDF3', color: C.ink }}>{value}</button>)}</div>
                   <textarea value={texte} onChange={(e) => setTexte(e.target.value)} rows={3}
-                    className="w-full rounded-xl border p-3 text-xs" placeholder="Votre instruction de bourse…" aria-label="Instruction de bourse" />
+                    className="w-full rounded-xl border p-3 text-xs" placeholder="Posez une question ou saisissez un ordre…" aria-label="Question sur le portefeuille ou instruction de bourse" />
                   <button type="button" disabled={!accessEnabled} onClick={sendText}
-                    className="w-full rounded-xl py-2.5 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.navy }}>Analyser l'instruction →</button>
+                    className="w-full rounded-xl py-2.5 text-xs font-bold text-white disabled:opacity-50" style={{ background: C.navy }}>Envoyer / analyser →</button>
                   {draft && <div className="rounded-2xl p-3 space-y-2" style={{ background: '#fff', border: `1px solid ${C.line}` }}>
                     <div className="text-xs font-bold" style={{ color: C.ink }}>Ticket à confirmer</div>
                     <div className="grid grid-cols-2 gap-2">
@@ -35826,6 +36051,19 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
           </div>
         </div>}
         <div className="space-y-3">
+          <Card className="p-4" style={{ borderColor: '#CFE9DF' }}>
+            <Eyebrow>Assistant de consultation</Eyebrow>
+            <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>Questions possibles dans le téléphone</div>
+            <div className="text-xs leading-relaxed" style={{ color: C.sub }}>
+              Le client peut demander un rapport à une date, sa valorisation consolidée, son rendement YTD de démonstration,
+              ses liquidités, le nombre de titres distincts, la liste des lignes et le détail par portefeuille / SGI.
+              Les réponses proviennent des données locales de Gestion libre, sans service d'intelligence artificielle externe.
+            </div>
+            <div className="text-[11px] mt-2" style={{ color: '#80530B' }}>
+              Important : pour les dates passées, les cours et positions historiques officiels ne sont pas disponibles.
+              La reconstitution affichée est une hypothèse de simulation, pas une situation certifiée.
+            </div>
+          </Card>
           <Card className="p-4"><Eyebrow>Parcours de l'instruction</Eyebrow>
             <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>Du mobile au poste de négociation</div>
             {['1 · Préparation du ticket', '2 · Confirmation par le client', '3 · Réception et horodatage SGI', '4 · Contrôle & validation SGI', '5 · Routage / exécution fictifs', '6 · Retour de résultat au client'].map((step) =>
