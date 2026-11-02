@@ -33904,7 +33904,6 @@ function Comite({
     ['presence', 'Présences & quorum'],
     ['allocation', 'Allocation des fonds'],
     ['synthese', 'Synthèse & marchés'],
-    ['portefeuilles', 'Portefeuilles & risques'],
     ['liquidite', 'Liquidité & cessions'],
     ['decisions', `Décisions (${decisions.length})`],
   ];
@@ -34982,58 +34981,6 @@ function Comite({
         </div>
       )}
 
-      {onglet === 'portefeuilles' && (
-        <div className="space-y-4 gsm-comite-interactive">
-          <Card className="p-5">
-            <Eyebrow>Analyse individuelle de tous les comptes gérés</Eyebrow>
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full" style={{ minWidth: 1280 }}>
-                <thead><tr>
-                  {['Portefeuille', 'Profil', 'Marché', 'Encours natif', 'Performance indic.', 'Actions', 'Obl. souveraines', 'Obl. privées', 'Liquidité', 'Écart actions vs cible'].map((label) => <Th key={label}>{label}</Th>)}
-                </tr></thead>
-                <tbody>
-                  {clients.map((c) => {
-                    const ecartActions = Number(c.alloc?.Actions || 0) - Number(c.cible?.Actions || 0);
-                    return (
-                      <tr key={c.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                        <Td className="font-semibold">{c.nom}<div className="text-[10px]" style={{ color: C.sub }}>{c.numeroCompte || c.id}</div></Td>
-                        <Td>{c.profilRisque || c.risque || '—'}</Td>
-                        <Td>{c.marche}</Td>
-                        <Td mono>{fmt(Math.round(Number(c.encours || 0)))} {c.devise}</Td>
-                        <Td><Pct v={Number(c.perf || 0)} /></Td>
-                        <Td mono>{Number(c.alloc?.Actions || 0).toFixed(1)}%</Td>
-                        <Td mono>{Number(c.alloc?.['Obl. souveraines'] || 0).toFixed(1)}%</Td>
-                        <Td mono>{Number(c.alloc?.['Obl. privées'] || 0).toFixed(1)}%</Td>
-                        <Td mono>{Number(c.alloc?.Liquidité || 0).toFixed(1)}%</Td>
-                        <Td><Badge tone={Math.abs(ecartActions) >= 5 ? 'coral' : 'teal'}>{ecartActions > 0 ? '+' : ''}{ecartActions.toFixed(1)} pts</Badge></Td>
-                      </tr>
-                    );
-                  })}
-                  {!clients.length && <tr><td colSpan={10} className="p-5 text-center">Aucun portefeuille dans le périmètre sélectionné.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-          <Card className="p-5">
-            <Eyebrow>Écarts significatifs d'allocation vs cible · seuil indicatif ±5 pts</Eyebrow>
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full" style={{ minWidth: 760 }}>
-                <thead><tr>{['Portefeuille', 'Marché', 'Catégorie', 'Actuel', 'Cible', 'Écart'].map((label) => <Th key={label}>{label}</Th>)}</tr></thead>
-                <tbody>
-                  {risques.slice(0, 30).map((r) => (
-                    <tr key={r.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                      <Td>{r.client}</Td><Td>{r.marche}</Td><Td>{r.classe}</Td>
-                      <Td mono>{r.actuel.toFixed(1)}%</Td><Td mono>{r.cible.toFixed(1)}%</Td>
-                      <Td><Badge tone="coral">{r.ecart > 0 ? '+' : ''}{r.ecart.toFixed(1)} pts</Badge></Td>
-                    </tr>
-                  ))}
-                  {!risques.length && <tr><td colSpan={6} className="p-5 text-center">Aucun dépassement indicatif détecté.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      )}
 
       {onglet === 'liquidite' && (
         <div className="space-y-4 gsm-comite-interactive">
