@@ -32776,7 +32776,7 @@ function PriseDecisions({ go }) {
               className="text-xs font-semibold block mb-1"
               style={{ color: C.sub }}
             >
-              Prix Objectif
+              Prix Limite
             </label>
             <input
               type="number"
@@ -32851,7 +32851,7 @@ function PriseDecisions({ go }) {
                 <Th>Type d'ordre</Th>
                 <Th>Prix min</Th>
                 <Th>Prix Max</Th>
-                <Th>Prix Objectif</Th>
+                <Th>Prix Limite</Th>
                 <Th>Portefeuilles concernés</Th>
                 <Th></Th>
               </tr>
@@ -33018,7 +33018,7 @@ function PriseDecisions({ go }) {
                   <Th>Type d'ordre</Th>
                   <Th>Prix min</Th>
                   <Th>Prix Max</Th>
-                  <Th>Prix Objectif</Th>
+                  <Th>Prix Limite</Th>
                   <Th>Portefeuilles concernés</Th>
                 </tr>
               </thead>
@@ -33834,7 +33834,7 @@ function Comite({
         r.client, r.montant, r.devise, r.statut, r.dateDemande, r.dateSouhaitee,
       ]),
       [],
-      ['DÉCISIONS INTÉGRÉES AU RAPPORT', 'Référence comité', 'Date de création', 'Allocation', 'Classe', 'Sens', 'Pourcentage opération', 'Instrument', 'Marché', 'Profil concerné', 'Critère d’exposition', 'Type d’ordre', 'Prix min', 'Prix max', 'Prix objectif', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'],
+      ['DÉCISIONS INTÉGRÉES AU RAPPORT', 'Référence comité', 'Date de création', 'Allocation', 'Classe', 'Sens', 'Pourcentage opération', 'Instrument', 'Marché', 'Profil concerné', 'Critère d’exposition', 'Type d’ordre', 'Prix min', 'Prix max', 'Prix Limite', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'],
       ...allocationsPourRapport.map(({ decision, allocation: a, cleSuivi }) => [
         'Décision incluse', decision.id, decision.libelleDate || decision.creeLe || '',
         a.id || '', a.typeInstrument || '', a.sens || '',
