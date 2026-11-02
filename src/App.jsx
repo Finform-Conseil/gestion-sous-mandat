@@ -33140,12 +33140,92 @@ const COMITE_AGENDA_INITIAL = [
   { id: COMITE_SUIVI_PRECEDENT_ID, titre: 'Suivi des grandes décisions du comité précédent', duree: 15, nature: 'suivi' },
   { id: COMITE_CLOTURE_ID, titre: 'Synthèse, responsables, prochaines échéances et clôture', duree: 10, nature: 'information' },
 ];
+const COMITE_DOCUMENT_MAX_FILE_BYTES = 1_000_000;
+const COMITE_DOCUMENT_TYPE_LABELS = {
+  document: 'Document',
+  actualite: 'Actualité',
+  lien: 'Lien web',
+};
+
+const comiteNormaliserUrlExterne = (value) => {
+  const brut = String(value || '').trim();
+  if (!brut) return '';
+  const candidat = /^[a-z][a-z0-9+.-]*:/i.test(brut) ? brut : `https://${brut}`;
+  try {
+    const url = new URL(candidat);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
+  } catch {
+    return '';
+  }
+};
+
+const comiteNormaliserDocumentsAssocies = (documents) =>
+  (Array.isArray(documents) ? documents : [])
+    .filter((document) => document && (document.titre || document.url || document.fichierNom))
+    .map((document, index) => {
+      const type = Object.prototype.hasOwnProperty.call(
+        COMITE_DOCUMENT_TYPE_LABELS,
+        document.type
+      )
+        ? document.type
+        : 'document';
+      const fichierDataUrl =
+        typeof document.fichierDataUrl === 'string' &&
+        document.fichierDataUrl.startsWith('data:')
+          ? document.fichierDataUrl
+          : '';
+      return {
+        id: String(
+          document.id ||
+            `piece-${index + 1}-${String(document.titre || document.fichierNom || 'reference')
+              .toLocaleLowerCase('fr')
+              .replace(/[^a-z0-9]+/gi, '-')
+              .replace(/^-+|-+$/g, '')
+              .slice(0, 32)}`
+        ),
+        type,
+        titre: String(document.titre || document.fichierNom || document.url || `Pièce ${index + 1}`),
+        url: comiteNormaliserUrlExterne(document.url),
+        source: String(document.source || ''),
+        datePublication: String(document.datePublication || ''),
+        note: String(document.note || ''),
+        fichierNom: String(document.fichierNom || ''),
+        fichierType: String(document.fichierType || ''),
+        fichierTaille: Number(document.fichierTaille || 0),
+        fichierDataUrl,
+        ajouteLe: String(document.ajouteLe || ''),
+      };
+    });
+
+const comiteFormaterTailleDocument = (bytes) => {
+  const taille = Number(bytes || 0);
+  if (!taille) return '';
+  if (taille < 1024) return `${taille} o`;
+  if (taille < 1024 * 1024) return `${(taille / 1024).toFixed(0)} Ko`;
+  return `${(taille / (1024 * 1024)).toFixed(1)} Mo`;
+};
+
+const comiteDocumentReferenceTexte = (document) => {
+  const type = COMITE_DOCUMENT_TYPE_LABELS[document.type] || 'Document';
+  const meta = [document.source, document.datePublication].filter(Boolean).join(' · ');
+  const support = document.url || document.fichierNom || '';
+  return `${type} : ${document.titre}${meta ? ` (${meta})` : ''}${support ? ` — ${support}` : ''}`;
+};
+
 const comiteAgendaNormalise = (agenda) => {
   const valeurs = Array.isArray(agenda) ? agenda : COMITE_AGENDA_INITIAL;
-  const distincts = [...new Map(valeurs.filter((p) => p && p.id)
-    .map((p) => [String(p.id), p])).values()];
-  const obligatoire = (id) => distincts.find((p) => p.id === id)
-    || COMITE_AGENDA_INITIAL.find((p) => p.id === id);
+  const normaliserPoint = (point) => ({
+    ...point,
+    documentsAssocies: comiteNormaliserDocumentsAssocies(point?.documentsAssocies),
+  });
+  const distincts = [...new Map(
+    valeurs
+      .filter((p) => p && p.id)
+      .map((p) => [String(p.id), normaliserPoint(p)])
+  ).values()];
+  const obligatoire = (id) =>
+    distincts.find((p) => p.id === id) ||
+    normaliserPoint(COMITE_AGENDA_INITIAL.find((p) => p.id === id));
   return [
     ...distincts.filter((p) => ![COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(p.id)),
     obligatoire(COMITE_SUIVI_PRECEDENT_ID),
@@ -33177,6 +33257,314 @@ const comiteResultatVote = (point, votants, quorumAtteint) => {
     voix.pour === voix.contre ? 'Égalité — non adopté' : 'Rejeté';
   return { ...voix, exprimes, votesEmis, participationMinimale, resultat };
 };
+
+
+function ComiteDocumentsAssociesEditor({
+  documents = [],
+  onChange,
+  compact = false,
+  titre = 'Documents associés à ce point',
+}) {
+  const [type, setType] = useState('document');
+  const [titreDocument, setTitreDocument] = useState('');
+  const [url, setUrl] = useState('');
+  const [source, setSource] = useState('');
+  const [datePublication, setDatePublication] = useState('');
+  const [note, setNote] = useState('');
+  const [fichier, setFichier] = useState(null);
+  const [erreur, setErreur] = useState('');
+
+  const pieces = comiteNormaliserDocumentsAssocies(documents);
+
+  const reinitialiser = () => {
+    setType('document');
+    setTitreDocument('');
+    setUrl('');
+    setSource('');
+    setDatePublication('');
+    setNote('');
+    setFichier(null);
+    setErreur('');
+  };
+
+  const chargerFichier = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > COMITE_DOCUMENT_MAX_FILE_BYTES) {
+      setFichier(null);
+      setErreur(
+        `Le fichier dépasse ${comiteFormaterTailleDocument(
+          COMITE_DOCUMENT_MAX_FILE_BYTES
+        )}. Utilisez de préférence un lien vers le document afin de ne pas saturer le stockage local.`
+      );
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFichier({
+        nom: file.name,
+        type: file.type || 'application/octet-stream',
+        taille: file.size,
+        dataUrl: typeof reader.result === 'string' ? reader.result : '',
+      });
+      if (!titreDocument.trim()) setTitreDocument(file.name);
+      setErreur('');
+    };
+    reader.onerror = () => {
+      setFichier(null);
+      setErreur('Lecture du fichier impossible. Utilisez un lien vers le document.');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const ajouterDocument = () => {
+    const titreNettoye = titreDocument.trim() || fichier?.nom || '';
+    const urlBrute = url.trim();
+    const urlNormalisee = urlBrute ? comiteNormaliserUrlExterne(urlBrute) : '';
+
+    if (!titreNettoye) {
+      setErreur('Renseignez le titre du document, de l’actualité ou du lien.');
+      return;
+    }
+    if (urlBrute && !urlNormalisee) {
+      setErreur('Le lien doit être une adresse web HTTP ou HTTPS valide.');
+      return;
+    }
+    if (type === 'lien' && !urlNormalisee) {
+      setErreur('Ajoutez une adresse web pour une référence de type « Lien web ».');
+      return;
+    }
+    if (type === 'document' && !urlNormalisee && !fichier?.dataUrl) {
+      setErreur('Ajoutez un fichier local ou un lien vers le document.');
+      return;
+    }
+
+    const piece = {
+      id: `piece-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type,
+      titre: titreNettoye,
+      url: urlNormalisee,
+      source: source.trim(),
+      datePublication,
+      note: note.trim(),
+      fichierNom: fichier?.nom || '',
+      fichierType: fichier?.type || '',
+      fichierTaille: fichier?.taille || 0,
+      fichierDataUrl: fichier?.dataUrl || '',
+      ajouteLe: new Date().toISOString(),
+    };
+
+    onChange?.([...pieces, piece]);
+    reinitialiser();
+  };
+
+  const supprimerDocument = (id) => {
+    onChange?.(pieces.filter((piece) => piece.id !== id));
+  };
+
+  return (
+    <div
+      className={`rounded-xl border ${compact ? 'p-3' : 'p-4'}`}
+      style={{ borderColor: C.line, background: compact ? '#FAFBFD' : '#fff' }}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs font-bold" style={{ color: C.ink }}>{titre}</p>
+          <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+            Références utilisées pour préparer ou motiver la décision : notes, rapports,
+            pièces jointes, communiqués, articles ou liens externes.
+          </p>
+        </div>
+        <Badge tone={pieces.length ? 'navy' : 'slate'}>
+          {pieces.length} pièce(s)
+        </Badge>
+      </div>
+
+      {pieces.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {pieces.map((piece) => {
+            const typeLabel = COMITE_DOCUMENT_TYPE_LABELS[piece.type] || 'Document';
+            const typeTone = piece.type === 'actualite' ? 'gold' : piece.type === 'lien' ? 'teal' : 'navy';
+            return (
+              <div
+                key={piece.id}
+                className="rounded-xl border p-3 flex items-start justify-between gap-3 flex-wrap"
+                style={{ borderColor: C.line, background: '#FAFBFD' }}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge tone={typeTone}>{typeLabel}</Badge>
+                    <span className="text-xs font-semibold" style={{ color: C.ink }}>
+                      {piece.titre}
+                    </span>
+                  </div>
+                  {(piece.source || piece.datePublication) && (
+                    <p className="text-[10px] mt-1" style={{ color: C.sub }}>
+                      {[piece.source, piece.datePublication].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
+                  {piece.note && (
+                    <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                      {piece.note}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2 flex-wrap">
+                    {piece.url && (
+                      <a
+                        href={piece.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold"
+                        style={{ color: C.indigo }}
+                      >
+                        <ExternalLink size={12} /> Ouvrir le lien
+                      </a>
+                    )}
+                    {piece.fichierDataUrl && piece.fichierNom && (
+                      <a
+                        href={piece.fichierDataUrl}
+                        download={piece.fichierNom}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold"
+                        style={{ color: C.navy }}
+                      >
+                        <Download size={12} /> {piece.fichierNom}
+                        {piece.fichierTaille
+                          ? ` · ${comiteFormaterTailleDocument(piece.fichierTaille)}`
+                          : ''}
+                      </a>
+                    )}
+                    {!piece.url && !piece.fichierDataUrl && piece.fichierNom && (
+                      <span className="text-[10px]" style={{ color: C.sub }}>
+                        Fichier référencé : {piece.fichierNom}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => supprimerDocument(piece.id)}
+                  className="text-[10px] font-semibold shrink-0"
+                  style={{ color: C.coral }}
+                >
+                  Retirer
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-[11px] mt-3" style={{ color: C.sub }}>
+          Aucun document ou actualité n’est encore associé à ce point.
+        </p>
+      )}
+
+      <div className="mt-3 border-t pt-3" style={{ borderColor: C.line }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
+          <label className="space-y-1">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Type</span>
+            <select
+              className="w-full border rounded-lg px-2 py-2 text-xs bg-white"
+              style={{ borderColor: C.line }}
+              value={type}
+              onChange={(event) => {
+                const next = event.target.value;
+                setType(next);
+                if (next !== 'document') setFichier(null);
+                setErreur('');
+              }}
+            >
+              <option value="document">Document</option>
+              <option value="actualite">Actualité</option>
+              <option value="lien">Lien web</option>
+            </select>
+          </label>
+          <label className="space-y-1 sm:col-span-1 xl:col-span-2">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Titre / objet</span>
+            <input
+              className="w-full border rounded-lg px-2 py-2 text-xs"
+              style={{ borderColor: C.line }}
+              value={titreDocument}
+              onChange={(event) => setTitreDocument(event.target.value)}
+              placeholder="Ex. Note de stratégie BRVM · Résultats S1 2026"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Source / éditeur</span>
+            <input
+              className="w-full border rounded-lg px-2 py-2 text-xs"
+              style={{ borderColor: C.line }}
+              value={source}
+              onChange={(event) => setSource(event.target.value)}
+              placeholder="BRVM, BCEAO, société…"
+            />
+          </label>
+          <label className="space-y-1 sm:col-span-2 xl:col-span-3">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Lien web / URL du document</span>
+            <input
+              type="url"
+              className="w-full border rounded-lg px-2 py-2 text-xs"
+              style={{ borderColor: C.line }}
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="https://…"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Date de publication</span>
+            <input
+              type="date"
+              className="w-full border rounded-lg px-2 py-2 text-xs"
+              style={{ borderColor: C.line }}
+              value={datePublication}
+              onChange={(event) => setDatePublication(event.target.value)}
+            />
+          </label>
+          <label className="space-y-1 sm:col-span-2 xl:col-span-3">
+            <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Utilité pour la décision</span>
+            <input
+              className="w-full border rounded-lg px-2 py-2 text-xs"
+              style={{ borderColor: C.line }}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Ex. Confirme la hausse du risque de taux / justifie la proposition d’arbitrage"
+            />
+          </label>
+          {type === 'document' && (
+            <label className="space-y-1">
+              <span className="block text-[10px] font-semibold" style={{ color: C.sub }}>Fichier local</span>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg"
+                className="block w-full text-[10px]"
+                onChange={chargerFichier}
+              />
+            </label>
+          )}
+        </div>
+
+        {fichier && (
+          <div className="mt-2 text-[10px]" style={{ color: C.teal }}>
+            Fichier prêt : <b>{fichier.nom}</b> · {comiteFormaterTailleDocument(fichier.taille)}
+          </div>
+        )}
+        {erreur && (
+          <div className="mt-2 text-[10px]" style={{ color: C.coral }}>
+            {erreur}
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 flex-wrap mt-3">
+          <p className="text-[9px] max-w-3xl" style={{ color: C.sub }}>
+            Les petits fichiers (≤ {comiteFormaterTailleDocument(COMITE_DOCUMENT_MAX_FILE_BYTES)})
+            sont conservés avec la séance dans le navigateur. Pour les pièces volumineuses,
+            privilégiez un lien documentaire sécurisé.
+          </p>
+          <Btn tone="ghost" onClick={ajouterDocument}>Ajouter cette pièce</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Comite({
   devise = 'XOF',
@@ -33247,6 +33635,7 @@ function Comite({
   });
   const [horlogeSeance, setHorlogeSeance] = useState(Date.now());
   const [nouveauPoint, setNouveauPoint] = useState('');
+  const [nouveauPointDocuments, setNouveauPointDocuments] = useState([]);
   const [pointOuvert, setPointOuvert] = useState('marche-analyse');
 
   useEffect(() => {
@@ -33268,10 +33657,20 @@ function Comite({
   const ajouterPoint = () => {
     const titre = nouveauPoint.trim();
     if (!titre) return;
+    const id = `point-${Date.now()}`;
     setSeance((courant) => ({ ...courant, agenda: comiteAgendaNormalise([
-      ...courant.agenda, { id: `point-${Date.now()}`, titre, duree: 10, nature: 'decision' },
+      ...courant.agenda,
+      {
+        id,
+        titre,
+        duree: 10,
+        nature: 'decision',
+        documentsAssocies: comiteNormaliserDocumentsAssocies(nouveauPointDocuments),
+      },
     ]) }));
     setNouveauPoint('');
+    setNouveauPointDocuments([]);
+    setPointOuvert(id);
   };
   const retirerPoint = (id) => {
     if ([COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(id)) return;
@@ -33296,6 +33695,8 @@ function Comite({
       agenda: COMITE_AGENDA_INITIAL.map((p) => ({ ...p })),
       sujetPrecedent: '', commentairesAllocation: '',
     });
+    setNouveauPoint('');
+    setNouveauPointDocuments([]);
     setPointOuvert('ouverture');
     setOnglet('seance');
     setMessage('Nouvelle séance préparée : renseignez sa date et les présences. Les PV précédents exportés restent archivés.');
@@ -33816,8 +34217,17 @@ function Comite({
       ['QUORUM ET PRESENCES', 'Convoqués', personnesConvoquees.length, 'Présents', personnesPresentes.length, 'Quorum atteint', quorumAtteint ? 'Oui' : 'Non'],
       ...personnesConvoquees.map((p) => ['Présence', p.nom, p.fonction, seance.presences?.[p.id] || 'non-renseigne']),
       [],
-      ['ORDRE DU JOUR', 'Horaire début', 'Horaire fin', 'Durée min', 'Rapporteur', 'Pour', 'Contre', 'Abstention', 'Conclusion', 'Décision / commentaire'],
-      ...agendaPlanifie.map((p) => { const vote = votesParPoint(p); return [p.titre, p.debut, p.fin, p.duree, p.rapporteur || '', vote.pour, vote.contre, vote.abstention, vote.resultat, p.compteRendu || '']; }),
+      ['ORDRE DU JOUR', 'Horaire début', 'Horaire fin', 'Durée min', 'Rapporteur', 'Pour', 'Contre', 'Abstention', 'Conclusion', 'Documents associés', 'Décision / commentaire'],
+      ...agendaPlanifie.map((p) => {
+        const vote = votesParPoint(p);
+        const documents = comiteNormaliserDocumentsAssocies(p.documentsAssocies);
+        return [
+          p.titre, p.debut, p.fin, p.duree, p.rapporteur || '',
+          vote.pour, vote.contre, vote.abstention, vote.resultat,
+          documents.map(comiteDocumentReferenceTexte).join(' | '),
+          p.compteRendu || '',
+        ];
+      }),
       [],
       ['COMITE PRECEDENT', precedentArchive?.date || 'Sans archive', precedentArchive?.decisions?.join(' | ') || '', seance.sujetPrecedent],
       ['ORIENTATION ALLOCATION CLIENTS', seance.commentairesAllocation],
@@ -33863,9 +34273,18 @@ function Comite({
       const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === p.recommandationId);
       const idsLies = Array.isArray(p.decisionsIds) ? p.decisionsIds : [];
       const decisionsLiees = decisionsPourRapport.filter((d) => idsLies.includes(String(d.id)));
+      const documents = comiteNormaliserDocumentsAssocies(p.documentsAssocies);
+      const documentsHtml = documents.length
+        ? `<ul>${documents.map((document) => {
+            const meta = [document.source, document.datePublication].filter(Boolean).join(' · ');
+            const support = document.url || document.fichierNom || '';
+            return `<li><b>${e(COMITE_DOCUMENT_TYPE_LABELS[document.type] || 'Document')} :</b> ${e(document.titre)}${meta ? ` — ${e(meta)}` : ''}${support ? ` — ${e(support)}` : ''}${document.note ? `<br/><small>${e(document.note)}</small>` : ''}</li>`;
+          }).join('')}</ul>`
+        : '<p>Aucun document associé.</p>';
       return `<section><h3>${p.index + 1}. ${e(p.titre)} <small>(${p.debut}–${p.fin}, ${p.duree} min)</small></h3>
         <p><b>Type :</b> ${e(p.nature || 'information')} · <b>Rapporteur :</b> ${e(p.rapporteur || 'Non renseigné')}</p>
         ${rec ? `<p><b>Analyse technique :</b> ${e(rec.technique?.signal || 'Non renseignée')} · RSI ${e(rec.technique?.rsi ?? '—')}<br/><b>Analyse fondamentale :</b> ${e(rec.fondamentale?.signal || 'Non renseignée')} · PER ${e(rec.fondamentale?.per ?? '—')} · Cours/objectif ${e(rec.cours)} / ${e(rec.objectif)} ${e(rec.devise)}</p>` : '<p>Recommandation spécifique : non sélectionnée.</p>'}
+        <p><b>Documents / actualités associés à ce point :</b></p>${documentsHtml}
         <p><b>Décisions d’investissement associées :</b> ${decisionsLiees.length ? decisionsLiees.map((d) => e(d.id) + ' (' + (d.allocations || []).map((a) => e(a.sens + ' ' + a.instrument)).join(', ') + ')').join(' ; ') : 'Aucune'}</p>
         <p><b>Votes :</b> Pour ${v.pour}, contre ${v.contre}, abstention ${v.abstention}. <b>Conclusion :</b> ${e(v.resultat)}.</p>
         <p><b>Décision / commentaire de séance :</b> ${e(p.compteRendu || 'Non renseigné')}</p>
@@ -34360,8 +34779,13 @@ function Comite({
                             style={{ background: selectionne ? C.navy : '#EBEEF4', color: selectionne ? '#fff' : C.navy }}>{p.index + 1}</span>
                           <span className="text-xs font-semibold leading-5 min-w-0" style={{ color: C.ink }}>{p.titre}</span>
                         </div>
-                        <div className="flex gap-2 mt-2 items-center justify-between">
+                        <div className="flex gap-2 mt-2 items-center justify-between flex-wrap">
                           <span className="text-[10px]" style={{ color: C.sub }}>{p.duree} min prévues</span>
+                          {(p.documentsAssocies || []).length > 0 && (
+                            <span className="text-[9px] font-semibold" style={{ color: C.navy }}>
+                              {(p.documentsAssocies || []).length} pièce(s) associée(s)
+                            </span>
+                          )}
                           {p.id === COMITE_SUIVI_PRECEDENT_ID && <span className="text-[9px] font-bold" style={{ color: '#A4771B' }}>Suivi obligatoire</span>}
                           {selectionne && <span className="text-[10px] font-bold" style={{ color: C.indigo }}>Dossier ouvert →</span>}
                         </div>
@@ -34425,6 +34849,9 @@ function Comite({
                 <div className="flex-1 min-w-[210px]">
                   <div className="flex items-center gap-2 flex-wrap"><span className="text-sm font-bold" style={{ color: C.ink, ...F_DISPLAY }}>{point.titre}</span>
                     {point.id === COMITE_SUIVI_PRECEDENT_ID && <Badge tone="gold">Obligatoire · avant clôture</Badge>}
+                    {(point.documentsAssocies || []).length > 0 && (
+                      <Badge tone="navy">{(point.documentsAssocies || []).length} pièce(s)</Badge>
+                    )}
                     <Badge tone={point.termineAt ? 'teal' : point.demarreAt ? 'gold' : 'slate'}>{point.termineAt ? 'Traité' : point.demarreAt ? 'En cours' : 'À traiter'}</Badge>
                   </div>
                   <div className="text-xs mt-1" style={{ color: C.sub }}>{point.debut}–{point.fin} · {point.duree} min prévues · {dureeReelle === null ? 'Non démarré' : `${dureeReelle} min réelles`}</div>
@@ -34449,6 +34876,13 @@ function Comite({
                     <div className="bg-white rounded-xl border p-3" style={{ borderColor: C.line }}><b className="text-xs">Analyse fondamentale</b><p className="text-xs mt-1">Signal : {rec.fondamentale?.signal || 'Non renseigné'}</p><p className="text-xs">PER : {rec.fondamentale?.per ?? '—'} · Objectif : {fmtPrice(rec.objectif)} {rec.devise}</p></div>
                   </div> : <p className="mt-3 text-[11px]" style={{ color: C.sub }}>Aucune analyse liée à ce point. Renseignez une valeur si une recommandation doit appuyer le vote.</p>}
                 </div>
+                <ComiteDocumentsAssociesEditor
+                  documents={point.documentsAssocies || []}
+                  onChange={(documentsAssocies) =>
+                    modifierPoint(point.id, { documentsAssocies })
+                  }
+                  titre="Documents associés à ce point"
+                />
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
                     <p className="text-xs font-bold">Décisions d’investissement associées à ce point</p>
@@ -34492,15 +34926,28 @@ function Comite({
                   </div>
                   <Badge tone="gold">Suivi obligatoire conservé</Badge>
                 </div>
-                <div className="flex items-end flex-wrap gap-3 mt-3">
-                  <label className="flex-1 min-w-[210px] space-y-1">
-                    <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Intitulé du nouveau point</span>
-                    <input className="w-full p-2 border rounded-xl text-xs" style={{ borderColor: C.line }}
-                      value={nouveauPoint} onChange={(e) => setNouveauPoint(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') ajouterPoint(); }}
-                      placeholder="Ex. Limites de concentration sectorielle" />
-                  </label>
-                  <Btn onClick={ajouterPoint} disabled={!nouveauPoint.trim()}>Ajouter au programme</Btn>
+                <div className="mt-3 space-y-3">
+                  <div className="flex items-end flex-wrap gap-3">
+                    <label className="flex-1 min-w-[210px] space-y-1">
+                      <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>Intitulé du nouveau point</span>
+                      <input className="w-full p-2 border rounded-xl text-xs" style={{ borderColor: C.line }}
+                        value={nouveauPoint} onChange={(e) => setNouveauPoint(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') ajouterPoint(); }}
+                        placeholder="Ex. Limites de concentration sectorielle" />
+                    </label>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {nouveauPointDocuments.length > 0 && (
+                        <Badge tone="navy">{nouveauPointDocuments.length} pièce(s) prête(s)</Badge>
+                      )}
+                      <Btn onClick={ajouterPoint} disabled={!nouveauPoint.trim()}>Ajouter au programme</Btn>
+                    </div>
+                  </div>
+                  <ComiteDocumentsAssociesEditor
+                    documents={nouveauPointDocuments}
+                    onChange={setNouveauPointDocuments}
+                    compact
+                    titre="Documents / actualités à joindre au nouveau point"
+                  />
                 </div>
               </Card>
               <div className="flex flex-wrap justify-between gap-3 items-center rounded-2xl border p-4 gsm-comite-no-print" style={{ borderColor: C.line, background: '#F6F8FC' }}>
@@ -35106,7 +35553,19 @@ function Comite({
         <h3 className="font-semibold">Feuille de présence et quorum</h3>
         <ul className="text-xs">{personnesConvoquees.map((p) => <li key={p.id}>{p.nom} — {p.fonction} — {seance.presences?.[p.id] === 'absent' ? 'Absent' : seance.presences?.[p.id] === 'excuse' ? 'Excusé' : seance.presences?.[p.id] === 'present' ? 'Présent' : 'À vérifier'}</li>)}</ul>
         <h3 className="font-semibold">Ordre du jour, analyses, débats et votes</h3>
-        {agendaPlanifie.map((p) => { const v = votesParPoint(p); const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === p.recommandationId); return <div key={p.id} className="text-xs space-y-1" style={{ pageBreakInside: 'avoid' }}><b>{p.index + 1}. {p.titre} · {p.debut}–{p.fin} ({p.duree} min)</b><p>Rapporteur : {p.rapporteur || '—'}</p><p>Technique : {rec?.technique?.signal || '—'} ; RSI : {rec?.technique?.rsi ?? '—'} · Fondamental : {rec?.fondamentale?.signal || '—'} ; PER : {rec?.fondamentale?.per ?? '—'}</p><p>Votes : {v.pour} pour / {v.contre} contre / {v.abstention} abstention — {v.resultat}</p><p>Décision / commentaire : {p.compteRendu || 'Non renseigné'}</p></div>; })}
+        {agendaPlanifie.map((p) => {
+          const v = votesParPoint(p);
+          const rec = RECOS.find((r) => `${r.marche}::${r.titre}` === p.recommandationId);
+          const documents = comiteNormaliserDocumentsAssocies(p.documentsAssocies);
+          return <div key={p.id} className="text-xs space-y-1" style={{ pageBreakInside: 'avoid' }}>
+            <b>{p.index + 1}. {p.titre} · {p.debut}–{p.fin} ({p.duree} min)</b>
+            <p>Rapporteur : {p.rapporteur || '—'}</p>
+            <p>Technique : {rec?.technique?.signal || '—'} ; RSI : {rec?.technique?.rsi ?? '—'} · Fondamental : {rec?.fondamentale?.signal || '—'} ; PER : {rec?.fondamentale?.per ?? '—'}</p>
+            <p>Documents associés : {documents.length ? documents.map(comiteDocumentReferenceTexte).join(' | ') : 'Aucun'}</p>
+            <p>Votes : {v.pour} pour / {v.contre} contre / {v.abstention} abstention — {v.resultat}</p>
+            <p>Décision / commentaire : {p.compteRendu || 'Non renseigné'}</p>
+          </div>;
+        })}
         <h3 className="font-semibold">Suivi des grandes décisions du comité précédent</h3>
         <p className="text-xs">Comité archivé : {precedentArchive?.date || 'Aucun'} · {precedentArchive?.decisions?.join(' ; ') || 'Aucune décision précédente archivée.'} · Bilan : {seance.sujetPrecedent || 'Non renseigné'}</p>
         <h3 className="font-semibold">Présentation de l’allocation des fonds</h3>
