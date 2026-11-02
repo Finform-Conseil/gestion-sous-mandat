@@ -33900,8 +33900,8 @@ function Comite({
   };
 
   const tabs = [
-    ['seance', 'Ordre du jour & votes'],
     ['presence', 'Présences & quorum'],
+    ['seance', 'Ordre du jour & votes'],
     ['allocation', 'Allocation des fonds'],
     ['synthese', 'Synthèse & marchés'],
     ['liquidite', 'Liquidité & cessions'],
@@ -33935,15 +33935,7 @@ function Comite({
             Les performances disponibles sont indicatives ; les cotations et les prévisions locales ne constituent pas des données officielles.
           </p>
         </div>
-        <div id="gsm-comite-actions" className="flex gap-2 flex-wrap">
-          <Btn onClick={() => go('decisions-comite')}>Prise de décisions</Btn>
-          <Btn tone="ghost" onClick={() => setEditerRapport((v) => !v)}>
-            {editerRapport ? 'Fermer paramètres' : 'Éditer le rapport'}
-          </Btn>
-          <Btn tone="ghost" onClick={exporterCsv}>Exporter CSV</Btn>
-          <Btn tone="gold" onClick={genererProcesVerbal}>Générer le PV (.doc)</Btn>
-          <Btn tone="ghost" onClick={() => window.print()}>Imprimer / PDF</Btn>
-        </div>
+
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 gsm-comite-no-print">
@@ -34274,6 +34266,15 @@ function Comite({
       </Card>
 
       )}
+      
+      {onglet === 'presence' && <div className="space-y-4 gsm-comite-interactive">
+        <Card className="p-5"><Eyebrow>Appel & contrôle du quorum</Eyebrow><h3 className="text-base font-bold">Feuille de présence</h3>
+          <p className="text-xs mt-2" style={{ color: C.sub }}>La liste des personnes convoquées est renseignée dans « Éditer le rapport ». Chaque personne convoquée doit être explicitement pointée présente, absente ou excusée avant le vote.</p>
+          <div className="flex flex-wrap items-center gap-3 mt-4"><Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge><span className="text-xs">{personnesPresentes.length} présents / {personnesConvoquees.length} convoqués · {tauxPresence.toFixed(1)} % · seuil : {seuilQuorum}</span><Btn tone="ghost" onClick={() => setEditerRapport(true)}>Gérer l’annuaire et les invitations</Btn></div>
+          <div className="overflow-x-auto mt-4"><table className="w-full" style={{ minWidth: 580 }}><thead><tr><Th>Membre</Th><Th>Fonction</Th><Th>Présence</Th></tr></thead><tbody>{personnesConvoquees.map((p) => <tr key={p.id} style={{ borderTop: `1px solid ${C.line}` }}><Td className="font-semibold">{p.nom}</Td><Td>{p.fonction}</Td><Td><select value={seance.presences?.[p.id] || 'non-renseigne'} onChange={(e) => changerPresence(p.id, e.target.value)} className="p-2 rounded-lg border text-xs" style={{ borderColor: C.line }}><option value="non-renseigne">À vérifier</option><option value="present">Présent</option><option value="absent">Absent</option><option value="excuse">Excusé</option></select></Td></tr>)}{!personnesConvoquees.length && <tr><td colSpan={3} className="text-xs p-4">Aucun membre convoqué. Ouvrez « Éditer le rapport », ajoutez les membres puis cochez les personnes invitées.</td></tr>}</tbody></table></div>
+          <p className="text-[11px] mt-3" style={{ color: C.sub }}>Règle configurable de démonstration : présence strictement supérieure au seuil choisi ; majorité des suffrages exprimés, avec participation d’au moins la majorité des présents. Le règlement intérieur réel de la SGI doit prévaloir.</p>
+        </Card>
+      </div>}
 
       {onglet === 'seance' && (
         <div className="space-y-4 gsm-comite-interactive" id="gsm-comite-cockpit">
@@ -34515,15 +34516,6 @@ function Comite({
           </div>
         </div>
       )}
-
-      {onglet === 'presence' && <div className="space-y-4 gsm-comite-interactive">
-        <Card className="p-5"><Eyebrow>Appel & contrôle du quorum</Eyebrow><h3 className="text-base font-bold">Feuille de présence</h3>
-          <p className="text-xs mt-2" style={{ color: C.sub }}>La liste des personnes convoquées est renseignée dans « Éditer le rapport ». Chaque personne convoquée doit être explicitement pointée présente, absente ou excusée avant le vote.</p>
-          <div className="flex flex-wrap items-center gap-3 mt-4"><Badge tone={quorumAtteint ? 'teal' : 'coral'}>{quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}</Badge><span className="text-xs">{personnesPresentes.length} présents / {personnesConvoquees.length} convoqués · {tauxPresence.toFixed(1)} % · seuil : {seuilQuorum}</span><Btn tone="ghost" onClick={() => setEditerRapport(true)}>Gérer l’annuaire et les invitations</Btn></div>
-          <div className="overflow-x-auto mt-4"><table className="w-full" style={{ minWidth: 580 }}><thead><tr><Th>Membre</Th><Th>Fonction</Th><Th>Présence</Th></tr></thead><tbody>{personnesConvoquees.map((p) => <tr key={p.id} style={{ borderTop: `1px solid ${C.line}` }}><Td className="font-semibold">{p.nom}</Td><Td>{p.fonction}</Td><Td><select value={seance.presences?.[p.id] || 'non-renseigne'} onChange={(e) => changerPresence(p.id, e.target.value)} className="p-2 rounded-lg border text-xs" style={{ borderColor: C.line }}><option value="non-renseigne">À vérifier</option><option value="present">Présent</option><option value="absent">Absent</option><option value="excuse">Excusé</option></select></Td></tr>)}{!personnesConvoquees.length && <tr><td colSpan={3} className="text-xs p-4">Aucun membre convoqué. Ouvrez « Éditer le rapport », ajoutez les membres puis cochez les personnes invitées.</td></tr>}</tbody></table></div>
-          <p className="text-[11px] mt-3" style={{ color: C.sub }}>Règle configurable de démonstration : présence strictement supérieure au seuil choisi ; majorité des suffrages exprimés, avec participation d’au moins la majorité des présents. Le règlement intérieur réel de la SGI doit prévaloir.</p>
-        </Card>
-      </div>}
 
       {onglet === 'allocation' && (
         <div className="space-y-4 gsm-comite-interactive">
