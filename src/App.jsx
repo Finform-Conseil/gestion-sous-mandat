@@ -33225,7 +33225,6 @@ function Comite({
     dateComite: formatIsoLocalDate(new Date()),
     gestionnaire: '',
     participants: '',
-    benchmark: 'À renseigner',
     statut: 'Brouillon',
     commentaires: '',
     ...comiteLireStockage(COMITE_RAPPORT_CONFIG_KEY, {}),
@@ -33969,7 +33968,6 @@ function Comite({
               ['periode', 'Période', 'select'],
               ['dateComite', 'Date du comité', 'date'],
               ['gestionnaire', 'Gestionnaire / rapporteur', 'text'],
-              ['benchmark', 'Benchmark', 'text'],
               ['statut', 'Statut du rapport', 'select'],
             ].map(([champ, libelle, type]) => (
               <label key={champ} className="space-y-1">
