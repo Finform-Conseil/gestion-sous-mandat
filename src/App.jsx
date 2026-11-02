@@ -34207,7 +34207,6 @@ function Comite({
       ['Source', operationalDbStatus],
       ['Devise', devise],
       ['Nombre de portefeuilles', clients.length],
-      ['Encours consolidé', Math.round(totalRef)],
       ['Performance pondérée indicative (%)', performancePonderee.toFixed(3)],
       ['Rentabilité pondérée indicative (%)', rentabilitePonderee.toFixed(3)],
       ['Liquidité estimée (allocation)', Math.round(liquiditeEstimee)],
@@ -34623,21 +34622,6 @@ function Comite({
           </p>
         </Card>
       )}
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          ['Encours consolidé', `${fmt(Math.round(totalRef))} ${devise}`, 'Agrégation convertie'],
-          ['Portefeuilles', fmt(clients.length), 'Comptes gérés pris en compte'],
-          ['Performance indicative', `${performancePonderee >= 0 ? '+' : ''}${performancePonderee.toFixed(2)}%`, 'Moyenne pondérée ; pas un TWR'],
-          ['Liquidité estimée', `${fmt(Math.round(liquiditeEstimee))} ${devise}`, 'Encours × poids de liquidité'],
-        ].map(([titre, valeur, sousTitre]) => (
-          <Card key={titre} className="p-4">
-            <div className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>{titre}</div>
-            <div className="text-lg font-bold mt-1" style={{ ...F_DISPLAY, color: C.navy }}>{valeur}</div>
-            <div className="text-[10px] mt-1" style={{ color: C.sub }}>{sousTitre}</div>
-          </Card>
-        ))}
-      </div>
 
       <div id="gsm-comite-tabs" className="flex flex-wrap items-center gap-2 border-b pb-3" style={{ borderColor: C.line }}>
         {tabs.map(([id, libelle]) => (
@@ -35572,7 +35556,6 @@ function Comite({
         <p className="text-xs">{assetMixAnalyse.map((p) => `${p.name} : ${p.value}%`).join(' · ')} · {seance.commentairesAllocation || 'Aucune orientation renseignée.'}</p>
         <h3 className="text-lg font-bold mt-5">Synthèse de gestion et périmètre</h3>
         <p className="text-xs">Période : {config.periode} · Date : {config.dateComite} · Gestionnaire : {config.gestionnaire || 'Non renseigné'} · Participants : {participantsTexte || 'Non renseignés'}</p>
-        <p className="text-xs">Encours consolidé : {fmt(Math.round(totalRef))} {devise} · {clients.length} comptes · Perf. indicative : {performancePonderee.toFixed(2)}% · Liquidité indicative : {fmt(Math.round(liquiditeEstimee))} {devise}</p>
         <h4 className="font-semibold">Marchés et allocations</h4>
         <table className="w-full text-xs"><thead><tr><Th>Marché</Th><Th>Portefeuilles</Th><Th>Encours converti</Th><Th>Poids</Th></tr></thead>
           <tbody>{marcheStats.map((r) => <tr key={r.marche}><Td>{r.marche}</Td><Td>{r.nb}</Td><Td>{fmt(Math.round(r.encours))} {devise}</Td><Td>{r.poids.toFixed(1)}%</Td></tr>)}</tbody>
