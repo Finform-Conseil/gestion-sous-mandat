@@ -34843,6 +34843,10 @@ function Comite({
                 <Badge tone={vote.resultat === 'Adopté' ? 'teal' : vote.resultat === 'Rejeté' ? 'coral' : 'slate'}>{vote.resultat}</Badge>
               </div>
               {ouvert && <div className="mt-4 space-y-4 border-t pt-4" style={{ borderColor: C.line }}>
+                <div className="flex gap-2 flex-wrap items-center"><Btn onClick={() => tournerPoint(point.id, 'demarrer')} disabled={!!point.demarreAt || !!pointEnCours}>Démarrer le point</Btn><Btn tone="ghost" onClick={() => tournerPoint(point.id, 'terminer')} disabled={!point.demarreAt || !!point.termineAt}>Terminer le point</Btn>
+                  {!([COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(point.id)) && <button type="button" onClick={() => retirerPoint(point.id)} className="text-xs ml-auto" style={{ color: C.coral }}>Retirer ce point</button>}
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <label className="space-y-1"><span className="text-xs font-semibold">Sujet de l’ordre du jour</span><input className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line }} value={point.titre} onChange={(e) => modifierPoint(point.id, { titre: e.target.value })} /></label>
                   <label className="space-y-1"><span className="text-xs font-semibold">Durée (minutes)</span><input type="number" min="5" max="240" className="w-full border rounded-xl px-3 py-2 text-xs" style={{ borderColor: C.line }} value={point.duree} onChange={(e) => modifierPoint(point.id, { duree: Math.max(5, Math.min(240, Number(e.target.value) || 5)) })} /></label>
@@ -34893,9 +34897,7 @@ function Comite({
                   </div>
                   <p className="text-xs mt-3" style={{ color: C.sub }}>Pour : {vote.pour} · Contre : {vote.contre} · Abstention : {vote.abstention} · Suffrages exprimés : {vote.exprimes}</p>
                 </div>
-                <div className="flex gap-2 flex-wrap items-center"><Btn onClick={() => tournerPoint(point.id, 'demarrer')} disabled={!!point.demarreAt || !!pointEnCours}>Démarrer le point</Btn><Btn tone="ghost" onClick={() => tournerPoint(point.id, 'terminer')} disabled={!point.demarreAt || !!point.termineAt}>Terminer le point</Btn>
-                  {!([COMITE_SUIVI_PRECEDENT_ID, COMITE_CLOTURE_ID].includes(point.id)) && <button type="button" onClick={() => retirerPoint(point.id)} className="text-xs ml-auto" style={{ color: C.coral }}>Retirer ce point</button>}
-                </div>
+                
               </div>}
             </Card>;
               })}
