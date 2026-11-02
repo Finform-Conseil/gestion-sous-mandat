@@ -4828,12 +4828,14 @@ function AnalyseInstrument({ ctx, go, mode = 'gestionnaire', goClient }) {
  */
 const CLIENT_GESTION_LIBRE = {
   id: 'investisseur-demo-01',
-  nom: 'Koffi Mensah',
+  nom: 'Groupe Kora Holdings',
+  typeClient: 'Groupe / institutionnel',
   deviseReference: 'XOF',
   portefeuilles: [
     {
       id: 'cl-pf-brvm',
-      nom: 'Portefeuille BRVM Côte d’Ivoire',
+      titulaire: 'Groupe Kora Holdings SA',
+      nom: 'Groupe Kora Holdings SA · Réserve stratégique Côte d’Ivoire',
       sgi: 'Atlantic Bourse',
       pays: "Côte d'Ivoire",
       marche: 'BRVM',
@@ -4848,11 +4850,24 @@ const CLIENT_GESTION_LIBRE = {
           qte: 3_500,
           pru: 10_010,
         },
+        {
+          instrument: 'Société Ivoire Services SA',
+          qte: 1_800,
+          pru: 8_500,
+          prixActuel: 9_200,
+        },
+        {
+          instrument: 'FCP Horizon UEMOA',
+          qte: 1_000,
+          pru: 10_000,
+          prixActuel: 10_540,
+        },
       ],
     },
     {
       id: 'cl-pf-brvm-2',
-      nom: 'Portefeuille BRVM Sénégal',
+      titulaire: 'Fondation Kora Éducation',
+      nom: 'Fondation Kora Éducation · Fonds patrimonial Sénégal',
       sgi: 'Sahel Capital Markets',
       pays: 'Sénégal',
       marche: 'BRVM',
@@ -4867,11 +4882,30 @@ const CLIENT_GESTION_LIBRE = {
           qte: 1_200,
           pru: 10_020,
         },
+        {
+          instrument: 'Obligation Kora Agro 7.20% 2030',
+          qte: 700,
+          pru: 10_000,
+          prixActuel: 10_150,
+        },
+        {
+          instrument: 'FCTC Créances UEMOA 2029',
+          qte: 650,
+          pru: 10_000,
+          prixActuel: 10_080,
+        },
+        {
+          instrument: 'Immeuble Dakar Plateau · Quote-part',
+          qte: 1,
+          pru: 22_000_000,
+          prixActuel: 23_800_000,
+        },
       ],
     },
     {
       id: 'cl-pf-ngx',
-      nom: 'Portefeuille Nigeria Lagos',
+      titulaire: 'Kora Logistics Nigeria Ltd',
+      nom: 'Kora Logistics Nigeria Ltd · Portefeuille de placement Lagos',
       sgi: 'Lagos Securities',
       pays: 'Nigeria',
       marche: 'NGX',
@@ -4882,11 +4916,24 @@ const CLIENT_GESTION_LIBRE = {
         { instrument: 'MTN NIGERIA', qte: 120_000, pru: 205.4 },
         { instrument: 'ZENITH BANK', qte: 500_000, pru: 38.6 },
         { instrument: 'Obligation Trésor NGN 2028', qte: 180_000, pru: 99.2 },
+        {
+          instrument: 'Lagos Growth Private Ltd',
+          qte: 60_000,
+          pru: 120,
+          prixActuel: 132,
+        },
+        {
+          instrument: 'FCP Nigeria Balanced Income',
+          qte: 50_000,
+          pru: 102,
+          prixActuel: 106.4,
+        },
       ],
     },
     {
       id: 'cl-pf-ngx-2',
-      nom: 'Portefeuille Nigeria Abuja',
+      titulaire: 'Kora Pension Scheme',
+      nom: 'Kora Pension Scheme · Réserve long terme Abuja',
       sgi: 'Abuja Capital Securities',
       pays: 'Nigeria',
       marche: 'NGX',
@@ -4897,11 +4944,24 @@ const CLIENT_GESTION_LIBRE = {
         { instrument: 'MTN NIGERIA', qte: 55_000, pru: 209.8 },
         { instrument: 'ZENITH BANK', qte: 180_000, pru: 39.1 },
         { instrument: 'Obligation Trésor NGN 2028', qte: 90_000, pru: 98.9 },
+        {
+          instrument: 'Obligation Kora Logistics NG 2031',
+          qte: 75_000,
+          pru: 100,
+          prixActuel: 101.3,
+        },
+        {
+          instrument: 'FCTC Infrastructure Nigeria 2030',
+          qte: 60_000,
+          pru: 100,
+          prixActuel: 103.1,
+        },
       ],
     },
     {
       id: 'cl-pf-gse',
-      nom: 'Portefeuille Ghana Accra',
+      titulaire: 'Kora Agro Ghana Ltd',
+      nom: 'Kora Agro Ghana Ltd · Portefeuille de trésorerie Accra',
       sgi: 'Accra Capital',
       pays: 'Ghana',
       marche: 'GSE',
@@ -4915,11 +4975,24 @@ const CLIENT_GESTION_LIBRE = {
           qte: 13_000,
           pru: 100.2,
         },
+        {
+          instrument: 'Accra Agro Processing Ltd',
+          qte: 45_000,
+          pru: 6.2,
+          prixActuel: 6.8,
+        },
+        {
+          instrument: 'FCP Ghana Income Fund',
+          qte: 20_000,
+          pru: 10.1,
+          prixActuel: 10.6,
+        },
       ],
     },
     {
       id: 'cl-pf-gse-2',
-      nom: 'Portefeuille Ghana secondaire',
+      titulaire: 'Kora Real Assets & Infrastructure Ltd',
+      nom: 'Kora Real Assets & Infrastructure Ltd · Réserve Ghana',
       sgi: 'Gold Coast Securities',
       pays: 'Ghana',
       marche: 'GSE',
@@ -4932,6 +5005,18 @@ const CLIENT_GESTION_LIBRE = {
           instrument: 'Obligation Corporate GSE 2027',
           qte: 7_000,
           pru: 100.7,
+        },
+        {
+          instrument: 'Immeuble Airport City Accra · Quote-part',
+          qte: 1,
+          pru: 720_000,
+          prixActuel: 775_000,
+        },
+        {
+          instrument: 'FCTC Ghana Receivables 2031',
+          qte: 10_000,
+          pru: 10,
+          prixActuel: 10.35,
         },
       ],
     },
@@ -5018,6 +5103,66 @@ const CLIENT_CASHFLOWS = [
     montant: 46_000,
     devise: 'GHS',
     statut: 'À recevoir',
+  },
+];
+
+
+/*
+ * Prochaines tombées — Gestion libre.
+ * Ces flux servent à la Vue consolidée et à la Simulation d’investissement.
+ * Ils sont séparés du module historique 30 jours afin de ne pas modifier ses
+ * conventions de date déjà utilisées ailleurs dans la maquette.
+ */
+const CLIENT_UPCOMING_INCOME = [
+  {
+    id: 'UP-CL-01', portefeuilleId: 'cl-pf-brvm', date: '12/11/2026',
+    type: 'Coupon', instrument: 'Obligation Trésor CI 6.5% 2029',
+    classeActif: 'Obligations cotées', montant: 2_275_000, devise: 'XOF', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-02', portefeuilleId: 'cl-pf-brvm', date: '28/11/2026',
+    type: 'Dividende', instrument: 'SONATEL',
+    classeActif: 'Actions cotées', montant: 1_680_000, devise: 'XOF', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-03', portefeuilleId: 'cl-pf-brvm-2', date: '05/12/2026',
+    type: 'Loyer', instrument: 'Immeuble Dakar Plateau · Quote-part',
+    classeActif: 'Immobilier', montant: 950_000, devise: 'XOF', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-04', portefeuilleId: 'cl-pf-brvm-2', date: '18/12/2026',
+    type: 'Distribution FCTC', instrument: 'FCTC Créances UEMOA 2029',
+    classeActif: 'FCTC', montant: 420_000, devise: 'XOF', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-05', portefeuilleId: 'cl-pf-ngx', date: '20/11/2026',
+    type: 'Dividende', instrument: 'MTN NIGERIA',
+    classeActif: 'Actions cotées', montant: 1_260_000, devise: 'NGN', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-06', portefeuilleId: 'cl-pf-ngx', date: '15/12/2026',
+    type: 'Distribution FCP', instrument: 'FCP Nigeria Balanced Income',
+    classeActif: 'FCP', montant: 610_000, devise: 'NGN', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-07', portefeuilleId: 'cl-pf-ngx-2', date: '26/11/2026',
+    type: 'Coupon', instrument: 'Obligation Kora Logistics NG 2031',
+    classeActif: 'Obligations non cotées', montant: 780_000, devise: 'NGN', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-08', portefeuilleId: 'cl-pf-gse', date: '07/12/2026',
+    type: 'Dividende', instrument: 'GCB BANK',
+    classeActif: 'Actions cotées', montant: 88_000, devise: 'GHS', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-09', portefeuilleId: 'cl-pf-gse-2', date: '10/12/2026',
+    type: 'Loyer', instrument: 'Immeuble Airport City Accra · Quote-part',
+    classeActif: 'Immobilier', montant: 31_000, devise: 'GHS', statut: 'À recevoir',
+  },
+  {
+    id: 'UP-CL-10', portefeuilleId: 'cl-pf-gse-2', date: '22/12/2026',
+    type: 'Rente / distribution', instrument: 'FCTC Ghana Receivables 2031',
+    classeActif: 'FCTC', montant: 18_500, devise: 'GHS', statut: 'À recevoir',
   },
 ];
 
@@ -5136,6 +5281,11 @@ const CLIENT_NAV = [
     icon: Briefcase,
   },
   {
+    id: 'client-investment-simulation',
+    label: "Simulation d'investissement",
+    icon: Scale,
+  },
+  {
     id: 'client-exchanges',
     label: 'Marchés Actions',
     icon: Activity,
@@ -5155,27 +5305,125 @@ const CLIENT_NAV = [
   { id: 'client-documentation', label: 'Documentation', icon: BookOpen },
 ];
 
+const CLIENT_ASSET_CLASS_ORDER = [
+  'Actions cotées',
+  'Actions non cotées',
+  'Obligations cotées',
+  'Obligations non cotées',
+  'FCP',
+  'FCTC',
+  'Immobilier',
+  'Liquidité',
+];
+
+const CLIENT_ASSET_CLASS_OVERRIDES = {
+  'Société Ivoire Services SA': 'Actions non cotées',
+  'Lagos Growth Private Ltd': 'Actions non cotées',
+  'Accra Agro Processing Ltd': 'Actions non cotées',
+  'Obligation Kora Agro 7.20% 2030': 'Obligations non cotées',
+  'Obligation Kora Logistics NG 2031': 'Obligations non cotées',
+  'FCP Horizon UEMOA': 'FCP',
+  'FCP Nigeria Balanced Income': 'FCP',
+  'FCP Ghana Income Fund': 'FCP',
+  'FCTC Créances UEMOA 2029': 'FCTC',
+  'FCTC Infrastructure Nigeria 2030': 'FCTC',
+  'FCTC Ghana Receivables 2031': 'FCTC',
+  'Immeuble Dakar Plateau · Quote-part': 'Immobilier',
+  'Immeuble Airport City Accra · Quote-part': 'Immobilier',
+};
+
+const CLIENT_ALLOCATION_LIMITS_DEFAULT = {
+  'Actions cotées': 35,
+  'Actions non cotées': 15,
+  'Obligations cotées': 45,
+  'Obligations non cotées': 20,
+  FCP: 20,
+  FCTC: 12,
+  Immobilier: 20,
+  Liquidité: 25,
+};
+
+const CLIENT_ALLOCATION_LIMITS_STORAGE_KEY =
+  'opcvm-gsm-client-allocation-limits-v1';
+
+const clientLoadAllocationLimits = () => {
+  if (typeof window === 'undefined') {
+    return { ...CLIENT_ALLOCATION_LIMITS_DEFAULT };
+  }
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(CLIENT_ALLOCATION_LIMITS_STORAGE_KEY) || '{}'
+    );
+    return CLIENT_ASSET_CLASS_ORDER.reduce(
+      (acc, classe) => ({
+        ...acc,
+        [classe]: Number.isFinite(Number(saved?.[classe]))
+          ? Math.max(0, Math.min(100, Number(saved[classe])))
+          : CLIENT_ALLOCATION_LIMITS_DEFAULT[classe],
+      }),
+      {}
+    );
+  } catch {
+    return { ...CLIENT_ALLOCATION_LIMITS_DEFAULT };
+  }
+};
+
+const clientPersistAllocationLimits = (limits) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_ALLOCATION_LIMITS_STORAGE_KEY,
+      JSON.stringify(limits)
+    );
+  } catch {
+    // La maquette reste fonctionnelle même si le stockage navigateur est bloqué.
+  }
+};
+
 const clientMarket = (instrument, marcheHint) =>
   resolveMarketInstrument(instrument, marcheHint);
 
+const clientDetailedAssetClass = (instrument) => {
+  if (CLIENT_ASSET_CLASS_OVERRIDES[instrument]) {
+    return CLIENT_ASSET_CLASS_OVERRIDES[instrument];
+  }
+  const marche = clientMarket(instrument);
+  if (marche?.type === 'Obligation') return 'Obligations cotées';
+  if (marche?.type === 'Action') return 'Actions cotées';
+  return 'Actions non cotées';
+};
+
+const clientAssetClass = (instrument) => {
+  const detail = clientDetailedAssetClass(instrument);
+  if (detail.startsWith('Actions')) return 'Actions';
+  if (detail.startsWith('Obligations')) return 'Obligations';
+  return detail;
+};
+
+const clientLineCurrentPrice = (ligne) => {
+  const marche = clientMarket(ligne.instrument);
+  return Number(
+    marche?.cours ??
+      ligne?.prixActuel ??
+      ligne?.valeurUnitaire ??
+      ligne?.pru ??
+      0
+  );
+};
+
 const clientPortfolioValue = (portefeuille) =>
   portefeuille.compteEspeces +
-  portefeuille.lignes.reduce((somme, ligne) => {
-    const marche = clientMarket(ligne.instrument);
-    return somme + ligne.qte * Number(marche?.cours || ligne.pru || 0);
-  }, 0);
+  portefeuille.lignes.reduce(
+    (somme, ligne) => somme + Number(ligne.qte || 0) * clientLineCurrentPrice(ligne),
+    0
+  );
 
-const clientLineValue = (ligne) => {
-  const marche = clientMarket(ligne.instrument);
-  return ligne.qte * Number(marche?.cours || ligne.pru || 0);
-};
+const clientLineValue = (ligne) =>
+  Number(ligne.qte || 0) * clientLineCurrentPrice(ligne);
 
 /*
  * Gestion libre — coût moyen pondéré et plus/moins-value latente.
- *
  * En production, `cmp` doit provenir des transactions/lots réels.
- * La maquette actuelle dispose surtout du `pru`; celui-ci est donc utilisé
- * comme fallback uniquement lorsqu'aucun CMP explicite n'est encore fourni.
  */
 const clientLineCmp = (ligne) => {
   const cmp = Number(
@@ -5185,16 +5433,13 @@ const clientLineCmp = (ligne) => {
       ligne?.pru ??
       0
   );
-
   return Number.isFinite(cmp) && cmp >= 0 ? cmp : 0;
 };
 
 const clientLinePlusMoinsValue = (ligne) => {
-  const marche = clientMarket(ligne.instrument);
-  const cours = Number(marche?.cours || ligne?.pru || 0);
+  const cours = clientLineCurrentPrice(ligne);
   const cmp = clientLineCmp(ligne);
   const quantite = Number(ligne?.qte || 0);
-
   return quantite * (cours - cmp);
 };
 
@@ -5251,8 +5496,114 @@ const clientReservedCashIn = (portefeuille, orders, devise) =>
     devise
   );
 
-const clientAssetClass = (instrument) =>
-  clientMarket(instrument)?.type === 'Obligation' ? 'Obligations' : 'Actions';
+const clientPortfolioDetailedAmounts = (portefeuille) => {
+  const map = CLIENT_ASSET_CLASS_ORDER.reduce(
+    (acc, classe) => ({ ...acc, [classe]: 0 }),
+    {}
+  );
+  map.Liquidité = Number(portefeuille?.compteEspeces || 0);
+  (portefeuille?.lignes || []).forEach((ligne) => {
+    const classe = clientDetailedAssetClass(ligne.instrument);
+    map[classe] = Number(map[classe] || 0) + clientLineValue(ligne);
+  });
+  return map;
+};
+
+const CLIENT_ASSET_EXPECTED_RETURN = {
+  'Actions cotées': 9,
+  'Actions non cotées': 12,
+  'Obligations cotées': 6.5,
+  'Obligations non cotées': 8,
+  FCP: 7,
+  FCTC: 7.5,
+  Immobilier: 8,
+  Liquidité: 2.5,
+};
+
+const clientSimulationSyntheticAssets = (portefeuille) => {
+  const currency = portefeuille.devise;
+  const suffix = portefeuille.marche;
+  const basePrice = currency === 'XOF' ? 10_000 : currency === 'NGN' ? 100 : 10;
+  return [
+    {
+      id: `sim-private-equity-${suffix}`,
+      instrument: `Private Equity ${suffix} · opportunité`,
+      classeActif: 'Actions non cotées',
+      prix: basePrice * 1.15,
+      devise: currency,
+    },
+    {
+      id: `sim-private-bond-${suffix}`,
+      instrument: `Obligation privée ${suffix} · opportunité`,
+      classeActif: 'Obligations non cotées',
+      prix: basePrice,
+      devise: currency,
+    },
+    {
+      id: `sim-fcp-${suffix}`,
+      instrument: `FCP diversifié ${suffix}`,
+      classeActif: 'FCP',
+      prix: basePrice,
+      devise: currency,
+    },
+    {
+      id: `sim-fctc-${suffix}`,
+      instrument: `FCTC rendement ${suffix}`,
+      classeActif: 'FCTC',
+      prix: basePrice,
+      devise: currency,
+    },
+    {
+      id: `sim-real-estate-${suffix}`,
+      instrument: `Immobilier collectif ${suffix} · quote-part`,
+      classeActif: 'Immobilier',
+      prix: currency === 'XOF' ? 5_000_000 : currency === 'NGN' ? 2_500_000 : 25_000,
+      devise: currency,
+    },
+  ];
+};
+
+const clientSimulationUniverse = (portefeuille) => {
+  if (!portefeuille) return [];
+  const existing = (portefeuille.lignes || []).map((ligne) => ({
+    id: `existing-${portefeuille.id}-${ligne.instrument}`,
+    instrument: ligne.instrument,
+    classeActif: clientDetailedAssetClass(ligne.instrument),
+    prix: clientLineCurrentPrice(ligne),
+    devise: portefeuille.devise,
+    quantiteDetenue: Number(ligne.qte || 0),
+    existing: true,
+  }));
+
+  const listed = CLIENT_TRADABLE_MARKETS
+    .filter(
+      (instrument) =>
+        instrument.marche === portefeuille.marche &&
+        instrument.devise === portefeuille.devise
+    )
+    .map((instrument) => ({
+      id: `market-${portefeuille.id}-${instrument.nom}`,
+      instrument: instrument.nom,
+      classeActif:
+        instrument.type === 'Obligation' ? 'Obligations cotées' : 'Actions cotées',
+      prix: Number(instrument.cours || 0),
+      devise: instrument.devise,
+      quantiteDetenue: Number(
+        portefeuille.lignes.find((ligne) => ligne.instrument === instrument.nom)?.qte || 0
+      ),
+      existing: Boolean(
+        portefeuille.lignes.find((ligne) => ligne.instrument === instrument.nom)
+      ),
+    }));
+
+  return Array.from(
+    new Map(
+      [...existing, ...listed, ...clientSimulationSyntheticAssets(portefeuille)].map(
+        (item) => [item.instrument, item]
+      )
+    ).values()
+  );
+};
 
 const CLIENT_SECTEUR_INSTRUMENT = {
   SONATEL: 'Télécoms',
@@ -5264,6 +5615,19 @@ const CLIENT_SECTEUR_INSTRUMENT = {
   'Obligation Trésor CI 6.5% 2029': 'Souverain',
   'Obligation Trésor NGN 2028': 'Souverain',
   'Obligation Corporate GSE 2027': 'Corporate',
+  'Société Ivoire Services SA': 'Services',
+  'Lagos Growth Private Ltd': 'Private equity',
+  'Accra Agro Processing Ltd': 'Agro-industrie',
+  'Obligation Kora Agro 7.20% 2030': 'Corporate non coté',
+  'Obligation Kora Logistics NG 2031': 'Corporate non coté',
+  'FCP Horizon UEMOA': 'Fonds',
+  'FCP Nigeria Balanced Income': 'Fonds',
+  'FCP Ghana Income Fund': 'Fonds',
+  'FCTC Créances UEMOA 2029': 'Titrisation',
+  'FCTC Infrastructure Nigeria 2030': 'Titrisation',
+  'FCTC Ghana Receivables 2031': 'Titrisation',
+  'Immeuble Dakar Plateau · Quote-part': 'Immobilier',
+  'Immeuble Airport City Accra · Quote-part': 'Immobilier',
 };
 
 const clientSector = (instrument) =>
@@ -35666,10 +36030,22 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   const nombrePays = new Set(
     portefeuilles.map((portefeuille) => portefeuille.pays)
   ).size;
+
   const [allocationActifSelectionne, setAllocationActifSelectionne] =
     useState(null);
   const [allocationPaysSelectionne, setAllocationPaysSelectionne] =
     useState(null);
+  const [parametrageLimitesOuvert, setParametrageLimitesOuvert] =
+    useState(false);
+  const [detailsLiquiditePrevisionnelleOuverts, setDetailsLiquiditePrevisionnelleOuverts] =
+    useState(false);
+  const [limitesAllocation, setLimitesAllocation] = useState(() =>
+    clientLoadAllocationLimits()
+  );
+  const [limitesBrouillon, setLimitesBrouillon] = useState(() =>
+    clientLoadAllocationLimits()
+  );
+
   const patrimoine = portefeuilles.reduce(
     (somme, portefeuille) =>
       somme + clientPortfolioValueIn(portefeuille, devise),
@@ -35700,14 +36076,14 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         ) / patrimoine
       : 0;
 
-  const allocationMap = {
-    Actions: 0,
-    Obligations: 0,
-    Liquidité: liquiditeTotale,
-  };
+  const allocationMap = CLIENT_ASSET_CLASS_ORDER.reduce(
+    (acc, classe) => ({ ...acc, [classe]: 0 }),
+    {}
+  );
+  allocationMap.Liquidité = liquiditeTotale;
   portefeuilles.forEach((portefeuille) => {
     portefeuille.lignes.forEach((ligne) => {
-      const classe = clientAssetClass(ligne.instrument);
+      const classe = clientDetailedAssetClass(ligne.instrument);
       allocationMap[classe] += convertCurrency(
         clientLineValue(ligne),
         portefeuille.devise,
@@ -35715,13 +36091,33 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       );
     });
   });
-  const allocation = Object.entries(allocationMap).map(([name, montant]) => ({
-    name,
-    montant,
-    value:
-      patrimoine > 0 ? Number(((montant / patrimoine) * 100).toFixed(1)) : 0,
-    devise,
-  }));
+
+  const allocationControle = CLIENT_ASSET_CLASS_ORDER.map((name) => {
+    const montant = Number(allocationMap[name] || 0);
+    const value =
+      patrimoine > 0 ? Number(((montant / patrimoine) * 100).toFixed(1)) : 0;
+    const limite = Number(limitesAllocation[name] ?? 100);
+    const depassement = value - limite;
+    const marge = limite - value;
+    const statut =
+      depassement > 0
+        ? 'Dépassement'
+        : marge <= 2
+        ? 'Proche de la limite'
+        : 'Conforme';
+    const commentaire =
+      depassement > 0
+        ? `Dépassement de ${depassement.toFixed(1)} pt(s) par rapport à votre limite de ${limite.toFixed(1)}%.`
+        : marge <= 2
+        ? `Marge faible : ${Math.max(0, marge).toFixed(1)} pt(s) avant la limite de ${limite.toFixed(1)}%.`
+        : `Allocation conforme · marge disponible de ${marge.toFixed(1)} pt(s).`;
+    return { name, montant, value, limite, depassement, marge, statut, commentaire, devise };
+  });
+
+  const allocation = allocationControle.filter((part) => part.montant > 0);
+  const alertesLimites = allocationControle.filter(
+    (part) => part.depassement > 0
+  );
 
   const montantActifDansPortefeuille = (portefeuille, classeActif) => {
     if (classeActif === 'Liquidité') {
@@ -35731,9 +36127,10 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         devise
       );
     }
-
     return portefeuille.lignes
-      .filter((ligne) => clientAssetClass(ligne.instrument) === classeActif)
+      .filter(
+        (ligne) => clientDetailedAssetClass(ligne.instrument) === classeActif
+      )
       .reduce(
         (somme, ligne) =>
           somme +
@@ -35807,7 +36204,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       ? `Allocation par SGI — ${allocationPaysSelectionne}`
       : niveauAllocation === 'pays'
       ? `Allocation par pays — ${allocationActifSelectionne}`
-      : "Allocation par type d'actif";
+      : "Allocation consolidée par type d'actif";
 
   const montantTotalAllocation = allocationAffichee.reduce(
     (somme, part) => somme + Number(part.montant || 0),
@@ -35826,7 +36223,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       ? `${allocationActifSelectionne} · ${allocationPaysSelectionne}`
       : niveauAllocation === 'pays'
       ? `Répartition de ${allocationActifSelectionne} par pays`
-      : "Cliquez sur un type d'actif pour afficher sa répartition par pays.";
+      : "Cliquez sur une classe d'actifs pour voir sa ventilation par pays puis par SGI.";
 
   const gererClicAllocation =
     niveauAllocation === 'actif'
@@ -35848,10 +36245,42 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   const ordresOuverts = orders.filter((ordre) =>
     ['En attente', 'En cours'].includes(ordre.statut)
   ).length;
-  const revenus30j = CLIENT_CASHFLOWS.reduce(
-    (somme, flux) => somme + convertCurrency(flux.montant, flux.devise, devise),
+
+  const prochainesTombees = CLIENT_UPCOMING_INCOME.map((flux) => ({
+    ...flux,
+    portefeuille: portefeuilles.find(
+      (portefeuille) => portefeuille.id === flux.portefeuilleId
+    ),
+  })).sort((a, b) => parseFR(a.date) - parseFR(b.date));
+
+  const totalProchainesTombees = prochainesTombees.reduce(
+    (somme, flux) =>
+      somme + convertCurrency(flux.montant, flux.devise, devise),
     0
   );
+  const liquiditePrevisionnelle =
+    liquiditeDisponible + totalProchainesTombees;
+
+  const ouvrirParametrage = () => {
+    setLimitesBrouillon({ ...limitesAllocation });
+    setParametrageLimitesOuvert(true);
+  };
+
+  const enregistrerLimites = () => {
+    const next = CLIENT_ASSET_CLASS_ORDER.reduce(
+      (acc, classe) => ({
+        ...acc,
+        [classe]: Math.max(
+          0,
+          Math.min(100, Number(limitesBrouillon[classe] || 0))
+        ),
+      }),
+      {}
+    );
+    setLimitesAllocation(next);
+    clientPersistAllocationLimits(next);
+    setParametrageLimitesOuvert(false);
+  };
 
   return (
     <div className="space-y-5">
@@ -35875,14 +36304,17 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             className="text-2xl font-bold"
             style={{ ...F_DISPLAY, color: C.ink }}
           >
-            Bonjour {CLIENT_GESTION_LIBRE.nom}
+            {CLIENT_GESTION_LIBRE.nom}
           </h2>
           <div className="text-sm mt-1" style={{ color: C.sub }}>
-            Une vue unique de vos portefeuilles détenus auprès de plusieurs SGI
-            sur les marchés financier africains.
+            Vue consolidée des portefeuilles, sociétés, institutions et comptes
+            détenus auprès de plusieurs SGI.
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Btn tone="ghost" onClick={() => goClient('client-investment-simulation')}>
+            Simulation d&apos;investissement →
+          </Btn>
           <span className="text-xs font-semibold" style={{ color: C.sub }}>
             Devise consolidée
           </span>
@@ -35938,20 +36370,23 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             réservé(s)
           </div>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs" style={{ color: C.sub }}>
-            Revenus & ordres à suivre
-          </div>
-          <div className="flex items-end justify-between gap-2 mt-1">
-            <div className="text-lg font-bold" style={F_DISPLAY}>
-              {fmt(Math.round(revenus30j))} {devise}
+        <Card
+          className="p-4"
+          onClick={() => setDetailsLiquiditePrevisionnelleOuverts(true)}
+          style={{ borderColor: C.teal }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité prévisionnelle
             </div>
-            <Badge tone={ordresOuverts > 0 ? 'gold' : 'teal'}>
-              {ordresOuverts} ordre(s)
-            </Badge>
+            <Badge tone="teal">Voir les tombées</Badge>
+          </div>
+          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(liquiditePrevisionnelle))} {devise}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Revenus financiers attendus dans les prochaines échéances
+            Disponible + {fmt(Math.round(totalProchainesTombees))} {devise} de
+            dividendes, coupons, loyers et autres rentes à recevoir
           </div>
         </Card>
       </div>
@@ -35962,7 +36397,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             <div>
               <Eyebrow>Mes portefeuilles par SGI</Eyebrow>
               <div className="text-xs" style={{ color: C.sub }}>
-                Valeur, performance et liquidité consolidées par intermédiaire.
+                Intitulé du titulaire, valeur, performance et liquidité par intermédiaire.
               </div>
             </div>
             <button
@@ -35976,6 +36411,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           <table className="w-full">
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
+                <Th>Portefeuille / titulaire</Th>
                 <Th>SGI / pays</Th>
                 <Th>Marché</Th>
                 <Th>Valeur</Th>
@@ -35989,6 +36425,12 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                   key={portefeuille.id}
                   style={{ borderTop: `1px solid ${C.line}` }}
                 >
+                  <Td>
+                    <div className="font-semibold">{portefeuille.nom}</div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      {portefeuille.titulaire || CLIENT_GESTION_LIBRE.nom}
+                    </div>
+                  </Td>
                   <Td>
                     <div className="font-semibold">{portefeuille.sgi}</div>
                     <div className="text-xs" style={{ color: C.sub }}>
@@ -36067,7 +36509,11 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                 {fmt(Math.round(montantTotalAllocation))} {devise}
               </div>
             </div>
-            <Badge tone="navy">100% du niveau</Badge>
+            <Badge tone={alertesLimites.length ? 'coral' : 'teal'}>
+              {alertesLimites.length
+                ? `${alertesLimites.length} dépassement(s)`
+                : 'Limites respectées'}
+            </Badge>
           </div>
 
           <div className="mt-3">
@@ -36111,6 +36557,655 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           </div>
         </Card>
       </div>
+
+      <Card className="p-0 overflow-hidden" style={{ borderColor: C.navy }}>
+        <div className="p-4 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Contrôle des limites d&apos;allocation</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Limites personnelles par type d&apos;instrument
+            </div>
+            <div className="text-[11px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+              Chaque plafond est indépendant. Le système compare l&apos;allocation
+              consolidée actuelle à la limite maximale que vous avez définie.
+            </div>
+          </div>
+          <Btn tone="ghost" onClick={ouvrirParametrage}>
+            <SlidersHorizontal size={14} /> Paramétrer mes limites
+          </Btn>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1040 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Type d&apos;instrument</Th>
+                <Th>Montant consolidé</Th>
+                <Th>Allocation actuelle</Th>
+                <Th>Limite maximale</Th>
+                <Th>Écart / marge</Th>
+                <Th>Contrôle</Th>
+                <Th>Commentaire</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {allocationControle.map((part) => (
+                <tr key={part.name} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <Td className="font-semibold">{part.name}</Td>
+                  <Td mono>
+                    {fmt(Math.round(part.montant))} {devise}
+                  </Td>
+                  <Td mono>{part.value.toFixed(1)}%</Td>
+                  <Td mono>{part.limite.toFixed(1)}%</Td>
+                  <Td mono>
+                    <span
+                      style={{
+                        color: part.depassement > 0 ? C.coral : C.teal,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {part.depassement > 0
+                        ? `+${part.depassement.toFixed(1)} pts`
+                        : `${part.marge.toFixed(1)} pts`}
+                    </span>
+                  </Td>
+                  <Td>
+                    <Badge
+                      tone={
+                        part.statut === 'Dépassement'
+                          ? 'coral'
+                          : part.statut === 'Proche de la limite'
+                          ? 'gold'
+                          : 'teal'
+                      }
+                    >
+                      {part.statut}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    <span className="text-[10px]" style={{ color: C.sub }}>
+                      {part.commentaire}
+                    </span>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-4" style={{ background: '#F7F8FA' }}>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Préparer un investissement avant de transmettre un ordre
+            </div>
+            <div className="text-[11px] mt-1" style={{ color: C.sub }}>
+              Simulez un achat ou une vente et contrôlez immédiatement son effet
+              sur l&apos;allocation, vos limites et la trajectoire indicative du portefeuille.
+            </div>
+          </div>
+          <Btn onClick={() => goClient('client-investment-simulation')}>
+            Ouvrir la simulation →
+          </Btn>
+        </div>
+      </Card>
+
+      {parametrageLimitesOuvert && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          style={{ background: 'rgba(15, 27, 51, 0.52)' }}
+          onClick={() => setParametrageLimitesOuvert(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border shadow-2xl w-full max-w-3xl overflow-hidden"
+            style={{ borderColor: C.line }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5 flex items-start justify-between gap-4 border-b" style={{ borderColor: C.line }}>
+              <div>
+                <Eyebrow>Paramétrage</Eyebrow>
+                <div className="text-lg font-bold" style={{ color: C.ink }}>
+                  Mes limites maximales d&apos;allocation
+                </div>
+                <div className="text-xs mt-1" style={{ color: C.sub }}>
+                  Les limites sont enregistrées dans votre navigateur pour cette maquette.
+                </div>
+              </div>
+              <button type="button" onClick={() => setParametrageLimitesOuvert(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-2 gap-3">
+              {CLIENT_ASSET_CLASS_ORDER.map((classe) => (
+                <label key={classe} className="p-3 rounded-xl border" style={{ borderColor: C.line }}>
+                  <span className="block text-xs font-semibold" style={{ color: C.ink }}>
+                    {classe}
+                  </span>
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={limitesBrouillon[classe]}
+                      onChange={(event) =>
+                        setLimitesBrouillon((current) => ({
+                          ...current,
+                          [classe]: event.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-2 rounded-xl border text-sm"
+                      style={{ borderColor: C.line }}
+                    />
+                    <span className="text-xs font-semibold" style={{ color: C.sub }}>% max</span>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="p-4 border-t flex items-center justify-between gap-3" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+              <button
+                type="button"
+                className="text-xs font-semibold"
+                style={{ color: C.sub }}
+                onClick={() =>
+                  setLimitesBrouillon({ ...CLIENT_ALLOCATION_LIMITS_DEFAULT })
+                }
+              >
+                Réinitialiser les valeurs proposées
+              </button>
+              <div className="flex gap-2">
+                <Btn tone="ghost" onClick={() => setParametrageLimitesOuvert(false)}>
+                  Annuler
+                </Btn>
+                <Btn onClick={enregistrerLimites}>Enregistrer les limites</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detailsLiquiditePrevisionnelleOuverts && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          style={{ background: 'rgba(15, 27, 51, 0.52)' }}
+          onClick={() => setDetailsLiquiditePrevisionnelleOuverts(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border shadow-2xl w-full max-w-6xl max-h-[86vh] overflow-hidden"
+            style={{ borderColor: C.line }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="p-5 flex items-start justify-between gap-4 border-b" style={{ borderColor: C.line }}>
+              <div>
+                <Eyebrow>Liquidité prévisionnelle</Eyebrow>
+                <div className="text-lg font-bold" style={{ color: C.ink }}>
+                  Détail des prochaines tombées
+                </div>
+                <div className="text-xs mt-1" style={{ color: C.sub }}>
+                  Dividendes, coupons, distributions de fonds, loyers et autres rentes attendues par portefeuille et SGI.
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge tone="teal">
+                  {fmt(Math.round(totalProchainesTombees))} {devise}
+                </Badge>
+                <button type="button" onClick={() => setDetailsLiquiditePrevisionnelleOuverts(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-auto" style={{ maxHeight: '68vh' }}>
+              <table className="w-full" style={{ minWidth: 1100 }}>
+                <thead className="sticky top-0" style={{ background: '#FAFAFC', zIndex: 2 }}>
+                  <tr>
+                    <Th>Date de tombée</Th>
+                    <Th>Nature</Th>
+                    <Th>Type d&apos;instrument</Th>
+                    <Th>Instrument / rente</Th>
+                    <Th>Portefeuille / titulaire</Th>
+                    <Th>SGI</Th>
+                    <Th>Montant natif</Th>
+                    <Th>Équivalent {devise}</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prochainesTombees.map((flux) => (
+                    <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td>{flux.date}</Td>
+                      <Td><Badge tone="gold">{flux.type}</Badge></Td>
+                      <Td>{flux.classeActif}</Td>
+                      <Td className="font-semibold">{flux.instrument}</Td>
+                      <Td>
+                        <div className="font-semibold">{flux.portefeuille?.nom || '—'}</div>
+                        <div className="text-[10px]" style={{ color: C.sub }}>
+                          {flux.portefeuille?.titulaire || '—'}
+                        </div>
+                      </Td>
+                      <Td>{flux.portefeuille?.sgi || '—'}</Td>
+                      <Td mono>{fmt(Math.round(flux.montant))} {flux.devise}</Td>
+                      <Td mono>
+                        {fmt(Math.round(convertCurrency(flux.montant, flux.devise, devise)))} {devise}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t text-[10px]" style={{ borderColor: C.line, color: C.sub, background: '#FBF7EE' }}>
+              La liquidité prévisionnelle consolidée affichée en haut correspond à la liquidité actuellement mobilisable augmentée de ces tombées attendues. Elle reste indicative tant que les revenus ne sont pas effectivement encaissés.
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClientInvestmentSimulation({ devise, orders = [] }) {
+  const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
+  const [portefeuilleId, setPortefeuilleId] = useState(portefeuilles[0]?.id || '');
+  const [sens, setSens] = useState('Achat');
+  const [instrumentId, setInstrumentId] = useState('');
+  const [quantite, setQuantite] = useState('100');
+  const [prixSaisi, setPrixSaisi] = useState('');
+  const [limites] = useState(() => clientLoadAllocationLimits());
+
+  const portefeuille =
+    portefeuilles.find((item) => item.id === portefeuilleId) || portefeuilles[0];
+  const univers = clientSimulationUniverse(portefeuille);
+  const instrument =
+    univers.find((item) => item.id === instrumentId) || univers[0] || null;
+  const prix = Number(prixSaisi || instrument?.prix || 0);
+  const qte = Math.max(0, Number(quantite || 0));
+  const montantOperation = qte * prix;
+  const disponible = clientAvailableCash(portefeuille, orders);
+  const quantiteDetenue = Number(instrument?.quantiteDetenue || 0);
+
+  const operationValide =
+    Boolean(instrument) &&
+    qte > 0 &&
+    prix > 0 &&
+    (sens === 'Achat'
+      ? montantOperation <= disponible
+      : qte <= quantiteDetenue);
+
+  const allocationAvantMap = clientPortfolioDetailedAmounts(portefeuille);
+  const allocationApresMap = { ...allocationAvantMap };
+  if (operationValide && instrument) {
+    if (sens === 'Achat') {
+      allocationApresMap[instrument.classeActif] =
+        Number(allocationApresMap[instrument.classeActif] || 0) + montantOperation;
+      allocationApresMap.Liquidité = Math.max(
+        0,
+        Number(allocationApresMap.Liquidité || 0) - montantOperation
+      );
+    } else {
+      allocationApresMap[instrument.classeActif] = Math.max(
+        0,
+        Number(allocationApresMap[instrument.classeActif] || 0) - montantOperation
+      );
+      allocationApresMap.Liquidité =
+        Number(allocationApresMap.Liquidité || 0) + montantOperation;
+    }
+  }
+
+  const totalAvant = Object.values(allocationAvantMap).reduce(
+    (somme, montant) => somme + Number(montant || 0),
+    0
+  );
+  const totalApres = Object.values(allocationApresMap).reduce(
+    (somme, montant) => somme + Number(montant || 0),
+    0
+  );
+
+  const allocationAvant = CLIENT_ASSET_CLASS_ORDER.map((name) => ({
+    name,
+    montant: Number(allocationAvantMap[name] || 0),
+    value:
+      totalAvant > 0
+        ? Number(((Number(allocationAvantMap[name] || 0) / totalAvant) * 100).toFixed(1))
+        : 0,
+  }));
+  const allocationApres = CLIENT_ASSET_CLASS_ORDER.map((name) => ({
+    name,
+    montant: Number(allocationApresMap[name] || 0),
+    value:
+      totalApres > 0
+        ? Number(((Number(allocationApresMap[name] || 0) / totalApres) * 100).toFixed(1))
+        : 0,
+  }));
+
+  const projection = Array.from({ length: 13 }, (_, month) => {
+    const project = (map) =>
+      CLIENT_ASSET_CLASS_ORDER.reduce((sum, classe) => {
+        const rate = Number(CLIENT_ASSET_EXPECTED_RETURN[classe] || 0) / 100;
+        return (
+          sum +
+          Number(map[classe] || 0) * Math.pow(1 + rate, month / 12)
+        );
+      }, 0);
+    return {
+      mois: month === 0 ? 'M0' : `M${month}`,
+      avant: Math.round(project(allocationAvantMap)),
+      apres: Math.round(project(allocationApresMap)),
+    };
+  });
+
+  const prochaineTombeesPortefeuille = CLIENT_UPCOMING_INCOME
+    .filter((flux) => flux.portefeuilleId === portefeuille.id)
+    .sort((a, b) => parseFR(a.date) - parseFR(b.date));
+  const totalTombeesPf = prochaineTombeesPortefeuille.reduce(
+    (somme, flux) =>
+      somme + convertCurrency(flux.montant, flux.devise, portefeuille.devise),
+    0
+  );
+
+  const alertesApres = allocationApres
+    .map((part) => ({ ...part, limite: Number(limites[part.name] ?? 100) }))
+    .filter((part) => part.value > part.limite);
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb items={['Espace Client', "Simulation d'investissement"]} />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion libre · aide à la décision</Eyebrow>
+          <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>
+            Simulation d&apos;investissement
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+            Mesurez l&apos;effet indicatif d&apos;un achat ou d&apos;une vente sur la
+            répartition du portefeuille, les limites personnelles et sa trajectoire
+            théorique, sans transmettre d&apos;ordre à la SGI.
+          </div>
+        </div>
+        <Badge tone="gold">Simulation uniquement · aucun ordre transmis</Badge>
+      </div>
+
+      <Card className="p-5" style={{ borderColor: C.navy }}>
+        <div className="grid grid-cols-6 gap-3 items-end">
+          <label className="col-span-2">
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Portefeuille / SGI
+            </span>
+            <select
+              value={portefeuille.id}
+              onChange={(event) => {
+                setPortefeuilleId(event.target.value);
+                setInstrumentId('');
+                setPrixSaisi('');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {portefeuilles.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nom} · {item.sgi}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Sens
+            </span>
+            <select
+              value={sens}
+              onChange={(event) => setSens(event.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              <option>Achat</option>
+              <option>Vente</option>
+            </select>
+          </label>
+          <label className="col-span-2">
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Instrument
+            </span>
+            <select
+              value={instrument?.id || ''}
+              onChange={(event) => {
+                const next = univers.find((item) => item.id === event.target.value);
+                setInstrumentId(event.target.value);
+                setPrixSaisi(next ? String(next.prix) : '');
+              }}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            >
+              {univers.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.instrument} · {item.classeActif}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Classe
+            </span>
+            <div className="px-3 py-2 rounded-xl border text-xs" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+              {instrument?.classeActif || '—'}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 gap-3 mt-3 items-end">
+          <label>
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Quantité
+            </span>
+            <input
+              type="number"
+              min="0"
+              value={quantite}
+              onChange={(event) => setQuantite(event.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            />
+          </label>
+          <label>
+            <span className="block text-[10px] font-semibold mb-1" style={{ color: C.sub }}>
+              Prix simulé
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={prixSaisi || instrument?.prix || ''}
+              onChange={(event) => setPrixSaisi(event.target.value)}
+              className="w-full px-3 py-2 rounded-xl border text-xs"
+              style={{ borderColor: C.line }}
+            />
+          </label>
+          <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+            <div className="text-[9px]" style={{ color: C.sub }}>Montant simulé</div>
+            <div className="text-xs font-bold mt-1" style={F_MONO}>
+              {fmt(Math.round(montantOperation))} {portefeuille.devise}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+            <div className="text-[9px]" style={{ color: C.sub }}>
+              {sens === 'Achat' ? 'Liquidité disponible' : 'Quantité détenue'}
+            </div>
+            <div className="text-xs font-bold mt-1" style={F_MONO}>
+              {sens === 'Achat'
+                ? `${fmt(Math.round(disponible))} ${portefeuille.devise}`
+                : fmt(quantiteDetenue)}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl border" style={{ borderColor: operationValide ? '#B9E3D4' : '#F1C4BE', background: operationValide ? '#F1FAF6' : '#FFF4F2' }}>
+            <div className="text-[9px]" style={{ color: C.sub }}>Contrôle</div>
+            <div className="text-xs font-bold mt-1" style={{ color: operationValide ? C.teal : C.coral }}>
+              {operationValide
+                ? 'Simulation applicable'
+                : sens === 'Achat'
+                ? 'Liquidité insuffisante ou saisie incomplète'
+                : 'Quantité vendue supérieure à la position détenue'}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Card className="p-5">
+          <Eyebrow>Avant simulation</Eyebrow>
+          <div className="text-sm font-semibold" style={{ color: C.ink }}>
+            Répartition actuelle
+          </div>
+          <Donut data={allocationAvant.filter((item) => item.montant > 0)} size={180} />
+          <Legende data={allocationAvant.filter((item) => item.montant > 0)} />
+        </Card>
+        <Card className="p-5" style={{ borderColor: operationValide ? C.teal : C.line }}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Eyebrow>Après simulation</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Répartition projetée
+              </div>
+            </div>
+            <Badge tone={alertesApres.length ? 'coral' : 'teal'}>
+              {alertesApres.length
+                ? `${alertesApres.length} limite(s) dépassée(s)`
+                : 'Limites respectées'}
+            </Badge>
+          </div>
+          <Donut data={allocationApres.filter((item) => item.montant > 0)} size={180} />
+          <Legende data={allocationApres.filter((item) => item.montant > 0)} />
+        </Card>
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Impact sur les limites</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Allocation avant / après par classe d&apos;actifs
+            </div>
+          </div>
+          <Badge tone="navy">Limites de la Vue consolidée</Badge>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 900 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Classe d&apos;actifs</Th>
+                <Th>Avant</Th>
+                <Th>Après</Th>
+                <Th>Variation</Th>
+                <Th>Limite</Th>
+                <Th>Situation après</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {CLIENT_ASSET_CLASS_ORDER.map((classe) => {
+                const avant = allocationAvant.find((item) => item.name === classe)?.value || 0;
+                const apres = allocationApres.find((item) => item.name === classe)?.value || 0;
+                const limite = Number(limites[classe] ?? 100);
+                const delta = apres - avant;
+                const depasse = apres > limite;
+                return (
+                  <tr key={classe} style={{ borderTop: `1px solid ${C.line}` }}>
+                    <Td className="font-semibold">{classe}</Td>
+                    <Td mono>{avant.toFixed(1)}%</Td>
+                    <Td mono>{apres.toFixed(1)}%</Td>
+                    <Td mono>
+                      <span style={{ color: delta > 0 ? C.indigo : delta < 0 ? C.coral : C.sub }}>
+                        {delta > 0 ? '+' : ''}{delta.toFixed(1)} pts
+                      </span>
+                    </Td>
+                    <Td mono>{limite.toFixed(1)}%</Td>
+                    <Td>
+                      <Badge tone={depasse ? 'coral' : 'teal'}>
+                        {depasse ? `Dépassement +${(apres - limite).toFixed(1)} pts` : 'Conforme'}
+                      </Badge>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Évolution théorique</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Portefeuille avant / après simulation · horizon 12 mois
+            </div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+              Projection indicative fondée sur des hypothèses de rendement par classe d&apos;actifs ; elle ne constitue pas une prévision de marché.
+            </div>
+          </div>
+          <Badge tone="slate">Devise native : {portefeuille.devise}</Badge>
+        </div>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={projection} margin={{ top: 16, right: 20, left: 10, bottom: 0 }}>
+            <CartesianGrid stroke={C.line} vertical={false} />
+            <XAxis dataKey="mois" tick={{ fontSize: 10, fill: C.sub }} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: C.sub }} tickFormatter={(value) => fmtCompactMontant(value)} width={75} />
+            <Tooltip
+              formatter={(value, name) => [`${fmt(Math.round(value))} ${portefeuille.devise}`, name === 'avant' ? 'Avant simulation' : 'Après simulation']}
+              contentStyle={{ borderRadius: 10, border: `1px solid ${C.line}`, fontSize: 11 }}
+            />
+            <Line type="monotone" dataKey="avant" stroke={C.navy} strokeWidth={2.2} dot={false} name="avant" />
+            <Line type="monotone" dataKey="apres" stroke={C.teal} strokeWidth={2.4} dot={false} name="apres" />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+
+      <Card className="p-0 overflow-hidden" style={{ borderColor: C.gold }}>
+        <div className="p-4 flex items-center justify-between gap-3 flex-wrap" style={{ background: '#FBF7EE' }}>
+          <div>
+            <Eyebrow>Prochaines tombées</Eyebrow>
+            <div className="text-sm font-semibold" style={{ color: C.ink }}>
+              Revenus attendus pour le portefeuille simulé
+            </div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+              Ces encaissements peuvent être pris en compte dans votre décision de calendrier d&apos;investissement.
+            </div>
+          </div>
+          <Badge tone="gold">
+            {fmt(Math.round(totalTombeesPf))} {portefeuille.devise}
+          </Badge>
+        </div>
+        <table className="w-full">
+          <thead style={{ background: '#FAFAFC' }}>
+            <tr>
+              <Th>Date</Th>
+              <Th>Nature</Th>
+              <Th>Instrument</Th>
+              <Th>Classe</Th>
+              <Th>SGI</Th>
+              <Th>Montant</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {prochaineTombeesPortefeuille.length ? (
+              prochaineTombeesPortefeuille.map((flux) => (
+                <tr key={flux.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                  <Td>{flux.date}</Td>
+                  <Td><Badge tone="gold">{flux.type}</Badge></Td>
+                  <Td className="font-semibold">{flux.instrument}</Td>
+                  <Td>{flux.classeActif}</Td>
+                  <Td>{portefeuille.sgi}</Td>
+                  <Td mono>{fmt(Math.round(flux.montant))} {flux.devise}</Td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="py-6 text-center text-xs" style={{ color: C.sub }}>
+                  Aucune tombée renseignée pour ce portefeuille.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
     </div>
   );
 }
@@ -36312,7 +37407,7 @@ function ClientPortfolios({ devise, orders }) {
                         <Td className="font-semibold">{ligne.instrument}</Td>
                         <Td>
                           <Badge tone="slate">
-                            {clientAssetClass(ligne.instrument)}
+                            {clientDetailedAssetClass(ligne.instrument)}
                           </Badge>
                         </Td>
                         <Td mono>{fmt(ligne.qte)}</Td>
@@ -43659,6 +44754,12 @@ export default function App() {
                 )}
                 {clientScreen === 'client-portfolios' && (
                   <ClientPortfolios devise={siteDevise} orders={clientOrders} />
+                )}
+                {clientScreen === 'client-investment-simulation' && (
+                  <ClientInvestmentSimulation
+                    devise={siteDevise}
+                    orders={clientOrders}
+                  />
                 )}
                 {clientScreen === 'client-exchanges' && (
                   <VueBourses
