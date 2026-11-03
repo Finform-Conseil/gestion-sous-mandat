@@ -36340,6 +36340,8 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     useState(false);
   const [detailsLiquiditePrevisionnelleOuverts, setDetailsLiquiditePrevisionnelleOuverts] =
     useState(false);
+  const [limitesFrameOuvert, setLimitesFrameOuvert] = useState(true);
+  const [opportunitesFrameOuvert, setOpportunitesFrameOuvert] = useState(true);
   const [classeOpportunitesOuverte, setClasseOpportunitesOuverte] =
     useState(null);
   const [limitesAllocation, setLimitesAllocation] = useState(() =>
@@ -36955,12 +36957,37 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               consolidée actuelle à la limite maximale que vous avez définie.
             </div>
           </div>
-          <Btn tone="ghost" onClick={ouvrirParametrage}>
-            <SlidersHorizontal size={14} /> Paramétrer mes limites
-          </Btn>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Btn tone="ghost" onClick={ouvrirParametrage}>
+              <SlidersHorizontal size={14} /> Paramétrer mes limites
+            </Btn>
+            <button
+              type="button"
+              onClick={() => setLimitesFrameOuvert((current) => !current)}
+              aria-expanded={limitesFrameOuvert}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors"
+              style={{
+                borderColor: C.line,
+                background: limitesFrameOuvert ? '#F7F8FA' : '#fff',
+                color: C.navy,
+              }}
+            >
+              <ChevronRight
+                size={14}
+                style={{
+                  transform: limitesFrameOuvert
+                    ? 'rotate(90deg)'
+                    : 'rotate(0deg)',
+                  transition: 'transform 160ms ease',
+                }}
+              />
+              {limitesFrameOuvert ? 'Masquer' : 'Ouvrir'}
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {limitesFrameOuvert && (
+          <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: 1040 }}>
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
@@ -37017,6 +37044,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             </tbody>
           </table>
         </div>
+        )}
       </Card>
 
       <Card className="p-0 overflow-hidden" style={{ borderColor: '#D8DFEF' }}>
@@ -37054,10 +37082,36 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                 ? `${alertesLimites.length} dépassement(s)`
                 : 'Aucun dépassement'}
             </Badge>
+            <button
+              type="button"
+              onClick={() =>
+                setOpportunitesFrameOuvert((current) => !current)
+              }
+              aria-expanded={opportunitesFrameOuvert}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-colors"
+              style={{
+                borderColor: '#D8DFEF',
+                background: opportunitesFrameOuvert ? '#fff' : '#F4F6FB',
+                color: C.navy,
+              }}
+            >
+              <ChevronRight
+                size={14}
+                style={{
+                  transform: opportunitesFrameOuvert
+                    ? 'rotate(90deg)'
+                    : 'rotate(0deg)',
+                  transition: 'transform 160ms ease',
+                }}
+              />
+              {opportunitesFrameOuvert ? 'Masquer' : 'Ouvrir'}
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 p-4" style={{ borderTop: `1px solid ${C.line}` }}>
+        {opportunitesFrameOuvert && (
+          <>
+            <div className="grid grid-cols-4 gap-3 p-4" style={{ borderTop: `1px solid ${C.line}` }}>
           <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
             <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
               Liquidité disponible aujourd&apos;hui
@@ -37195,6 +37249,8 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           liquidité. Les prochaines tombées sont présentées séparément afin de
           distinguer ce qui est disponible aujourd&apos;hui de ce qui pourrait le devenir.
         </div>
+          </>
+        )}
       </Card>
 
       <Card className="p-4" style={{ background: '#F7F8FA' }}>
