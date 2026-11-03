@@ -5282,11 +5282,6 @@ const CLIENT_NAV = [
     icon: Briefcase,
   },
   {
-    id: 'client-add-portfolio',
-    label: 'Ajouter un portefeuille SGI',
-    icon: FileCheck2,
-  },
-  {
     id: 'client-investment-simulation',
     label: "Simulation d'investissement",
     icon: Scale,
@@ -5326,19 +5321,56 @@ const CLIENT_ASSET_CLASS_ORDER = [
 /* ---------------- IMPORT EXCEL SGI — GESTION LIBRE ----------------
  * Dépendance front : npm install xlsx
  *
- * Le fichier attendu contient :
- * - Portefeuille : une ligne de métadonnées du compte-titres ;
- * - Positions : une ligne par instrument ;
- * - Flux_previsionnels : dividendes, coupons, amortissements, loyers, etc.
+ * NOUVELLE LOGIQUE :
+ * le fichier demandé à chaque SGI ne contient pas seulement une photo du
+ * portefeuille. Il rassemble les informations nécessaires à l'analyse :
+ *
+ * - Compte : identité du compte-titres et situation espèces ;
+ * - Positions : photographie des lignes détenues à la date de situation ;
+ * - Mouvements : historique exhaustif des achats, ventes, apports, retraits,
+ *   revenus, frais, taxes, transferts et opérations sur titres ;
+ * - Ordres_ouverts : instructions non totalement dénouées ;
+ * - Flux_futurs : dividendes, coupons, amortissements, loyers, distributions ;
+ * - Valorisations : historique de la valeur du compte.
+ *
+ * Compte, Positions et Mouvements sont les trois feuilles obligatoires.
+ * Les trois autres feuilles sont recommandées et enrichissent l'analyse.
  *
  * Les imports sont persistés localement dans cette maquette. En production,
- * le fichier devra être envoyé au backend, contrôlé, historisé et rattaché
- * au compte authentifié.
+ * ces volumes doivent être contrôlés, historisés et stockés côté backend.
  */
 const CLIENT_SGI_IMPORT_PORTFOLIOS_KEY =
-  `opcvm-gsm-imported-portfolios-v1-${CLIENT_GESTION_LIBRE.id}`;
+  `opcvm-gsm-imported-portfolios-v2-${CLIENT_GESTION_LIBRE.id}`;
 const CLIENT_SGI_IMPORT_FLOWS_KEY =
-  `opcvm-gsm-imported-flows-v1-${CLIENT_GESTION_LIBRE.id}`;
+  `opcvm-gsm-imported-future-flows-v2-${CLIENT_GESTION_LIBRE.id}`;
+const CLIENT_SGI_IMPORT_MOVEMENTS_KEY =
+  `opcvm-gsm-imported-movements-v2-${CLIENT_GESTION_LIBRE.id}`;
+const CLIENT_SGI_IMPORT_ORDERS_KEY =
+  `opcvm-gsm-imported-open-orders-v2-${CLIENT_GESTION_LIBRE.id}`;
+const CLIENT_SGI_IMPORT_VALUATIONS_KEY =
+  `opcvm-gsm-imported-valuations-v2-${CLIENT_GESTION_LIBRE.id}`;
+
+const CLIENT_SGI_MOVEMENT_TYPES = [
+  'Achat',
+  'Vente',
+  'Dépôt espèces',
+  'Retrait espèces',
+  'Dividende',
+  'Coupon',
+  'Amortissement',
+  'Souscription',
+  'Rachat',
+  'Transfert entrant',
+  'Transfert sortant',
+  'Frais',
+  'Taxe / retenue',
+  'Intérêt espèces',
+  'Loyer',
+  'Distribution FCP',
+  'Distribution FCTC',
+  'Opération sur titre',
+  'Autre',
+];
 
 const clientSgiNormalize = (value) =>
   String(value ?? '')
@@ -5404,45 +5436,48 @@ const clientSgiSlug = (value) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 72) || 'portefeuille';
 
-const clientLoadImportedPortfolios = () => {
+const clientLoadImportedArray = (storageKey) => {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(CLIENT_SGI_IMPORT_PORTFOLIOS_KEY) || '[]'
-    );
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (portfolio) =>
-            portfolio &&
-            portfolio.id &&
-            portfolio.sgi &&
-            Array.isArray(portfolio.lignes)
-        )
-      : [];
+    const parsed = JSON.parse(window.localStorage.getItem(storageKey) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 };
 
-const clientLoadImportedFlows = () => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(CLIENT_SGI_IMPORT_FLOWS_KEY) || '[]'
-    );
-    return Array.isArray(parsed)
-      ? parsed.filter(
-          (flow) =>
-            flow &&
-            flow.portefeuilleId &&
-            flow.date &&
-            Number(flow.montant || 0) > 0
-        )
-      : [];
-  } catch {
-    return [];
-  }
-};
+const clientLoadImportedPortfolios = () =>
+  clientLoadImportedArray(CLIENT_SGI_IMPORT_PORTFOLIOS_KEY).filter(
+    (portfolio) =>
+      portfolio &&
+      portfolio.id &&
+      portfolio.sgi &&
+      Array.isArray(portfolio.lignes)
+  );
+
+const clientLoadImportedFlows = () =>
+  clientLoadImportedArray(CLIENT_SGI_IMPORT_FLOWS_KEY).filter(
+    (flow) =>
+      flow &&
+      flow.portefeuilleId &&
+      flow.date &&
+      Number(flow.montant || 0) > 0
+  );
+
+const clientLoadImportedMovements = () =>
+  clientLoadImportedArray(CLIENT_SGI_IMPORT_MOVEMENTS_KEY).filter(
+    (movement) => movement && movement.portefeuilleId && movement.dateOperation
+  );
+
+const clientLoadImportedOpenOrders = () =>
+  clientLoadImportedArray(CLIENT_SGI_IMPORT_ORDERS_KEY).filter(
+    (order) => order && order.portefeuilleId && order.id
+  );
+
+const clientLoadImportedValuations = () =>
+  clientLoadImportedArray(CLIENT_SGI_IMPORT_VALUATIONS_KEY).filter(
+    (valuation) => valuation && valuation.portefeuilleId && valuation.date
+  );
 
 const clientGetPortfolios = () => [
   ...CLIENT_GESTION_LIBRE.portefeuilles,
@@ -5459,6 +5494,21 @@ const clientGetUpcomingIncome = () => [
   ...clientLoadImportedFlows(),
 ];
 
+const clientGetImportedMovements = (portefeuilleId = null) =>
+  clientLoadImportedMovements().filter(
+    (item) => !portefeuilleId || item.portefeuilleId === portefeuilleId
+  );
+
+const clientGetImportedOpenOrders = (portefeuilleId = null) =>
+  clientLoadImportedOpenOrders().filter(
+    (item) => !portefeuilleId || item.portefeuilleId === portefeuilleId
+  );
+
+const clientGetImportedValuations = (portefeuilleId = null) =>
+  clientLoadImportedValuations().filter(
+    (item) => !portefeuilleId || item.portefeuilleId === portefeuilleId
+  );
+
 const clientImportedAssetClassHint = (instrument) => {
   const line = clientLoadImportedPortfolios()
     .flatMap((portfolio) => portfolio.lignes || [])
@@ -5466,7 +5516,15 @@ const clientImportedAssetClassHint = (instrument) => {
   return line?.classeActif || null;
 };
 
-const clientPersistImportedPortfolio = (portfolio, flows = []) => {
+const clientPersistImportedPortfolio = (
+  portfolio,
+  {
+    flows = [],
+    movements = [],
+    openOrders = [],
+    valuations = [],
+  } = {}
+) => {
   if (typeof window === 'undefined') return false;
   try {
     const portfolios = clientLoadImportedPortfolios().filter(
@@ -5475,6 +5533,16 @@ const clientPersistImportedPortfolio = (portfolio, flows = []) => {
     const previousFlows = clientLoadImportedFlows().filter(
       (item) => item.portefeuilleId !== portfolio.id
     );
+    const previousMovements = clientLoadImportedMovements().filter(
+      (item) => item.portefeuilleId !== portfolio.id
+    );
+    const previousOrders = clientLoadImportedOpenOrders().filter(
+      (item) => item.portefeuilleId !== portfolio.id
+    );
+    const previousValuations = clientLoadImportedValuations().filter(
+      (item) => item.portefeuilleId !== portfolio.id
+    );
+
     window.localStorage.setItem(
       CLIENT_SGI_IMPORT_PORTFOLIOS_KEY,
       JSON.stringify([...portfolios, portfolio])
@@ -5483,6 +5551,18 @@ const clientPersistImportedPortfolio = (portfolio, flows = []) => {
       CLIENT_SGI_IMPORT_FLOWS_KEY,
       JSON.stringify([...previousFlows, ...flows])
     );
+    window.localStorage.setItem(
+      CLIENT_SGI_IMPORT_MOVEMENTS_KEY,
+      JSON.stringify([...previousMovements, ...movements])
+    );
+    window.localStorage.setItem(
+      CLIENT_SGI_IMPORT_ORDERS_KEY,
+      JSON.stringify([...previousOrders, ...openOrders])
+    );
+    window.localStorage.setItem(
+      CLIENT_SGI_IMPORT_VALUATIONS_KEY,
+      JSON.stringify([...previousValuations, ...valuations])
+    );
     return true;
   } catch {
     return false;
@@ -5490,32 +5570,48 @@ const clientPersistImportedPortfolio = (portfolio, flows = []) => {
 };
 
 const clientSgiTemplateRows = () => ({
-  Portefeuille: [
+  Compte: [
     [
       'SGI',
       'Titulaire',
       'Intitulé portefeuille',
       'N° compte titres',
+      'Code client SGI',
+      'Type de compte',
       'Pays',
       'Marché principal',
       'Devise de tenue',
+      'Date ouverture compte',
       'Date de situation',
       'Liquidité disponible',
       'Liquidité réservée',
+      'Valorisation titres',
+      'Intérêts / revenus courus',
+      'Valorisation totale',
       'Performance YTD %',
+      'Référence relevé',
+      'Commentaire',
     ],
     [
       'Atlantic Bourse',
       'Groupe Kora Holdings SA',
       'Réserve stratégique Côte d’Ivoire',
       'CT-0014582',
+      'CLI-88412',
+      'Compte-titres',
       "Côte d'Ivoire",
       'BRVM',
       'XOF',
+      '2024-01-15',
       '2026-11-03',
       12500000,
       2500000,
+      102880000,
+      750000,
+      118630000,
       6.4,
+      'REL-2026-11-03-4582',
+      '',
     ],
   ],
   Positions: [
@@ -5524,16 +5620,23 @@ const clientSgiTemplateRows = () => ({
       "Classe d'actifs",
       'Instrument',
       'Code ISIN / Identifiant',
+      'Émetteur',
+      'Secteur',
       'Marché / Place',
       'Statut cotation',
       'Devise',
-      'Quantité',
+      'Quantité totale',
+      'Quantité disponible',
+      'Quantité bloquée',
       'CMP / PRU',
       'Cours / Valeur unitaire',
       'Valeur de marché',
-      'Date acquisition',
+      'Plus/Moins-value latente',
+      'Intérêts courus',
+      'Date première acquisition',
       'Taux coupon %',
       'Date échéance',
+      'Notation / Rating',
       'Commentaire',
     ],
     [
@@ -5541,20 +5644,127 @@ const clientSgiTemplateRows = () => ({
       'Actions cotées',
       'SONATEL',
       'SN0000000019',
+      'SONATEL',
+      'Télécoms',
       'BRVM',
       'Coté',
       'XOF',
       4200,
+      4200,
+      0,
       13250,
       14200,
       59640000,
+      3990000,
+      0,
       '2025-04-18',
+      '',
       '',
       '',
       '',
     ],
   ],
-  Flux_previsionnels: [
+  Mouvements: [
+    [
+      'N° compte titres',
+      'ID mouvement / Référence SGI',
+      'Date opération',
+      'Date règlement / valeur',
+      'Type mouvement',
+      'Sens espèces',
+      'Instrument',
+      'Code ISIN / Identifiant',
+      "Classe d'actifs",
+      'Marché / Place',
+      'Devise',
+      'Quantité',
+      'Prix unitaire',
+      'Montant brut',
+      'Intérêts courus',
+      'Frais SGI',
+      'Frais marché',
+      'Taxes / retenues',
+      'Montant net',
+      'Impact espèces',
+      'Impact titres',
+      'Taux FX vers devise de tenue',
+      'N° ordre / Référence',
+      'Statut',
+      'Commentaire',
+    ],
+    [
+      'CT-0014582',
+      'MVT-2025-0418-001',
+      '2025-04-18',
+      '2025-04-22',
+      'Achat',
+      'Débit',
+      'SONATEL',
+      'SN0000000019',
+      'Actions cotées',
+      'BRVM',
+      'XOF',
+      4200,
+      13250,
+      55650000,
+      0,
+      85000,
+      22000,
+      0,
+      55757000,
+      -55757000,
+      4200,
+      1,
+      'ORD-984411',
+      'Comptabilisé',
+      '',
+    ],
+  ],
+  Ordres_ouverts: [
+    [
+      'N° compte titres',
+      'N° ordre SGI',
+      'Date / heure ordre',
+      'Sens',
+      'Instrument',
+      'Code ISIN / Identifiant',
+      "Classe d'actifs",
+      'Marché / Place',
+      'Devise',
+      'Quantité ordonnée',
+      'Quantité exécutée',
+      'Quantité restante',
+      'Type ordre',
+      'Prix limite / stop',
+      'Validité / Date expiration',
+      'Statut',
+      'Espèces réservées',
+      'Titres réservés',
+      'Commentaire',
+    ],
+    [
+      'CT-0014582',
+      'ORD-20261103-01',
+      '2026-11-03 10:15',
+      'Achat',
+      'ECOBANK CI',
+      '',
+      'Actions cotées',
+      'BRVM',
+      'XOF',
+      800,
+      0,
+      800,
+      'Limite',
+      6650,
+      '2026-11-03',
+      'En attente',
+      5320000,
+      0,
+      '',
+    ],
+  ],
+  Flux_futurs: [
     [
       'N° compte titres',
       'Date de tombée',
@@ -5562,21 +5772,65 @@ const clientSgiTemplateRows = () => ({
       'Instrument',
       'Code ISIN / Identifiant',
       "Classe d'actifs",
+      'Quantité éligible',
+      'Taux / Montant par unité',
       'Montant brut',
+      'Taxes / retenues estimées',
+      'Montant net attendu',
       'Devise',
       'Statut',
+      'Niveau de certitude',
+      'Source / Référence',
       'Commentaire',
     ],
     [
       'CT-0014582',
-      '2026-11-12',
-      'Coupon',
-      'Obligation Trésor CI 6.5% 2029',
-      '',
-      'Obligations cotées',
-      2275000,
+      '2026-11-28',
+      'Dividende',
+      'SONATEL',
+      'SN0000000019',
+      'Actions cotées',
+      4200,
+      400,
+      1680000,
+      168000,
+      1512000,
       'XOF',
-      'À recevoir',
+      'Confirmé',
+      'Certain',
+      'Avis émetteur',
+      '',
+    ],
+  ],
+  Valorisations: [
+    [
+      'N° compte titres',
+      'Date valorisation',
+      'Valorisation titres',
+      'Liquidité disponible',
+      'Liquidité réservée',
+      'Intérêts / revenus courus',
+      'Valorisation totale',
+      'Flux externe net du jour',
+      'Performance journalière %',
+      'Performance YTD %',
+      'Devise',
+      'Source / Référence',
+      'Commentaire',
+    ],
+    [
+      'CT-0014582',
+      '2026-11-03',
+      102880000,
+      12500000,
+      2500000,
+      750000,
+      118630000,
+      25000000,
+      0.18,
+      6.4,
+      'XOF',
+      'Situation SGI',
       '',
     ],
   ],
@@ -5587,25 +5841,39 @@ const clientDownloadSgiExcelTemplate = () => {
   const workbook = XLSX.utils.book_new();
 
   const guideRows = [
-    ['MODÈLE D’IMPORT D’UN PORTEFEUILLE SGI — GESTION LIBRE'],
+    ['MODÈLE SGI — FLUX, MOUVEMENTS & PORTEFEUILLE · GESTION LIBRE'],
     [],
     [
-      'Consigne',
-      'Demander à la SGI de compléter les feuilles Portefeuille et Positions. '
-        + 'Flux_previsionnels est recommandé pour alimenter les prochaines tombées.',
+      'Principe',
+      'Un fichier correspond à un compte-titres détenu auprès d’une SGI.',
+    ],
+    [
+      'Feuilles obligatoires',
+      'Compte | Positions | Mouvements',
+    ],
+    [
+      'Feuilles recommandées',
+      'Ordres_ouverts | Flux_futurs | Valorisations',
+    ],
+    [
+      'Historique mouvements',
+      'Idéalement depuis l’ouverture du compte ; minimum recommandé : 36 mois.',
+    ],
+    [
+      'Historique valorisations',
+      'Quotidien ou mensuel ; minimum recommandé : 36 mois.',
+    ],
+    [
+      'Mouvements à inclure',
+      CLIENT_SGI_MOVEMENT_TYPES.join(' | '),
     ],
     [
       'Classes d’actifs acceptées',
       CLIENT_ASSET_CLASS_ORDER.join(' | '),
     ],
     [
-      'Champs minimum Positions',
-      "Classe d'actifs | Instrument | Devise | Quantité | CMP / PRU | "
-        + 'Cours / Valeur unitaire (ou Valeur de marché)',
-    ],
-    [
       'Réimport',
-      'Le même couple SGI + N° compte titres remplace la version précédente.',
+      'Le même couple SGI + N° compte titres remplace la version importée précédente.',
     ],
   ];
 
@@ -5614,6 +5882,7 @@ const clientDownloadSgiExcelTemplate = () => {
     XLSX.utils.aoa_to_sheet(guideRows),
     'Guide'
   );
+
   Object.entries(rows).forEach(([name, data]) => {
     XLSX.utils.book_append_sheet(
       workbook,
@@ -5621,9 +5890,10 @@ const clientDownloadSgiExcelTemplate = () => {
       name
     );
   });
+
   XLSX.writeFile(
     workbook,
-    'Modele_Import_Portefeuille_SGI_Gestion_Libre.xlsx'
+    'Modele_SGI_Flux_Mouvements_Portefeuille_Gestion_Libre.xlsx'
   );
 };
 
@@ -5640,44 +5910,53 @@ const clientParseSgiWorkbook = async (file) => {
     cellDates: true,
   });
 
-  const portefeuilleSheet = workbook.Sheets.Portefeuille;
+  // "Portefeuille" reste accepté comme alias de transition pour les anciens fichiers.
+  const compteSheet = workbook.Sheets.Compte || workbook.Sheets.Portefeuille;
   const positionsSheet = workbook.Sheets.Positions;
-  if (!portefeuilleSheet || !positionsSheet) {
+  const mouvementsSheet = workbook.Sheets.Mouvements;
+
+  if (!compteSheet || !positionsSheet || !mouvementsSheet) {
     throw new Error(
-      'Le fichier doit contenir les feuilles "Portefeuille" et "Positions".'
+      'Le fichier doit contenir les feuilles "Compte", "Positions" et "Mouvements".'
     );
   }
 
-  const portefeuilleRows = XLSX.utils.sheet_to_json(portefeuilleSheet, {
+  const compteRows = XLSX.utils.sheet_to_json(compteSheet, {
     defval: '',
     raw: true,
   });
-  const meta = portefeuilleRows.find((row) =>
+  const meta = compteRows.find((row) =>
     Object.values(row || {}).some((value) => String(value ?? '').trim() !== '')
   );
+
   if (!meta) {
-    throw new Error('La feuille Portefeuille ne contient aucune donnée.');
+    throw new Error('La feuille Compte ne contient aucune donnée.');
   }
 
   const sgi = String(clientSgiRowValue(meta, 'SGI')).trim();
-  const titulaire = String(
-    clientSgiRowValue(meta, 'Titulaire')
-  ).trim();
+  const titulaire = String(clientSgiRowValue(meta, 'Titulaire')).trim();
   const intitule = String(
     clientSgiRowValue(meta, 'Intitulé portefeuille')
   ).trim();
   const numeroCompte = String(
     clientSgiRowValue(meta, 'N° compte titres', 'No compte titres')
   ).trim();
+  const codeClientSgi = String(
+    clientSgiRowValue(meta, 'Code client SGI')
+  ).trim();
+  const typeCompte = String(
+    clientSgiRowValue(meta, 'Type de compte')
+  ).trim();
   const pays = String(clientSgiRowValue(meta, 'Pays')).trim();
   const marche = String(
     clientSgiRowValue(meta, 'Marché principal', 'Marche principal')
   ).trim();
-  const devise = String(
-    clientSgiRowValue(meta, 'Devise de tenue')
-  )
+  const devise = String(clientSgiRowValue(meta, 'Devise de tenue'))
     .trim()
     .toUpperCase();
+  const dateOuvertureCompte = clientSgiDateFR(
+    clientSgiRowValue(meta, 'Date ouverture compte')
+  );
   const dateSituation = clientSgiDateFR(
     clientSgiRowValue(meta, 'Date de situation')
   );
@@ -5689,10 +5968,25 @@ const clientParseSgiWorkbook = async (file) => {
     0,
     clientSgiNumber(clientSgiRowValue(meta, 'Liquidité réservée'))
   );
+  const valorisationTitresDeclaree = Math.max(
+    0,
+    clientSgiNumber(clientSgiRowValue(meta, 'Valorisation titres'))
+  );
+  const revenusCourus = clientSgiNumber(
+    clientSgiRowValue(meta, 'Intérêts / revenus courus'),
+    0
+  );
+  const valorisationTotaleDeclaree = Math.max(
+    0,
+    clientSgiNumber(clientSgiRowValue(meta, 'Valorisation totale'))
+  );
   const perfYtd = clientSgiNumber(
     clientSgiRowValue(meta, 'Performance YTD %'),
     0
   );
+  const referenceReleve = String(
+    clientSgiRowValue(meta, 'Référence relevé')
+  ).trim();
 
   const missing = [
     ['SGI', sgi],
@@ -5709,9 +6003,10 @@ const clientParseSgiWorkbook = async (file) => {
 
   if (missing.length) {
     throw new Error(
-      `Champs obligatoires manquants dans Portefeuille : ${missing.join(', ')}.`
+      `Champs obligatoires manquants dans Compte : ${missing.join(', ')}.`
     );
   }
+
   if (!FX[devise]) {
     throw new Error(
       `Devise de tenue non reconnue : ${devise}. Valeurs gérées : ${Object.keys(
@@ -5721,17 +6016,17 @@ const clientParseSgiWorkbook = async (file) => {
   }
 
   const id = `cl-import-${clientSgiSlug(`${sgi}-${numeroCompte}`)}`;
+  const warnings = [];
+
+  // ---------------- Positions ----------------
   const positionRows = XLSX.utils.sheet_to_json(positionsSheet, {
     defval: '',
     raw: true,
   });
-  const warnings = [];
   const lignes = [];
 
   positionRows.forEach((row, index) => {
-    const instrument = String(
-      clientSgiRowValue(row, 'Instrument')
-    ).trim();
+    const instrument = String(clientSgiRowValue(row, 'Instrument')).trim();
     if (!instrument) return;
 
     const rowAccount = String(
@@ -5739,7 +6034,7 @@ const clientParseSgiWorkbook = async (file) => {
     ).trim();
     if (rowAccount && rowAccount !== numeroCompte) {
       warnings.push(
-        `Ligne Positions ${index + 2} ignorée : compte ${rowAccount} différent de ${numeroCompte}.`
+        `Positions ${index + 2} ignorée : compte ${rowAccount} différent de ${numeroCompte}.`
       );
       return;
     }
@@ -5749,7 +6044,15 @@ const clientParseSgiWorkbook = async (file) => {
     ).trim();
     if (!CLIENT_ASSET_CLASS_ORDER.includes(classeActif)) {
       warnings.push(
-        `Ligne Positions ${index + 2} ignorée : classe d'actifs "${classeActif}" non reconnue.`
+        `Positions ${index + 2} ignorée : classe "${classeActif}" non reconnue.`
+      );
+      return;
+    }
+
+    // La liquidité est lue dans la feuille Compte pour éviter le double comptage.
+    if (classeActif === 'Liquidité') {
+      warnings.push(
+        `Positions ${index + 2} (${instrument}) ignorée : la liquidité doit être renseignée dans Compte.`
       );
       return;
     }
@@ -5759,18 +6062,32 @@ const clientParseSgiWorkbook = async (file) => {
     )
       .trim()
       .toUpperCase();
+
     if (!FX[positionDevise]) {
       warnings.push(
-        `Ligne Positions ${index + 2} ignorée : devise ${positionDevise} non reconnue.`
+        `Positions ${index + 2} ignorée : devise ${positionDevise} non reconnue.`
       );
       return;
     }
 
-    const qte = clientSgiNumber(clientSgiRowValue(row, 'Quantité', 'Quantite'));
-    const pruOrigine = clientSgiNumber(clientSgiRowValue(row, 'CMP / PRU', 'CMP', 'PRU'));
+    const qte = clientSgiNumber(
+      clientSgiRowValue(row, 'Quantité totale', 'Quantité', 'Quantite')
+    );
+    const qteDisponible = clientSgiNumber(
+      clientSgiRowValue(row, 'Quantité disponible'),
+      qte
+    );
+    const qteBloquee = Math.max(
+      0,
+      clientSgiNumber(clientSgiRowValue(row, 'Quantité bloquée'))
+    );
+    const pruOrigine = clientSgiNumber(
+      clientSgiRowValue(row, 'CMP / PRU', 'CMP', 'PRU')
+    );
     const valeurMarche = clientSgiNumber(
       clientSgiRowValue(row, 'Valeur de marché', 'Valeur de marche')
     );
+
     let prixOrigine = clientSgiNumber(
       clientSgiRowValue(
         row,
@@ -5779,22 +6096,14 @@ const clientParseSgiWorkbook = async (file) => {
         'Valeur unitaire'
       )
     );
+
     if (!(prixOrigine > 0) && qte > 0 && valeurMarche > 0) {
       prixOrigine = valeurMarche / qte;
     }
 
-    if (!(qte > 0) || !(pruOrigine >= 0) || !(prixOrigine > 0)) {
+    if (!(qte > 0) || !(prixOrigine > 0)) {
       warnings.push(
-        `Ligne Positions ${index + 2} ignorée : quantité, CMP/PRU ou cours/valeur de marché invalide.`
-      );
-      return;
-    }
-
-    // La liquidité est gérée au niveau du compte espèces afin d'éviter
-    // un double comptage dans l'allocation.
-    if (classeActif === 'Liquidité') {
-      warnings.push(
-        `Ligne Positions ${index + 2} (${instrument}) ignorée : renseignez la liquidité dans la feuille Portefeuille.`
+        `Positions ${index + 2} ignorée : quantité ou valeur actuelle invalide.`
       );
       return;
     }
@@ -5802,15 +6111,26 @@ const clientParseSgiWorkbook = async (file) => {
     lignes.push({
       instrument,
       qte,
+      qteDisponible,
+      qteBloquee,
       pru: convertCurrency(pruOrigine, positionDevise, devise),
       prixActuel: convertCurrency(prixOrigine, positionDevise, devise),
       classeActif,
       deviseOrigine: positionDevise,
       pruOrigine,
       prixActuelOrigine: prixOrigine,
+      valeurMarcheImportee: valeurMarche,
+      plusMoinsValueLatente: clientSgiNumber(
+        clientSgiRowValue(row, 'Plus/Moins-value latente')
+      ),
+      interetsCourus: clientSgiNumber(
+        clientSgiRowValue(row, 'Intérêts courus')
+      ),
       isin: String(
         clientSgiRowValue(row, 'Code ISIN / Identifiant', 'ISIN')
       ).trim(),
+      emetteur: String(clientSgiRowValue(row, 'Émetteur', 'Emetteur')).trim(),
+      secteur: String(clientSgiRowValue(row, 'Secteur')).trim(),
       marcheImporte: String(
         clientSgiRowValue(row, 'Marché / Place', 'Marche / Place')
       ).trim(),
@@ -5818,7 +6138,7 @@ const clientParseSgiWorkbook = async (file) => {
         clientSgiRowValue(row, 'Statut cotation')
       ).trim(),
       dateAcquisition: clientSgiDateFR(
-        clientSgiRowValue(row, 'Date acquisition')
+        clientSgiRowValue(row, 'Date première acquisition', 'Date acquisition')
       ),
       tauxCoupon: clientSgiNumber(
         clientSgiRowValue(row, 'Taux coupon %'),
@@ -5827,41 +6147,225 @@ const clientParseSgiWorkbook = async (file) => {
       dateEcheance: clientSgiDateFR(
         clientSgiRowValue(row, 'Date échéance', 'Date echeance')
       ),
+      rating: String(
+        clientSgiRowValue(row, 'Notation / Rating', 'Rating')
+      ).trim(),
       commentaireImport: String(
         clientSgiRowValue(row, 'Commentaire')
       ).trim(),
     });
   });
 
-  if (!lignes.length) {
+  // Un compte entièrement liquide reste un portefeuille valide.
+  if (!lignes.length && !(liquiditeDisponible + liquiditeReservee > 0)) {
     throw new Error(
-      "Aucune position valide n'a été trouvée dans la feuille Positions."
+      "Aucune position valide ni liquidité n'a été trouvée pour ce compte."
     );
   }
 
-  const portfolio = {
-    id,
-    titulaire,
-    nom: `${titulaire} · ${intitule}`,
-    sgi,
-    pays,
-    marche,
-    devise,
-    numeroCompte,
-    dateSituation,
-    compteEspeces: liquiditeDisponible + liquiditeReservee,
-    liquiditeReserveeImportee: liquiditeReservee,
-    perfYtd,
-    lignes,
-    sourceImport: 'SGI Excel',
-    fichierSource: file.name,
-    importeLe: new Date().toISOString(),
-  };
+  // ---------------- Mouvements historiques ----------------
+  const movementRows = XLSX.utils.sheet_to_json(mouvementsSheet, {
+    defval: '',
+    raw: true,
+  });
 
-  const flowSheet = workbook.Sheets.Flux_previsionnels;
-  const flows = flowSheet
+  const movements = movementRows.flatMap((row, index) => {
+    const hasSomeData = Object.values(row || {}).some(
+      (value) => String(value ?? '').trim() !== ''
+    );
+    if (!hasSomeData) return [];
+
+    const rowAccount = String(
+      clientSgiRowValue(row, 'N° compte titres', 'No compte titres')
+    ).trim();
+
+    if (rowAccount && rowAccount !== numeroCompte) {
+      warnings.push(
+        `Mouvements ${index + 2} ignoré : compte ${rowAccount} différent de ${numeroCompte}.`
+      );
+      return [];
+    }
+
+    const dateOperation = clientSgiDateFR(
+      clientSgiRowValue(row, 'Date opération', 'Date operation')
+    );
+    const typeMouvement = String(
+      clientSgiRowValue(row, 'Type mouvement')
+    ).trim();
+    const mouvementDevise = String(
+      clientSgiRowValue(row, 'Devise') || devise
+    )
+      .trim()
+      .toUpperCase();
+
+    if (!dateOperation || !typeMouvement || !FX[mouvementDevise]) {
+      warnings.push(
+        `Mouvements ${index + 2} ignoré : date, type ou devise invalide.`
+      );
+      return [];
+    }
+
+    if (!CLIENT_SGI_MOVEMENT_TYPES.includes(typeMouvement)) {
+      warnings.push(
+        `Mouvements ${index + 2} : type "${typeMouvement}" non standard, conservé tel quel.`
+      );
+    }
+
+    const instrument = String(
+      clientSgiRowValue(row, 'Instrument')
+    ).trim();
+    const classeBrute = String(
+      clientSgiRowValue(row, "Classe d'actifs", 'Classe actifs')
+    ).trim();
+    const classeActif = CLIENT_ASSET_CLASS_ORDER.includes(classeBrute)
+      ? classeBrute
+      : lignes.find((line) => line.instrument === instrument)?.classeActif ||
+        (instrument ? '' : 'Liquidité');
+
+    return [{
+      id:
+        String(
+          clientSgiRowValue(row, 'ID mouvement / Référence SGI')
+        ).trim() ||
+        `MVT-IMP-${clientSgiSlug(
+          `${sgi}-${numeroCompte}-${dateOperation}-${typeMouvement}-${index}`
+        )}`,
+      portefeuilleId: id,
+      numeroCompte,
+      dateOperation,
+      dateReglement: clientSgiDateFR(
+        clientSgiRowValue(row, 'Date règlement / valeur', 'Date reglement / valeur')
+      ),
+      type: typeMouvement,
+      sensEspeces: String(
+        clientSgiRowValue(row, 'Sens espèces', 'Sens especes')
+      ).trim(),
+      instrument,
+      isin: String(
+        clientSgiRowValue(row, 'Code ISIN / Identifiant', 'ISIN')
+      ).trim(),
+      classeActif,
+      marche: String(
+        clientSgiRowValue(row, 'Marché / Place', 'Marche / Place')
+      ).trim(),
+      devise: mouvementDevise,
+      quantite: clientSgiNumber(clientSgiRowValue(row, 'Quantité', 'Quantite')),
+      prixUnitaire: clientSgiNumber(clientSgiRowValue(row, 'Prix unitaire')),
+      montantBrut: clientSgiNumber(clientSgiRowValue(row, 'Montant brut')),
+      interetsCourus: clientSgiNumber(clientSgiRowValue(row, 'Intérêts courus')),
+      fraisSgi: clientSgiNumber(clientSgiRowValue(row, 'Frais SGI')),
+      fraisMarche: clientSgiNumber(clientSgiRowValue(row, 'Frais marché', 'Frais marche')),
+      taxes: clientSgiNumber(clientSgiRowValue(row, 'Taxes / retenues')),
+      montantNet: clientSgiNumber(clientSgiRowValue(row, 'Montant net')),
+      impactEspeces: clientSgiNumber(clientSgiRowValue(row, 'Impact espèces', 'Impact especes')),
+      impactTitres: clientSgiNumber(clientSgiRowValue(row, 'Impact titres')),
+      tauxFx: clientSgiNumber(
+        clientSgiRowValue(row, 'Taux FX vers devise de tenue'),
+        mouvementDevise === devise ? 1 : 0
+      ),
+      referenceOrdre: String(
+        clientSgiRowValue(row, 'N° ordre / Référence', 'No ordre / Reference')
+      ).trim(),
+      statut: String(clientSgiRowValue(row, 'Statut')).trim() || 'Comptabilisé',
+      commentaire: String(clientSgiRowValue(row, 'Commentaire')).trim(),
+      sourceImport: 'SGI Excel',
+    }];
+  });
+
+  if (!movements.length) {
+    warnings.push(
+      'Aucun mouvement historique valide : l’analyse de performance et des flux sera limitée.'
+    );
+  }
+
+  // ---------------- Ordres ouverts ----------------
+  const openOrdersSheet = workbook.Sheets.Ordres_ouverts;
+  const openOrders = openOrdersSheet
     ? XLSX.utils
-        .sheet_to_json(flowSheet, { defval: '', raw: true })
+        .sheet_to_json(openOrdersSheet, { defval: '', raw: true })
+        .flatMap((row, index) => {
+          const orderId = String(
+            clientSgiRowValue(row, 'N° ordre SGI', 'No ordre SGI')
+          ).trim();
+          const instrument = String(
+            clientSgiRowValue(row, 'Instrument')
+          ).trim();
+          const rowAccount = String(
+            clientSgiRowValue(row, 'N° compte titres', 'No compte titres')
+          ).trim();
+
+          if (!orderId && !instrument) return [];
+          if (rowAccount && rowAccount !== numeroCompte) return [];
+
+          const orderDevise = String(
+            clientSgiRowValue(row, 'Devise') || devise
+          )
+            .trim()
+            .toUpperCase();
+
+          if (!instrument || !FX[orderDevise]) {
+            warnings.push(
+              `Ordres_ouverts ${index + 2} ignoré : instrument ou devise invalide.`
+            );
+            return [];
+          }
+
+          return [{
+            id:
+              orderId ||
+              `ORD-IMP-${clientSgiSlug(
+                `${sgi}-${numeroCompte}-${instrument}-${index}`
+              )}`,
+            portefeuilleId: id,
+            date: clientSgiDateFR(
+              clientSgiRowValue(row, 'Date / heure ordre', 'Date ordre')
+            ),
+            sens: String(clientSgiRowValue(row, 'Sens')).trim(),
+            instrument,
+            isin: String(
+              clientSgiRowValue(row, 'Code ISIN / Identifiant', 'ISIN')
+            ).trim(),
+            classeActif: String(
+              clientSgiRowValue(row, "Classe d'actifs", 'Classe actifs')
+            ).trim(),
+            marche: String(
+              clientSgiRowValue(row, 'Marché / Place', 'Marche / Place')
+            ).trim(),
+            devise: orderDevise,
+            qte: clientSgiNumber(clientSgiRowValue(row, 'Quantité ordonnée')),
+            qteExecutee: clientSgiNumber(clientSgiRowValue(row, 'Quantité exécutée')),
+            qteRestante: clientSgiNumber(clientSgiRowValue(row, 'Quantité restante')),
+            typeOrdre: String(clientSgiRowValue(row, 'Type ordre')).trim(),
+            prix: clientSgiNumber(clientSgiRowValue(row, 'Prix limite / stop')),
+            validite: clientSgiDateFR(
+              clientSgiRowValue(row, 'Validité / Date expiration')
+            ),
+            statut: String(clientSgiRowValue(row, 'Statut')).trim() || 'En attente',
+            especesReservees: clientSgiNumber(
+              clientSgiRowValue(row, 'Espèces réservées', 'Especes reservees')
+            ),
+            titresReserves: clientSgiNumber(
+              clientSgiRowValue(row, 'Titres réservés', 'Titres reserves')
+            ),
+            commentaire: String(clientSgiRowValue(row, 'Commentaire')).trim(),
+            sourceImport: 'SGI Excel',
+          }];
+        })
+    : [];
+
+  if (!openOrdersSheet) {
+    warnings.push(
+      'Feuille Ordres_ouverts absente : les réservations de titres et certains règlements futurs peuvent être incomplets.'
+    );
+  }
+
+  // ---------------- Flux futurs ----------------
+  const futureSheet =
+    workbook.Sheets.Flux_futurs || workbook.Sheets.Flux_previsionnels;
+
+  const flows = futureSheet
+    ? XLSX.utils
+        .sheet_to_json(futureSheet, { defval: '', raw: true })
         .flatMap((row, index) => {
           const date = clientSgiDateFR(
             clientSgiRowValue(row, 'Date de tombée', 'Date de tombee')
@@ -5872,22 +6376,26 @@ const clientParseSgiWorkbook = async (file) => {
           const instrument = String(
             clientSgiRowValue(row, 'Instrument')
           ).trim();
-          const montant = clientSgiNumber(
-            clientSgiRowValue(row, 'Montant brut', 'Montant')
-          );
+          const rowAccount = String(
+            clientSgiRowValue(row, 'N° compte titres', 'No compte titres')
+          ).trim();
           const flowDevise = String(
             clientSgiRowValue(row, 'Devise') || devise
           )
             .trim()
             .toUpperCase();
-          const rowAccount = String(
-            clientSgiRowValue(row, 'N° compte titres', 'No compte titres')
-          ).trim();
+
+          const montantNet = clientSgiNumber(
+            clientSgiRowValue(row, 'Montant net attendu')
+          );
+          const montantBrut = clientSgiNumber(
+            clientSgiRowValue(row, 'Montant brut')
+          );
+          const montant = montantNet > 0 ? montantNet : montantBrut;
 
           if (
             !date ||
             !type ||
-            !instrument ||
             !(montant > 0) ||
             !FX[flowDevise] ||
             (rowAccount && rowAccount !== numeroCompte)
@@ -5897,7 +6405,7 @@ const clientParseSgiWorkbook = async (file) => {
             );
             if (hasSomeData) {
               warnings.push(
-                `Ligne Flux_previsionnels ${index + 2} ignorée : informations obligatoires incomplètes ou invalides.`
+                `Flux_futurs ${index + 2} ignoré : informations obligatoires incomplètes.`
               );
             }
             return [];
@@ -5911,31 +6419,174 @@ const clientParseSgiWorkbook = async (file) => {
             : lignes.find((line) => line.instrument === instrument)?.classeActif ||
               'Liquidité';
 
-          return [
-            {
-              id: `UP-IMP-${clientSgiSlug(
-                `${sgi}-${numeroCompte}-${date}-${type}-${instrument}-${index}`
-              )}`,
-              portefeuilleId: id,
-              date,
-              type,
-              instrument,
-              classeActif,
-              montant,
-              devise: flowDevise,
-              statut:
-                String(clientSgiRowValue(row, 'Statut')).trim() ||
-                'À recevoir',
-              commentaire: String(
-                clientSgiRowValue(row, 'Commentaire')
-              ).trim(),
-              sourceImport: 'SGI Excel',
-            },
-          ];
+          return [{
+            id: `UP-IMP-${clientSgiSlug(
+              `${sgi}-${numeroCompte}-${date}-${type}-${instrument}-${index}`
+            )}`,
+            portefeuilleId: id,
+            date,
+            type,
+            instrument: instrument || type,
+            classeActif,
+            quantiteEligible: clientSgiNumber(
+              clientSgiRowValue(row, 'Quantité éligible')
+            ),
+            tauxOuMontantUnitaire: clientSgiNumber(
+              clientSgiRowValue(row, 'Taux / Montant par unité')
+            ),
+            montantBrut,
+            taxes: clientSgiNumber(
+              clientSgiRowValue(row, 'Taxes / retenues estimées')
+            ),
+            montant,
+            devise: flowDevise,
+            statut:
+              String(clientSgiRowValue(row, 'Statut')).trim() ||
+              'À recevoir',
+            certitude: String(
+              clientSgiRowValue(row, 'Niveau de certitude')
+            ).trim(),
+            reference: String(
+              clientSgiRowValue(row, 'Source / Référence')
+            ).trim(),
+            commentaire: String(
+              clientSgiRowValue(row, 'Commentaire')
+            ).trim(),
+            sourceImport: 'SGI Excel',
+          }];
         })
     : [];
 
-  return { portfolio, flows, warnings };
+  if (!futureSheet) {
+    warnings.push(
+      'Feuille Flux_futurs absente : la liquidité prévisionnelle ne pourra pas intégrer les tombées communiquées par la SGI.'
+    );
+  }
+
+  // ---------------- Valorisations historiques ----------------
+  const valuationsSheet = workbook.Sheets.Valorisations;
+  const valuations = valuationsSheet
+    ? XLSX.utils
+        .sheet_to_json(valuationsSheet, { defval: '', raw: true })
+        .flatMap((row, index) => {
+          const rowAccount = String(
+            clientSgiRowValue(row, 'N° compte titres', 'No compte titres')
+          ).trim();
+          const date = clientSgiDateFR(
+            clientSgiRowValue(row, 'Date valorisation')
+          );
+          const valuationDevise = String(
+            clientSgiRowValue(row, 'Devise') || devise
+          )
+            .trim()
+            .toUpperCase();
+          const total = clientSgiNumber(
+            clientSgiRowValue(row, 'Valorisation totale')
+          );
+
+          if (
+            !date ||
+            !(total >= 0) ||
+            !FX[valuationDevise] ||
+            (rowAccount && rowAccount !== numeroCompte)
+          ) {
+            const hasSomeData = Object.values(row || {}).some(
+              (value) => String(value ?? '').trim() !== ''
+            );
+            if (hasSomeData) {
+              warnings.push(
+                `Valorisations ${index + 2} ignorée : date, valeur totale ou devise invalide.`
+              );
+            }
+            return [];
+          }
+
+          return [{
+            id: `VAL-IMP-${clientSgiSlug(
+              `${sgi}-${numeroCompte}-${date}-${index}`
+            )}`,
+            portefeuilleId: id,
+            date,
+            valorisationTitres: clientSgiNumber(
+              clientSgiRowValue(row, 'Valorisation titres')
+            ),
+            liquiditeDisponible: clientSgiNumber(
+              clientSgiRowValue(row, 'Liquidité disponible')
+            ),
+            liquiditeReservee: clientSgiNumber(
+              clientSgiRowValue(row, 'Liquidité réservée')
+            ),
+            revenusCourus: clientSgiNumber(
+              clientSgiRowValue(row, 'Intérêts / revenus courus')
+            ),
+            total,
+            fluxExterneNet: clientSgiNumber(
+              clientSgiRowValue(row, 'Flux externe net du jour')
+            ),
+            performanceJournaliere: clientSgiNumber(
+              clientSgiRowValue(row, 'Performance journalière %')
+            ),
+            performanceYtd: clientSgiNumber(
+              clientSgiRowValue(row, 'Performance YTD %')
+            ),
+            devise: valuationDevise,
+            reference: String(
+              clientSgiRowValue(row, 'Source / Référence')
+            ).trim(),
+            commentaire: String(
+              clientSgiRowValue(row, 'Commentaire')
+            ).trim(),
+            sourceImport: 'SGI Excel',
+          }];
+        })
+    : [];
+
+  if (!valuationsSheet) {
+    warnings.push(
+      'Feuille Valorisations absente : l’historique de performance réelle du compte sera limité.'
+    );
+  }
+
+  const portfolio = {
+    id,
+    titulaire,
+    nom: `${titulaire} · ${intitule}`,
+    sgi,
+    pays,
+    marche,
+    devise,
+    numeroCompte,
+    codeClientSgi,
+    typeCompte,
+    dateOuvertureCompte,
+    dateSituation,
+    compteEspeces: liquiditeDisponible + liquiditeReservee,
+    liquiditeReserveeImportee: liquiditeReservee,
+    valorisationTitresDeclaree,
+    revenusCourusImportes: revenusCourus,
+    valorisationTotaleDeclaree,
+    perfYtd,
+    referenceReleve,
+    lignes,
+    donneesSgiImportees: {
+      mouvements: movements.length,
+      ordresOuverts: openOrders.length,
+      fluxFuturs: flows.length,
+      valorisations: valuations.length,
+    },
+    sourceImport: 'SGI Excel complet',
+    fichierSource: file.name,
+    importeLe: new Date().toISOString(),
+  };
+
+  return {
+    portfolio,
+    flows,
+    movements,
+    openOrders,
+    valuations,
+    warnings,
+  };
 };
 
 
@@ -37550,73 +38201,6 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         </div>
       </div>
 
-      <Card
-        className="p-4"
-        style={{
-          borderColor: '#C9D5EA',
-          background: '#F7F9FD',
-        }}
-      >
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="max-w-3xl">
-            <Eyebrow>Connexion manuelle aux SGI</Eyebrow>
-            <div
-              className="text-sm font-bold"
-              style={{ color: C.ink }}
-            >
-              Ajouter ou mettre à jour un portefeuille détenu auprès d&apos;une SGI
-            </div>
-            <div
-              className="text-[11px] mt-1 leading-relaxed"
-              style={{ color: C.sub }}
-            >
-              Demandez à votre SGI de compléter le modèle Excel GSM puis importez
-              le relevé afin d&apos;intégrer le compte-titres, ses positions, sa
-              liquidité et ses prochaines tombées dans votre vue consolidée.
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <Btn
-              tone="ghost"
-              onClick={clientDownloadSgiExcelTemplate}
-            >
-              <Download size={14} /> Télécharger le modèle Excel
-            </Btn>
-            <Btn
-              onClick={() =>
-                goClient('client-add-portfolio', {
-                  source: 'client-dashboard-sgi-import',
-                })
-              }
-            >
-              <Briefcase size={14} /> Ajouter un portefeuille SGI
-            </Btn>
-          </div>
-        </div>
-
-        <div
-          className="mt-3 pt-3 flex items-center justify-between gap-4 flex-wrap"
-          style={{ borderTop: `1px solid ${C.line}` }}
-        >
-          <div
-            className="text-[10px]"
-            style={{ color: C.sub }}
-          >
-            {portefeuilles.length} portefeuille(s) actuellement consolidé(s) auprès de{' '}
-            <b style={{ color: C.ink }}>{nombreSgi} SGI</b>.
-          </div>
-          <button
-            type="button"
-            onClick={() => goClient('client-portfolios')}
-            className="text-xs font-semibold"
-            style={{ color: C.indigo }}
-          >
-            Ouvrir Mes portefeuilles &amp; SGI →
-          </button>
-        </div>
-      </Card>
-
       <div className="grid grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-xs" style={{ color: C.sub }}>
@@ -39308,370 +39892,9 @@ function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
   );
 }
 
-function ClientAddPortfolioSgi({ goClient }) {
-  const [fichierSgi, setFichierSgi] = useState(null);
-  const [importEtat, setImportEtat] = useState(null);
-  const [importEnCours, setImportEnCours] = useState(false);
-  const [portefeuilleAjoute, setPortefeuilleAjoute] = useState(null);
-
-  const importer = async () => {
-    if (!fichierSgi) {
-      setImportEtat({
-        type: 'error',
-        message: 'Sélectionnez d’abord le fichier Excel transmis par votre SGI.',
-      });
-      return;
-    }
-
-    setImportEnCours(true);
-    setImportEtat(null);
-    try {
-      const result = await clientParseSgiWorkbook(fichierSgi);
-      const saved = clientPersistImportedPortfolio(
-        result.portfolio,
-        result.flows
-      );
-
-      if (!saved) {
-        throw new Error(
-          "Le portefeuille n'a pas pu être enregistré dans cette maquette."
-        );
-      }
-
-      setPortefeuilleAjoute({
-        ...result.portfolio,
-        nombreFlux: result.flows.length,
-      });
-      setImportEtat({
-        type: 'success',
-        message: `${result.portfolio.nom} a été ajouté avec ${result.portfolio.lignes.length} position(s) et ${result.flows.length} flux prévisionnel(s).`,
-        warnings: result.warnings || [],
-      });
-      setFichierSgi(null);
-    } catch (error) {
-      setPortefeuilleAjoute(null);
-      setImportEtat({
-        type: 'error',
-        message:
-          error?.message ||
-          "Le fichier n'a pas pu être importé. Vérifiez le format demandé.",
-      });
-    } finally {
-      setImportEnCours(false);
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      <ClientBreadcrumb
-        items={[
-          'Espace Client',
-          'Gestion libre',
-          'Ajouter un portefeuille SGI',
-        ]}
-      />
-
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <Eyebrow>Gestion libre · connexion d&apos;un compte-titres</Eyebrow>
-          <h2
-            className="text-xl font-bold"
-            style={{ ...F_DISPLAY, color: C.ink }}
-          >
-            Ajouter un portefeuille d&apos;une SGI
-          </h2>
-          <div
-            className="text-xs mt-1 max-w-4xl"
-            style={{ color: C.sub }}
-          >
-            Cette page permet d&apos;ajouter à votre espace un portefeuille détenu
-            auprès d&apos;une SGI. Téléchargez le modèle GSM, faites-le compléter
-            par votre intermédiaire puis importez le fichier reçu.
-          </div>
-        </div>
-
-        <Btn
-          tone="ghost"
-          onClick={() => goClient('client-portfolios')}
-        >
-          Voir mes portefeuilles →
-        </Btn>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <Card
-          className="col-span-2 p-5"
-          style={{ borderColor: '#C9D5EA' }}
-        >
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <Eyebrow>Étape 1</Eyebrow>
-              <div className="text-sm font-bold" style={{ color: C.ink }}>
-                Télécharger le fichier à transmettre à votre SGI
-              </div>
-              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-                Le modèle standardise les informations nécessaires à la
-                consolidation du compte.
-              </div>
-            </div>
-            <Btn tone="ghost" onClick={clientDownloadSgiExcelTemplate}>
-              <Download size={14} /> Télécharger le modèle Excel
-            </Btn>
-          </div>
-
-          <div
-            className="mt-4 p-4 rounded-2xl"
-            style={{ background: '#F7F9FD' }}
-          >
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                {
-                  titre: 'Portefeuille',
-                  detail:
-                    'SGI, titulaire, n° de compte, marché, devise, date de situation et liquidité.',
-                },
-                {
-                  titre: 'Positions',
-                  detail:
-                    'Instruments, classe d’actifs, quantité, CMP/PRU, cours ou valeur de marché.',
-                },
-                {
-                  titre: 'Flux prévisionnels',
-                  detail:
-                    'Dividendes, coupons, amortissements, loyers et autres tombées attendues.',
-                },
-              ].map((item, index) => (
-                <div
-                  key={item.titre}
-                  className="p-3 rounded-xl border bg-white"
-                  style={{ borderColor: C.line }}
-                >
-                  <div
-                    className="text-[9px] uppercase font-semibold"
-                    style={{ color: C.sub }}
-                  >
-                    {index + 1} · {item.titre}
-                  </div>
-                  <div
-                    className="text-[10px] mt-1 leading-relaxed"
-                    style={{ color: C.ink }}
-                  >
-                    {item.detail}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-5" style={{ background: '#FBF7EE' }}>
-          <Eyebrow>Principe</Eyebrow>
-          <div className="text-sm font-bold" style={{ color: C.ink }}>
-            Un fichier = un compte SGI
-          </div>
-          <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
-            Le couple <b>SGI + n° de compte titres</b> identifie le portefeuille.
-            Un nouvel import du même compte met à jour la version précédente au
-            lieu de créer un doublon.
-          </div>
-          <div className="mt-3">
-            <Badge tone="navy">.xlsx ou .xls</Badge>
-          </div>
-        </Card>
-      </div>
-
-      <Card
-        className="p-5"
-        style={{ borderColor: C.navy }}
-      >
-        <div>
-          <Eyebrow>Étape 2</Eyebrow>
-          <div className="text-base font-bold" style={{ color: C.ink }}>
-            Importer le relevé reçu de votre SGI
-          </div>
-          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Sélectionnez le fichier complété. Le système contrôlera les feuilles
-            Portefeuille et Positions avant l&apos;ajout.
-          </div>
-        </div>
-
-        <label
-          className="mt-4 flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed cursor-pointer px-6 py-10 transition-colors"
-          style={{
-            borderColor: fichierSgi ? C.teal : '#B8C4D8',
-            background: fichierSgi ? '#F1FAF6' : '#FAFBFD',
-          }}
-        >
-          <Briefcase
-            size={34}
-            style={{ color: fichierSgi ? C.teal : C.navy }}
-          />
-          <div
-            className="text-sm font-bold mt-3"
-            style={{ color: C.ink }}
-          >
-            {fichierSgi
-              ? fichierSgi.name
-              : 'Cliquez ici pour sélectionner le fichier Excel de la SGI'}
-          </div>
-          <div
-            className="text-[10px] mt-1"
-            style={{ color: C.sub }}
-          >
-            Formats acceptés : XLSX et XLS
-          </div>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              setFichierSgi(file);
-              setImportEtat(null);
-              setPortefeuilleAjoute(null);
-            }}
-          />
-        </label>
-
-        <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-[10px]" style={{ color: C.sub }}>
-            {fichierSgi
-              ? `Fichier prêt : ${fichierSgi.name}`
-              : 'Aucun fichier sélectionné pour le moment.'}
-          </div>
-          <div className="flex items-center gap-2">
-            {fichierSgi && (
-              <Btn
-                tone="ghost"
-                onClick={() => {
-                  setFichierSgi(null);
-                  setImportEtat(null);
-                }}
-              >
-                Retirer le fichier
-              </Btn>
-            )}
-            <Btn
-              disabled={!fichierSgi || importEnCours}
-              onClick={importer}
-            >
-              <FileCheck2 size={14} />
-              {importEnCours
-                ? 'Import en cours…'
-                : 'Importer et ajouter le portefeuille'}
-            </Btn>
-          </div>
-        </div>
-
-        {importEtat && (
-          <div
-            className="mt-4 p-4 rounded-xl border"
-            style={{
-              borderColor:
-                importEtat.type === 'success' ? '#BFE6D9' : '#F1C5BF',
-              background:
-                importEtat.type === 'success' ? '#F1FAF6' : '#FFF4F2',
-            }}
-          >
-            <div
-              className="text-xs font-bold"
-              style={{
-                color:
-                  importEtat.type === 'success' ? C.teal : C.coral,
-              }}
-            >
-              {importEtat.type === 'success'
-                ? 'Portefeuille ajouté'
-                : 'Import impossible'}
-            </div>
-            <div
-              className="text-[10px] mt-1"
-              style={{ color: C.ink }}
-            >
-              {importEtat.message}
-            </div>
-
-            {Array.isArray(importEtat.warnings) &&
-              importEtat.warnings.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {importEtat.warnings.map((warning, index) => (
-                    <div
-                      key={`${warning}-${index}`}
-                      className="text-[9px]"
-                      style={{ color: C.sub }}
-                    >
-                      • {warning}
-                    </div>
-                  ))}
-                </div>
-              )}
-          </div>
-        )}
-      </Card>
-
-      {portefeuilleAjoute && (
-        <Card className="p-5" style={{ borderColor: '#BFE6D9' }}>
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <Eyebrow>Ajout confirmé</Eyebrow>
-              <div className="text-base font-bold" style={{ color: C.ink }}>
-                {portefeuilleAjoute.nom}
-              </div>
-              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-                {portefeuilleAjoute.sgi} · {portefeuilleAjoute.numeroCompte} ·{' '}
-                {portefeuilleAjoute.marche} · {portefeuilleAjoute.devise}
-              </div>
-            </div>
-            <Btn onClick={() => goClient('client-portfolios')}>
-              Voir ce portefeuille →
-            </Btn>
-          </div>
-
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
-              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
-                Positions
-              </div>
-              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
-                {portefeuilleAjoute.lignes?.length || 0}
-              </div>
-            </div>
-            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
-              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
-                Flux prévisionnels
-              </div>
-              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
-                {portefeuilleAjoute.nombreFlux || 0}
-              </div>
-            </div>
-            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
-              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
-                Pays
-              </div>
-              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
-                {portefeuilleAjoute.pays || '—'}
-              </div>
-            </div>
-            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
-              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
-                Date situation
-              </div>
-              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
-                {portefeuilleAjoute.dateSituation || '—'}
-              </div>
-            </div>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-function ClientPortfolios({ devise, orders, ctx = {} }) {
+function ClientPortfolios({ devise, orders }) {
   const [paysFiltre, setPaysFiltre] = useState('Tous');
-  const [ajoutSgiOuvert, setAjoutSgiOuvert] = useState(
-    Boolean(ctx?.openSgiImport)
-  );
+  const [ajoutSgiOuvert, setAjoutSgiOuvert] = useState(false);
   const [fichierSgi, setFichierSgi] = useState(null);
   const [importSgiEtat, setImportSgiEtat] = useState(null);
   const [importSgiEnCours, setImportSgiEnCours] = useState(false);
@@ -39693,7 +39916,12 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
       const result = await clientParseSgiWorkbook(fichierSgi);
       const saved = clientPersistImportedPortfolio(
         result.portfolio,
-        result.flows
+        {
+          flows: result.flows,
+          movements: result.movements,
+          openOrders: result.openOrders,
+          valuations: result.valuations,
+        }
       );
       if (!saved) {
         throw new Error(
@@ -39705,7 +39933,7 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
       setPaysFiltre('Tous');
       setImportSgiEtat({
         type: 'success',
-        message: `${result.portfolio.nom} a été ajouté / mis à jour avec ${result.portfolio.lignes.length} position(s) et ${result.flows.length} flux prévisionnel(s).`,
+        message: `${result.portfolio.nom} a été ajouté / mis à jour : ${result.portfolio.lignes.length} position(s), ${result.movements.length} mouvement(s), ${result.openOrders.length} ordre(s) ouvert(s), ${result.flows.length} flux futur(s) et ${result.valuations.length} valorisation(s).`,
         warnings: result.warnings,
       });
       setFichierSgi(null);
@@ -39765,56 +39993,99 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
         style={{ borderColor: '#C9D5EA', background: '#F7F9FD' }}
       >
         <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="max-w-3xl">
-            <Eyebrow>Connexion manuelle aux SGI</Eyebrow>
+          <div className="max-w-4xl">
+            <Eyebrow>Données à demander aux SGI</Eyebrow>
             <div className="text-sm font-bold" style={{ color: C.ink }}>
-              Ajouter ou mettre à jour un portefeuille à partir d&apos;un relevé Excel
+              Un fichier complet pour reconstruire et analyser chaque compte-titres
             </div>
             <div className="text-[11px] mt-1 leading-relaxed" style={{ color: C.sub }}>
-              Téléchargez le modèle GSM, transmettez-le à votre SGI puis importez
-              le fichier complété. Le même couple <b>SGI + n° de compte titres</b>
-              met à jour le portefeuille existant au lieu d&apos;en créer un doublon.
+              Le fichier ne sert plus uniquement à charger la photo actuelle du
+              portefeuille. Il rassemble aussi l&apos;historique des mouvements,
+              les ordres non dénoués, les prochaines tombées et les valorisations
+              nécessaires à l&apos;analyse de performance et de liquidité.
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <Btn tone="ghost" onClick={clientDownloadSgiExcelTemplate}>
-              <Download size={14} /> Télécharger le modèle Excel
-            </Btn>
-            <Btn onClick={() => setAjoutSgiOuvert(true)}>
-              <Briefcase size={14} /> Ajouter un portefeuille SGI
-            </Btn>
-          </div>
+          <Btn tone="ghost" onClick={clientDownloadSgiExcelTemplate}>
+            <Download size={14} /> Télécharger le modèle à envoyer aux SGI
+          </Btn>
         </div>
 
         <div className="grid grid-cols-3 gap-3 mt-4">
-          <div className="p-3 rounded-xl border bg-white" style={{ borderColor: C.line }}>
-            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
-              1 · Portefeuille
+          {[
+            {
+              n: '1',
+              titre: 'Compte',
+              obligatoire: true,
+              detail:
+                'SGI, titulaire, n° compte, devise, date de situation, liquidité et valorisation.',
+            },
+            {
+              n: '2',
+              titre: 'Positions',
+              obligatoire: true,
+              detail:
+                'Toutes les lignes détenues : quantité, PRU, prix, valeur, ISIN, classe et échéances.',
+            },
+            {
+              n: '3',
+              titre: 'Mouvements',
+              obligatoire: true,
+              detail:
+                'Achats, ventes, dépôts, retraits, revenus, frais, taxes, transferts et opérations sur titres.',
+            },
+            {
+              n: '4',
+              titre: 'Ordres ouverts',
+              obligatoire: false,
+              detail:
+                'Ordres encore en attente ou partiellement exécutés et montants/titres réservés.',
+            },
+            {
+              n: '5',
+              titre: 'Flux futurs',
+              obligatoire: false,
+              detail:
+                'Dividendes, coupons, amortissements, loyers et distributions attendues.',
+            },
+            {
+              n: '6',
+              titre: 'Valorisations',
+              obligatoire: false,
+              detail:
+                'Historique de la valeur du compte pour mesurer performance, drawdown et volatilité.',
+            },
+          ].map((bloc) => (
+            <div
+              key={bloc.titre}
+              className="p-3 rounded-xl border bg-white"
+              style={{ borderColor: C.line }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div
+                  className="text-[9px] uppercase font-semibold"
+                  style={{ color: C.sub }}
+                >
+                  {bloc.n} · {bloc.titre}
+                </div>
+                <Badge tone={bloc.obligatoire ? 'navy' : 'slate'}>
+                  {bloc.obligatoire ? 'Obligatoire' : 'Recommandé'}
+                </Badge>
+              </div>
+              <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.ink }}>
+                {bloc.detail}
+              </div>
             </div>
-            <div className="text-[10px] mt-1" style={{ color: C.ink }}>
-              SGI, titulaire, n° compte, pays, marché, devise, date de situation,
-              liquidité disponible / réservée.
-            </div>
-          </div>
-          <div className="p-3 rounded-xl border bg-white" style={{ borderColor: C.line }}>
-            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
-              2 · Positions
-            </div>
-            <div className="text-[10px] mt-1" style={{ color: C.ink }}>
-              Classe d&apos;actifs, instrument, ISIN, devise, quantité, CMP/PRU,
-              cours ou valeur unitaire et informations de cotation.
-            </div>
-          </div>
-          <div className="p-3 rounded-xl border bg-white" style={{ borderColor: C.line }}>
-            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
-              3 · Flux prévisionnels
-            </div>
-            <div className="text-[10px] mt-1" style={{ color: C.ink }}>
-              Date, dividende/coupon/amortissement/loyer/distribution,
-              instrument, classe, montant et devise.
-            </div>
-          </div>
+          ))}
+        </div>
+
+        <div
+          className="mt-3 p-3 rounded-xl text-[10px]"
+          style={{ background: '#FFF8E9', color: C.sub }}
+        >
+          <b style={{ color: C.ink }}>Période recommandée :</b> demander
+          l&apos;historique des mouvements et valorisations depuis l&apos;ouverture
+          du compte ou, à défaut, sur au moins 36 mois.
         </div>
       </Card>
 
@@ -39927,6 +40198,9 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
                   </Badge>
                   {portefeuille.numeroCompte && (
                     <Badge tone="slate">Compte {portefeuille.numeroCompte}</Badge>
+                  )}
+                  {portefeuille.sourceImport === 'SGI Excel complet' && (
+                    <Badge tone="teal">Import SGI complet</Badge>
                   )}
                   {portefeuille.sourceImport === 'SGI Excel' && (
                     <Badge tone="teal">
@@ -40151,12 +40425,12 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
               <div>
                 <Eyebrow>Ajouter un portefeuille SGI</Eyebrow>
                 <div className="text-lg font-bold" style={{ color: C.ink }}>
-                  Importer le relevé Excel standardisé
+                  Importer le fichier complet Flux &amp; Mouvements
                 </div>
                 <div className="text-[10px] mt-1 max-w-3xl" style={{ color: C.sub }}>
-                  Le fichier est contrôlé avant ajout. Portefeuille et Positions
-                  sont obligatoires ; Flux_previsionnels est facultatif mais
-                  recommandé pour alimenter la liquidité prévisionnelle.
+                  Les feuilles Compte, Positions et Mouvements sont obligatoires.
+                  Ordres_ouverts, Flux_futurs et Valorisations sont recommandées
+                  pour enrichir la liquidité, la performance et le suivi du compte.
                 </div>
               </div>
               <button
@@ -40175,26 +40449,28 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
                     Format à demander à votre SGI
                   </div>
                   <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
-                    <b>Portefeuille :</b> SGI, titulaire, intitulé, n° compte,
-                    pays, marché principal, devise de tenue, date de situation,
-                    liquidité disponible, liquidité réservée et performance YTD.
+                    <b>Compte :</b> identité du compte, devise, date de situation,
+                    liquidité et valorisation.
                   </div>
                   <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
-                    <b>Positions :</b> classe d&apos;actifs, instrument, ISIN,
-                    marché/place, statut de cotation, devise, quantité, CMP/PRU,
-                    cours/valeur unitaire ou valeur de marché, dates et coupon
-                    le cas échéant.
+                    <b>Positions :</b> toutes les lignes détenues, quantités,
+                    PRU/CMP, valeur actuelle, ISIN, classe, marché et échéances.
                   </div>
                   <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
-                    <b>Flux prévisionnels :</b> date de tombée, type de flux,
-                    instrument, classe, montant, devise et statut.
+                    <b>Mouvements :</b> historique exhaustif des achats/ventes,
+                    dépôts/retraits, dividendes, coupons, amortissements, frais,
+                    taxes, transferts et opérations sur titres.
+                  </div>
+                  <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
+                    <b>Compléments recommandés :</b> ordres ouverts, flux futurs
+                    et historique des valorisations.
                   </div>
                   <Btn
                     tone="ghost"
                     className="mt-4"
                     onClick={clientDownloadSgiExcelTemplate}
                   >
-                    <Download size={14} /> Télécharger le modèle à transmettre
+                    <Download size={14} /> Télécharger le modèle complet
                   </Btn>
                 </div>
 
@@ -40204,7 +40480,7 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
                   </label>
                   <div className="text-[10px] mt-1" style={{ color: C.sub }}>
                     Formats acceptés : .xlsx et .xls. Un fichier correspond à
-                    un compte-titres.
+                    un compte-titres et contient toutes les données transmises par la SGI.
                   </div>
 
                   <label
@@ -40285,12 +40561,12 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
                 className="mt-4 p-3 rounded-xl text-[9px]"
                 style={{ background: '#FFF8E9', color: C.sub }}
               >
-                <b style={{ color: C.ink }}>Contrôle :</b> l&apos;import utilise
-                la devise de tenue comme devise du portefeuille. Si une position
-                est libellée dans une autre devise, sa valeur est convertie dans
-                la devise de tenue avec la table FX de la maquette. En production,
-                les taux devront provenir des historiques officiels à la date de
-                situation du relevé.
+                <b style={{ color: C.ink }}>Contrôle :</b> le système rapproche
+                toutes les feuilles par n° de compte titres. Les positions peuvent
+                être multidevises ; les mouvements historiques restent conservés
+                avec leur devise d&apos;origine et leur impact espèces/titres. En
+                production, le fichier devra être historisé côté backend afin de
+                permettre les contrôles, corrections et réimports volumineux.
               </div>
             </div>
           </div>
@@ -48765,11 +49041,7 @@ export default function App() {
                   <ClientPortfolios
                     devise={siteDevise}
                     orders={clientOrders}
-                    ctx={clientCtx}
                   />
-                )}
-                {clientScreen === 'client-add-portfolio' && (
-                  <ClientAddPortfolioSgi goClient={goClient} />
                 )}
                 {clientScreen === 'client-investment-simulation' && (
                   <ClientInvestmentSimulation
