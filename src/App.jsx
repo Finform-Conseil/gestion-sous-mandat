@@ -5282,6 +5282,11 @@ const CLIENT_NAV = [
     icon: Briefcase,
   },
   {
+    id: 'client-add-portfolio',
+    label: 'Ajouter un portefeuille SGI',
+    icon: FileCheck2,
+  },
+  {
     id: 'client-investment-simulation',
     label: "Simulation d'investissement",
     icon: Scale,
@@ -37580,8 +37585,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             </Btn>
             <Btn
               onClick={() =>
-                goClient('client-portfolios', {
-                  openSgiImport: true,
+                goClient('client-add-portfolio', {
                   source: 'client-dashboard-sgi-import',
                 })
               }
@@ -39304,6 +39308,365 @@ function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
   );
 }
 
+function ClientAddPortfolioSgi({ goClient }) {
+  const [fichierSgi, setFichierSgi] = useState(null);
+  const [importEtat, setImportEtat] = useState(null);
+  const [importEnCours, setImportEnCours] = useState(false);
+  const [portefeuilleAjoute, setPortefeuilleAjoute] = useState(null);
+
+  const importer = async () => {
+    if (!fichierSgi) {
+      setImportEtat({
+        type: 'error',
+        message: 'Sélectionnez d’abord le fichier Excel transmis par votre SGI.',
+      });
+      return;
+    }
+
+    setImportEnCours(true);
+    setImportEtat(null);
+    try {
+      const result = await clientParseSgiWorkbook(fichierSgi);
+      const saved = clientPersistImportedPortfolio(
+        result.portfolio,
+        result.flows
+      );
+
+      if (!saved) {
+        throw new Error(
+          "Le portefeuille n'a pas pu être enregistré dans cette maquette."
+        );
+      }
+
+      setPortefeuilleAjoute({
+        ...result.portfolio,
+        nombreFlux: result.flows.length,
+      });
+      setImportEtat({
+        type: 'success',
+        message: `${result.portfolio.nom} a été ajouté avec ${result.portfolio.lignes.length} position(s) et ${result.flows.length} flux prévisionnel(s).`,
+        warnings: result.warnings || [],
+      });
+      setFichierSgi(null);
+    } catch (error) {
+      setPortefeuilleAjoute(null);
+      setImportEtat({
+        type: 'error',
+        message:
+          error?.message ||
+          "Le fichier n'a pas pu être importé. Vérifiez le format demandé.",
+      });
+    } finally {
+      setImportEnCours(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb
+        items={[
+          'Espace Client',
+          'Gestion libre',
+          'Ajouter un portefeuille SGI',
+        ]}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion libre · connexion d&apos;un compte-titres</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Ajouter un portefeuille d&apos;une SGI
+          </h2>
+          <div
+            className="text-xs mt-1 max-w-4xl"
+            style={{ color: C.sub }}
+          >
+            Cette page permet d&apos;ajouter à votre espace un portefeuille détenu
+            auprès d&apos;une SGI. Téléchargez le modèle GSM, faites-le compléter
+            par votre intermédiaire puis importez le fichier reçu.
+          </div>
+        </div>
+
+        <Btn
+          tone="ghost"
+          onClick={() => goClient('client-portfolios')}
+        >
+          Voir mes portefeuilles →
+        </Btn>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Card
+          className="col-span-2 p-5"
+          style={{ borderColor: '#C9D5EA' }}
+        >
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Étape 1</Eyebrow>
+              <div className="text-sm font-bold" style={{ color: C.ink }}>
+                Télécharger le fichier à transmettre à votre SGI
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Le modèle standardise les informations nécessaires à la
+                consolidation du compte.
+              </div>
+            </div>
+            <Btn tone="ghost" onClick={clientDownloadSgiExcelTemplate}>
+              <Download size={14} /> Télécharger le modèle Excel
+            </Btn>
+          </div>
+
+          <div
+            className="mt-4 p-4 rounded-2xl"
+            style={{ background: '#F7F9FD' }}
+          >
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                {
+                  titre: 'Portefeuille',
+                  detail:
+                    'SGI, titulaire, n° de compte, marché, devise, date de situation et liquidité.',
+                },
+                {
+                  titre: 'Positions',
+                  detail:
+                    'Instruments, classe d’actifs, quantité, CMP/PRU, cours ou valeur de marché.',
+                },
+                {
+                  titre: 'Flux prévisionnels',
+                  detail:
+                    'Dividendes, coupons, amortissements, loyers et autres tombées attendues.',
+                },
+              ].map((item, index) => (
+                <div
+                  key={item.titre}
+                  className="p-3 rounded-xl border bg-white"
+                  style={{ borderColor: C.line }}
+                >
+                  <div
+                    className="text-[9px] uppercase font-semibold"
+                    style={{ color: C.sub }}
+                  >
+                    {index + 1} · {item.titre}
+                  </div>
+                  <div
+                    className="text-[10px] mt-1 leading-relaxed"
+                    style={{ color: C.ink }}
+                  >
+                    {item.detail}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-5" style={{ background: '#FBF7EE' }}>
+          <Eyebrow>Principe</Eyebrow>
+          <div className="text-sm font-bold" style={{ color: C.ink }}>
+            Un fichier = un compte SGI
+          </div>
+          <div className="text-[10px] mt-2 leading-relaxed" style={{ color: C.sub }}>
+            Le couple <b>SGI + n° de compte titres</b> identifie le portefeuille.
+            Un nouvel import du même compte met à jour la version précédente au
+            lieu de créer un doublon.
+          </div>
+          <div className="mt-3">
+            <Badge tone="navy">.xlsx ou .xls</Badge>
+          </div>
+        </Card>
+      </div>
+
+      <Card
+        className="p-5"
+        style={{ borderColor: C.navy }}
+      >
+        <div>
+          <Eyebrow>Étape 2</Eyebrow>
+          <div className="text-base font-bold" style={{ color: C.ink }}>
+            Importer le relevé reçu de votre SGI
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Sélectionnez le fichier complété. Le système contrôlera les feuilles
+            Portefeuille et Positions avant l&apos;ajout.
+          </div>
+        </div>
+
+        <label
+          className="mt-4 flex flex-col items-center justify-center text-center rounded-2xl border-2 border-dashed cursor-pointer px-6 py-10 transition-colors"
+          style={{
+            borderColor: fichierSgi ? C.teal : '#B8C4D8',
+            background: fichierSgi ? '#F1FAF6' : '#FAFBFD',
+          }}
+        >
+          <Briefcase
+            size={34}
+            style={{ color: fichierSgi ? C.teal : C.navy }}
+          />
+          <div
+            className="text-sm font-bold mt-3"
+            style={{ color: C.ink }}
+          >
+            {fichierSgi
+              ? fichierSgi.name
+              : 'Cliquez ici pour sélectionner le fichier Excel de la SGI'}
+          </div>
+          <div
+            className="text-[10px] mt-1"
+            style={{ color: C.sub }}
+          >
+            Formats acceptés : XLSX et XLS
+          </div>
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0] || null;
+              setFichierSgi(file);
+              setImportEtat(null);
+              setPortefeuilleAjoute(null);
+            }}
+          />
+        </label>
+
+        <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-[10px]" style={{ color: C.sub }}>
+            {fichierSgi
+              ? `Fichier prêt : ${fichierSgi.name}`
+              : 'Aucun fichier sélectionné pour le moment.'}
+          </div>
+          <div className="flex items-center gap-2">
+            {fichierSgi && (
+              <Btn
+                tone="ghost"
+                onClick={() => {
+                  setFichierSgi(null);
+                  setImportEtat(null);
+                }}
+              >
+                Retirer le fichier
+              </Btn>
+            )}
+            <Btn
+              disabled={!fichierSgi || importEnCours}
+              onClick={importer}
+            >
+              <FileCheck2 size={14} />
+              {importEnCours
+                ? 'Import en cours…'
+                : 'Importer et ajouter le portefeuille'}
+            </Btn>
+          </div>
+        </div>
+
+        {importEtat && (
+          <div
+            className="mt-4 p-4 rounded-xl border"
+            style={{
+              borderColor:
+                importEtat.type === 'success' ? '#BFE6D9' : '#F1C5BF',
+              background:
+                importEtat.type === 'success' ? '#F1FAF6' : '#FFF4F2',
+            }}
+          >
+            <div
+              className="text-xs font-bold"
+              style={{
+                color:
+                  importEtat.type === 'success' ? C.teal : C.coral,
+              }}
+            >
+              {importEtat.type === 'success'
+                ? 'Portefeuille ajouté'
+                : 'Import impossible'}
+            </div>
+            <div
+              className="text-[10px] mt-1"
+              style={{ color: C.ink }}
+            >
+              {importEtat.message}
+            </div>
+
+            {Array.isArray(importEtat.warnings) &&
+              importEtat.warnings.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {importEtat.warnings.map((warning, index) => (
+                    <div
+                      key={`${warning}-${index}`}
+                      className="text-[9px]"
+                      style={{ color: C.sub }}
+                    >
+                      • {warning}
+                    </div>
+                  ))}
+                </div>
+              )}
+          </div>
+        )}
+      </Card>
+
+      {portefeuilleAjoute && (
+        <Card className="p-5" style={{ borderColor: '#BFE6D9' }}>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Ajout confirmé</Eyebrow>
+              <div className="text-base font-bold" style={{ color: C.ink }}>
+                {portefeuilleAjoute.nom}
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                {portefeuilleAjoute.sgi} · {portefeuilleAjoute.numeroCompte} ·{' '}
+                {portefeuilleAjoute.marche} · {portefeuilleAjoute.devise}
+              </div>
+            </div>
+            <Btn onClick={() => goClient('client-portfolios')}>
+              Voir ce portefeuille →
+            </Btn>
+          </div>
+
+          <div className="grid grid-cols-4 gap-3 mt-4">
+            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
+                Positions
+              </div>
+              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
+                {portefeuilleAjoute.lignes?.length || 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
+                Flux prévisionnels
+              </div>
+              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
+                {portefeuilleAjoute.nombreFlux || 0}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
+                Pays
+              </div>
+              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
+                {portefeuilleAjoute.pays || '—'}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+              <div className="text-[9px] uppercase" style={{ color: C.sub }}>
+                Date situation
+              </div>
+              <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
+                {portefeuilleAjoute.dateSituation || '—'}
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function ClientPortfolios({ devise, orders, ctx = {} }) {
   const [paysFiltre, setPaysFiltre] = useState('Tous');
   const [ajoutSgiOuvert, setAjoutSgiOuvert] = useState(
@@ -39375,21 +39738,26 @@ function ClientPortfolios({ devise, orders, ctx = {} }) {
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', 'Mes portefeuilles & SGI']} />
-      <div>
-        <h2
-          className="text-xl font-bold"
-          style={{ ...F_DISPLAY, color: C.ink }}
-        >
-          Mes portefeuilles & SGI
-        </h2>
-        <div className="text-xs mt-1" style={{ color: C.sub }}>
-          Une fiche par compte-titres afin de conserver la vision de
-          l'intermédiaire, de la devise et du marché d'origine, avec distinction
-          entre espèces disponibles et espèces déjà mobilisées par des achats
-          non exécutés. Le CMP correspond au coût moyen pondéré de la ligne et
-          la Plus/Moins-value est affichée en montant dans la devise native du
-          portefeuille.
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="max-w-4xl">
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Mes portefeuilles & SGI
+          </h2>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            Une fiche par compte-titres afin de conserver la vision de
+            l'intermédiaire, de la devise et du marché d'origine, avec distinction
+            entre espèces disponibles et espèces déjà mobilisées par des achats
+            non exécutés. Le CMP correspond au coût moyen pondéré de la ligne et
+            la Plus/Moins-value est affichée en montant dans la devise native du
+            portefeuille.
+          </div>
         </div>
+        <Btn onClick={() => setAjoutSgiOuvert(true)}>
+          <Briefcase size={14} /> + Ajouter un portefeuille SGI
+        </Btn>
       </div>
 
       <Card
@@ -48399,6 +48767,9 @@ export default function App() {
                     orders={clientOrders}
                     ctx={clientCtx}
                   />
+                )}
+                {clientScreen === 'client-add-portfolio' && (
+                  <ClientAddPortfolioSgi goClient={goClient} />
                 )}
                 {clientScreen === 'client-investment-simulation' && (
                   <ClientInvestmentSimulation
