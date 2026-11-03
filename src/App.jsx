@@ -36340,8 +36340,8 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     useState(false);
   const [detailsLiquiditePrevisionnelleOuverts, setDetailsLiquiditePrevisionnelleOuverts] =
     useState(false);
-  const [limitesFrameOuvert, setLimitesFrameOuvert] = useState(true);
-  const [opportunitesFrameOuvert, setOpportunitesFrameOuvert] = useState(true);
+  const [limitesFrameOuvert, setLimitesFrameOuvert] = useState(false);
+  const [opportunitesFrameOuvert, setOpportunitesFrameOuvert] = useState(false);
   const [classeOpportunitesOuverte, setClasseOpportunitesOuverte] =
     useState(null);
   const [limitesAllocation, setLimitesAllocation] = useState(() =>
