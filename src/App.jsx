@@ -6075,7 +6075,12 @@ const clientPortfolioValueIn = (portefeuille, devise) =>
 const clientCashIn = (portefeuille, devise) =>
   convertCurrency(portefeuille.compteEspeces, portefeuille.devise, devise);
 
-const CLIENT_OPEN_ORDER_STATUSES = ['En attente', 'En cours', 'Partiel · fictif'];
+const CLIENT_OPEN_ORDER_STATUSES = [
+  'En attente',
+  'En cours',
+  'Transmis au négociateur',
+  'Partiel · fictif',
+];
 
 const clientReservedCash = (portefeuille, orders = []) => {
   const montantReserveOrdres = orders
@@ -8136,7 +8141,16 @@ const NAV = [
   { id: 'cession-retrait', label: 'Cession_Retrait', icon: ArrowDownRight },
   { id: 'ordres-groupes', label: 'Ordre groupé', icon: ListOrdered },
   { id: 'carnet', label: "Carnet d'ordres", icon: ListOrdered },
-  { id: 'sgi-chat-invest', label: 'Réception Chat Invest', icon: MessageSquare },
+  {
+    id: 'sgi-chat-invest',
+    label: 'Chargé clientèle · Ordres',
+    icon: MessageSquare,
+  },
+  {
+    id: 'negociateur-chat-invest',
+    label: 'Négociateur · Ordres',
+    icon: ArrowUpRight,
+  },
   { id: 'avis', label: "Avis d'opéré", icon: FileCheck2 },
   { id: 'vue-boursiere', label: 'Marchés Actions', icon: Activity },
   { id: 'marches', label: 'Marchés Obligataire', icon: Building2 },
@@ -17927,7 +17941,7 @@ function Carnet({ initial, go, groupedDrafts = [], onSaveGroupedDraft }) {
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
           <Btn tone="navy" onClick={() => go?.('ordres-groupes')}>+ Ordre groupé</Btn>
-          <Btn tone="ghost" onClick={() => go?.('sgi-chat-invest')}>Réception Chat Invest →</Btn>
+          <Btn tone="ghost" onClick={() => go?.('sgi-chat-invest')}>Ordres Chargé de Clientèle →</Btn>
           {instrumentFilter && (
             <button
               onClick={() => setInstrumentFilter(null)}
@@ -40307,16 +40321,49 @@ const gsmChatLoadAccess = () => {
   catch { return true; }
 };
 const gsmChatStatus = {
-  recu_sgi: 'Reçu par la SGI',
-  en_controle: 'Contrôle en cours',
-  accepte: 'Accepté par la SGI',
+  recu_sgi: 'Reçu par le chargé de clientèle',
+  en_controle: 'Contrôle chargé de clientèle',
+  accepte: 'Validé · prêt pour négociation',
   rejete: 'Rejeté',
-  route_simule: 'Routé · marché fictif',
+  route_simule: 'Transmis au Négociateur',
   execute: 'Exécuté · fictif',
   partiel: 'Partiellement exécuté · fictif',
   non_execute: 'Non exécuté · fictif',
   annule: 'Annulé sur instruction client',
 };
+
+const GSM_CHAT_NEGOTIATORS = [
+  {
+    id: 'neg-brvm-01',
+    nom: 'Mamadou Diallo',
+    desk: 'Desk BRVM',
+    marches: ['BRVM'],
+  },
+  {
+    id: 'neg-ngx-01',
+    nom: 'Chinedu Okeke',
+    desk: 'Desk NGX',
+    marches: ['NGX'],
+  },
+  {
+    id: 'neg-gse-01',
+    nom: 'Ama Mensah',
+    desk: 'Desk GSE',
+    marches: ['GSE'],
+  },
+  {
+    id: 'neg-multi-01',
+    nom: 'Fatou Ndiaye',
+    desk: 'Desk Multi-marchés',
+    marches: ['BRVM', 'NGX', 'GSE'],
+  },
+];
+
+const gsmChatNegotiatorsForMarket = (marche) =>
+  GSM_CHAT_NEGOTIATORS.filter(
+    (negociateur) =>
+      !marche || (negociateur.marches || []).includes(marche)
+  );
 const gsmChatAddEvent = (request, action, actor, detail = '') => ({
   ...request,
   updatedAt: gsmChatDate(),
@@ -40672,7 +40719,7 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
     if (result === false) { setMessage('Le stockage local a refusé l’instruction.'); return; }
     setDraft(null); setTexte(''); setChecked(false);
     setSelectedRef(request.reference);
-    setMessage(`Instruction ${request.reference} horodatée et transmise à la boîte SGI simulée.`);
+    setMessage(`Instruction ${request.reference} horodatée et transmise au chargé de clientèle.`);
   };
   const currentRequest = recent.find((r) => r.reference === selectedRef);
   return (
@@ -40682,7 +40729,7 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div><Eyebrow>Gestion libre · Canal digital</Eyebrow>
           <h2 className="text-xl font-bold" style={{ ...F_DISPLAY, color: C.ink }}>Chat Invest · expérience mobile</h2>
-          <div className="text-xs mt-1" style={{ color: C.sub }}>Une instruction confirmée est reçue par la SGI ; elle n'est pas automatiquement exécutée.</div>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>Une instruction confirmée est d’abord reçue par le chargé de clientèle, puis transmise au négociateur après contrôle.</div>
         </div>
         <div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={() => setMobileOpen((v) => !v)}>{mobileOpen ? 'Masquer' : 'Afficher'} le téléphone</Btn>
           <Btn tone="ghost" onClick={() => goClient?.('client-orders')}>Mes ordres →</Btn></div>
@@ -40866,7 +40913,15 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
           </Card>
           <Card className="p-4"><Eyebrow>Parcours de l'instruction</Eyebrow>
             <div className="text-sm font-semibold mb-2" style={{ color: C.ink }}>Du mobile au poste de négociation</div>
-            {['1 · Préparation du ticket', '2 · Confirmation par le client', '3 · Réception et horodatage SGI', '4 · Contrôle & validation SGI', '5 · Routage / exécution fictifs', '6 · Retour de résultat au client'].map((step) =>
+            {[
+              '1 · Préparation du ticket',
+              '2 · Confirmation par le client',
+              '3 · Réception par le chargé de clientèle',
+              '4 · Contrôle & validation de l’instruction',
+              '5 · Affectation & transmission au Négociateur',
+              '6 · Négociation / exécution fictive',
+              '7 · Retour de résultat au client',
+            ].map((step) =>
               <div key={step} className="py-2 text-xs" style={{ borderTop:`1px solid ${C.line}`, color:C.sub }}>{step}</div>)}
           </Card>
           <Card className="p-4"><div className="flex justify-between items-center gap-2"><b className="text-sm">Suivi & accusés de réception</b><Badge tone="gold">{recent.length} instruction(s)</Badge></div>
@@ -40908,113 +40963,1255 @@ function ClientChatInvest({ requests = [], onSubmit, onRequestChange, accessEnab
   );
 }
 
-function SgiChatInvestInbox({ requests = [], onAction, accessEnabled, onSetAccess, orders = [], groupedBatches = [], go }) {
+function SgiChatInvestInbox({
+  requests = [],
+  onAction,
+  accessEnabled,
+  onSetAccess,
+  orders = [],
+  groupedBatches = [],
+  go,
+  initial = {},
+}) {
   const [filtre, setFiltre] = useState('Tous');
   const [sgiFilter, setSgiFilter] = useState('Toutes');
-  const [selectedRef, setSelectedRef] = useState(null);
+  const [marcheFilter, setMarcheFilter] = useState('Tous');
+  const [recherche, setRecherche] = useState('');
+  const [selectedRef, setSelectedRef] = useState(initial?.reference || null);
   const [raison, setRaison] = useState('');
-  const [qteFill, setQteFill] = useState('0');
-  const [prixFill, setPrixFill] = useState('');
   const [message, setMessage] = useState('');
-  const [onglet, setOnglet] = useState('reception');
+  const [negociateurId, setNegociateurId] = useState('');
+  const [priorite, setPriorite] = useState('Normale');
+  const [commentaireRoutage, setCommentaireRoutage] = useState('');
+
   const sgiNames = [...new Set(clientGetPortfolios().map((p) => p.sgi))];
-  const filtered = requests.filter((r) => (filtre === 'Tous' || r.statut === filtre) &&
-    (sgiFilter === 'Toutes' || clientGetPortfolios().find((p) => p.id === r.portefeuilleId)?.sgi === sgiFilter));
-  const selected = requests.find((r) => r.reference === selectedRef) || filtered[0];
-  const pf = clientGetPortfolios().find((p) => p.id === selected?.portefeuilleId);
+  const marches = [...new Set(requests.map((r) => r.marche).filter(Boolean))];
+  const q = recherche.trim().toLowerCase();
+
+  const filtered = requests.filter((r) => {
+    const portefeuille = clientGetPortfolios().find(
+      (p) => p.id === r.portefeuilleId
+    );
+    const matchStatut = filtre === 'Tous' || r.statut === filtre;
+    const matchSgi =
+      sgiFilter === 'Toutes' || portefeuille?.sgi === sgiFilter;
+    const matchMarche =
+      marcheFilter === 'Tous' || r.marche === marcheFilter;
+    const matchRecherche =
+      !q ||
+      [
+        r.reference,
+        r.instrument,
+        r.sens,
+        r.marche,
+        portefeuille?.sgi,
+        portefeuille?.nom,
+        CLIENT_GESTION_LIBRE.nom,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(q));
+    return matchStatut && matchSgi && matchMarche && matchRecherche;
+  });
+
+  const selected =
+    requests.find((r) => r.reference === selectedRef) || filtered[0] || null;
+  const pf = clientGetPortfolios().find(
+    (p) => p.id === selected?.portefeuilleId
+  );
+  const validationSelected = selected
+    ? gsmChatRequestValidation(
+        selected,
+        orders,
+        groupedBatches,
+        requests
+      )
+    : '';
+
+  const negociateursCompatibles = gsmChatNegotiatorsForMarket(
+    selected?.marche
+  );
+  const negociateurSelectionne =
+    negociateursCompatibles.find((n) => n.id === negociateurId) ||
+    negociateursCompatibles[0] ||
+    null;
+
+  useEffect(() => {
+    if (!selected) return;
+    const compatible = gsmChatNegotiatorsForMarket(selected.marche);
+    const assignedId = selected.negociateur?.id;
+    if (
+      assignedId &&
+      compatible.some((negociateur) => negociateur.id === assignedId)
+    ) {
+      setNegociateurId(assignedId);
+    } else {
+      setNegociateurId(compatible[0]?.id || '');
+    }
+    setPriorite(selected.prioriteNegociation || 'Normale');
+    setCommentaireRoutage(selected.commentaireRoutage || '');
+  }, [selected?.reference, selected?.marche]);
+
   const doAction = (action, payload = {}) => {
     if (!selected) return;
     try {
       const result = onAction(selected.reference, action, payload);
-      setMessage(result?.message || `Étape « ${action} » enregistrée.`);
-    } catch (err) { setMessage(err?.message || 'Action impossible.'); }
+      setMessage(
+        result?.message || `Étape « ${action} » enregistrée.`
+      );
+    } catch (err) {
+      setMessage(err?.message || 'Action impossible.');
+    }
   };
-  return <div className="space-y-5">
-    <Breadcrumb items={['Accueil', 'Réception Chat Invest']} />
-    <div className="flex flex-wrap gap-3 items-end justify-between"><div><Eyebrow>SGI · Registre de réception numérique fictif</Eyebrow>
-      <h2 className="text-xl font-bold" style={{...F_DISPLAY,color:C.ink}}>Boîte des instructions Chat Invest</h2>
-      <div className="text-xs mt-1" style={{color:C.sub}}>Ordres reçus depuis la vue mobile, vérifiés et supervisés avant toute simulation d'exécution.</div></div>
-      <div className="flex gap-2 flex-wrap"><Btn tone="ghost" onClick={()=>setOnglet(onglet==='reception'?'registre':'reception')}>{onglet==='reception'?'Voir le registre':'Retour à la réception'}</Btn>
-        <Btn tone="ghost" onClick={()=>gsmChatExportRegister(requests)}>Exporter CSV</Btn></div></div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      {[['À contrôler', requests.filter(r=>r.statut==='recu_sgi'||r.statut==='en_controle').length],
-        ['Acceptés / routés',requests.filter(r=>r.statut==='accepte'||r.statut==='route_simule').length],
-        ['Résultats / rejets',requests.filter(r=>['execute','partiel','non_execute','rejete'].includes(r.statut)).length]].map(([label,count])=>
-        <Card key={label} className="p-4"><div className="text-[11px]" style={{color:C.sub}}>{label}</div><div className="text-xl font-bold mt-1">{count}</div></Card>)}
-    </div>
-    <Card className="p-4 flex flex-wrap gap-3 items-center justify-between"><div><div className="font-semibold text-sm">Assistance à l'ouverture du Chat en agence</div>
-      <div className="text-xs mt-1" style={{color:C.sub}}>Compte de démonstration : {CLIENT_GESTION_LIBRE.nom} · accès {accessEnabled?'actif':'désactivé'}. Confirmation par le client indispensable.</div></div>
-      <Btn tone="ghost" onClick={()=>onSetAccess?.(!accessEnabled)}>{accessEnabled?'Désactiver':'Activer'} l'accès test</Btn></Card>
-    {message && <div role="status" className="rounded-xl p-3 text-xs" style={{background:'#FBF1DD',color:'#684C13'}}>{message}</div>}
-    <Card className="p-4"><div className="flex flex-wrap gap-3 items-end mb-3">
-      <label className="text-xs" style={{color:C.sub}}>Statut
-        <select className="block border rounded-lg mt-1 p-2 text-xs" value={filtre} onChange={(e)=>setFiltre(e.target.value)}><option>Tous</option>
-          {Object.entries(gsmChatStatus).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label>
-      <label className="text-xs" style={{color:C.sub}}>SGI
-        <select className="block border rounded-lg mt-1 p-2 text-xs" value={sgiFilter} onChange={(e)=>setSgiFilter(e.target.value)}>
-          <option>Toutes</option>{sgiNames.map(s=><option key={s}>{s}</option>)}</select></label>
-      <span className="text-xs" style={{color:C.sub}}>{filtered.length} instruction(s)</span>
-    </div>
-    <div className="overflow-x-auto"><table className="w-full" style={{minWidth:810}}><thead style={{background:'#FAFAFC'}}><tr>
-      <Th>Référence</Th><Th>Réception</Th><Th>Portefeuille / SGI</Th><Th>Instruction</Th><Th>Statut</Th><Th>Action</Th></tr></thead>
-      <tbody>{filtered.map((r)=><tr key={r.reference} style={{borderTop:`1px solid ${C.line}`}}>
-        <Td mono>{r.reference}</Td><Td>{new Date(r.createdAt).toLocaleString('fr-FR')}</Td>
-        <Td>{clientGetPortfolios().find(p=>p.id===r.portefeuilleId)?.sgi||'—'}</Td>
-        <Td>{r.sens} {fmt(r.qte)} {r.instrument}</Td>
-        <Td><Badge tone={r.statut==='rejete'?'coral':r.statut==='execute'?'teal':'gold'}>{gsmChatStatus[r.statut]||r.statut}</Badge></Td>
-        <Td><button type="button" onClick={()=>{setSelectedRef(r.reference);setQteFill('0');setPrixFill(String(r.prix));setRaison('');setOnglet('reception');}}
-          className="text-xs font-semibold" style={{color:C.indigo}}>Examiner →</button></Td></tr>)}
-        {filtered.length===0&&<tr><Td>Aucune instruction pour ces filtres.</Td></tr>}</tbody></table></div></Card>
-    {selected && <Card className="p-5"><div className="flex gap-2 flex-wrap justify-between items-center"><div>
-      <Eyebrow>{onglet==='registre'?'Registre d’événements':'Fiche d’instruction'}</Eyebrow>
-      <div className="font-bold text-base" style={{color:C.ink}}>{selected.reference}</div>
-      <div className="text-xs" style={{color:C.sub}}>{CLIENT_GESTION_LIBRE.nom} · {pf?.sgi} · {selected.canal} · {gsmChatStatus[selected.statut]}</div></div>
-      <Badge tone="slate">Reçu {new Date(selected.createdAt).toLocaleString('fr-FR')}</Badge></div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-xs">
-        {[['Portefeuille',pf?.nom||'—'],['Instrument',selected.instrument],['Sens',selected.sens],['Quantité',fmt(selected.qte)],
-          ['Prix limite',`${fmtPrice(selected.prix)} ${selected.devise}`],['Exécuté',fmt(selected.qteExecutee||0)],
-          ['Reliquat',fmt(selected.reliquat??selected.qte)],['Marché',selected.marche]].map(([label,value])=><div key={label}
-            className="p-3 rounded-xl" style={{background:'#F5F6F9'}}><div style={{color:C.sub}}>{label}</div><div className="font-semibold mt-1">{value}</div></div>)}
-      </div>
-      <div className="text-xs mt-4 p-3 rounded-lg" style={{background:'#F5F6F9',color:C.ink}}>
-        <b>Texte d'origine :</b> {selected.texteOriginal || 'Instruction structurée'}
-      </div>
-      {selected.demandeChangement && <div className="rounded-xl p-3 mt-4" style={{background:'#FBF1DD'}}>
-        <div className="text-sm font-semibold">Demande client en attente : {selected.demandeChangement.type}</div>
-        {selected.demandeChangement.type==='modification'&&<div className="text-xs mt-1">Quantité : {selected.demandeChangement.qte} · Prix limite : {selected.demandeChangement.prix} {selected.devise}</div>}
-        <div className="flex gap-2 mt-3"><Btn onClick={()=>doAction('traiter_changement',{decision:'accepter'})}>Approuver</Btn>
-          <Btn tone="ghost" onClick={()=>doAction('traiter_changement',{decision:'refuser'})}>Refuser</Btn></div>
-      </div>}
-      {!selected.demandeChangement && <div className="flex gap-2 flex-wrap mt-4">
-        {selected.statut==='recu_sgi'&&<Btn onClick={()=>doAction('controler')}>Ouvrir le contrôle</Btn>}
-        {selected.statut==='en_controle'&&<Btn onClick={()=>doAction('accepter')}>Accepter l'instruction</Btn>}
-        {selected.statut==='accepte'&&<Btn onClick={()=>doAction('router')}>Router vers le marché fictif</Btn>}
-        {['recu_sgi','en_controle'].includes(selected.statut)&&<div className="flex items-center gap-2 flex-wrap">
-          <input aria-label="Motif de rejet" className="border rounded-lg p-2 text-xs" placeholder="Motif du rejet" value={raison} onChange={(e)=>setRaison(e.target.value)}/>
-          <Btn tone="ghost" onClick={()=>doAction('rejeter',{raison})}>Rejeter</Btn></div>}
-      </div>}
-      {selected.statut==='en_controle'&&<div className="text-xs mt-2" style={{color:C.sub}}>
-        Le contrôle réévalue espèces, titres disponibles et engagements. La confirmation client seule ne vaut pas acceptation par la SGI.</div>}
-      {selected.statut==='route_simule'&&<div className="rounded-xl p-4 mt-4" style={{border:`1px solid ${C.line}`}}>
-        <div className="font-semibold text-sm mb-3">Retour d'exécution simulée (Négo)</div>
-        <div className="flex gap-3 items-end flex-wrap">
-          <label className="text-xs" style={{color:C.sub}}>Quantité exécutée
-            <input aria-label="Quantité exécutée" type="number" step="1" min="0" max={selected.qte}
-              className="block border rounded-lg p-2 mt-1 w-36" value={qteFill} onChange={(e)=>setQteFill(e.target.value)}/></label>
-          <label className="text-xs" style={{color:C.sub}}>Prix d'exécution
-            <input aria-label="Prix d'exécution" type="number" step="any" min="0.01"
-              className="block border rounded-lg p-2 mt-1 w-40" value={prixFill} onChange={(e)=>setPrixFill(e.target.value)}/></label>
-          <Btn onClick={()=>doAction('execution',{qte:qteFill,prix:prixFill})}>Enregistrer le résultat fictif</Btn>
+
+  const ouvrirInstruction = (reference) => {
+    setSelectedRef(reference);
+    setRaison('');
+    setMessage('');
+  };
+
+  const routerVersNegociateur = () => {
+    if (!negociateurSelectionne) {
+      setMessage(
+        'Aucun négociateur compatible avec le marché de cette instruction.'
+      );
+      return;
+    }
+    doAction('router', {
+      negociateur: negociateurSelectionne,
+      priorite,
+      commentaireRoutage: commentaireRoutage.trim(),
+    });
+  };
+
+  const stats = {
+    recus: requests.filter((r) => r.statut === 'recu_sgi').length,
+    controles: requests.filter((r) => r.statut === 'en_controle').length,
+    prets: requests.filter((r) => r.statut === 'accepte').length,
+    transmis: requests.filter((r) =>
+      ['route_simule', 'execute', 'partiel', 'non_execute'].includes(
+        r.statut
+      )
+    ).length,
+  };
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb
+        items={['Accueil', 'Chargé de clientèle', 'Ordres Chat Invest']}
+      />
+
+      <div className="flex flex-wrap gap-3 items-start justify-between">
+        <div>
+          <Eyebrow>Gestion libre · Poste chargé de clientèle</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Ordres clients reçus via Chat Invest
+          </h2>
+          <div
+            className="text-xs mt-1 max-w-4xl"
+            style={{ color: C.sub }}
+          >
+            Le chargé de clientèle réceptionne l&apos;instruction confirmée,
+            contrôle sa cohérence avec le compte-titres et les disponibilités,
+            traite les éventuelles demandes de modification, puis affecte et
+            transmet l&apos;ordre au Négociateur. Il ne saisit pas
+            l&apos;exécution de marché.
+          </div>
         </div>
-        <div className="text-[11px] mt-2" style={{color:C.sub}}>Quantité comprise entre 0 et {selected.qte}. Prix ≤ limite à l'achat ; prix ≥ limite à la vente.</div>
-      </div>}
-      <div className="font-semibold text-xs mt-5 mb-2">Registre d'événements de l'instruction</div>
-      <div className="space-y-2">{(selected.journal||[]).map((e,i)=><div key={i} className="text-[11px] p-2 rounded-lg" style={{background:'#F7F8FB',color:C.sub}}>
-        {new Date(e.at).toLocaleString('fr-FR')} · <b>{e.actor}</b> — {e.action}{e.detail?` : ${e.detail}`:''}</div>)}</div>
-      <div className="text-[11px] mt-3" style={{color:C.sub}}>Horodatage et registre en localStorage, sans garantie d'inaltérabilité juridique. Aucune opération réelle sur le marché.</div>
-      <div className="mt-3"><Btn tone="ghost" onClick={()=>{go?.('carnet');}}>Consulter le carnet sous mandat →</Btn></div>
-    </Card>}
-  </div>;
+
+        <div className="flex gap-2 flex-wrap">
+          <Btn tone="ghost" onClick={() => gsmChatExportRegister(requests)}>
+            Exporter le registre
+          </Btn>
+          <Btn
+            tone="ghost"
+            onClick={() => go?.('negociateur-chat-invest')}
+          >
+            Ouvrir la file Négociateur →
+          </Btn>
+        </div>
+      </div>
+
+      <Card
+        className="p-4"
+        style={{ borderColor: '#D8DFEF', background: '#F7F8FA' }}
+      >
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            ['Nouveaux reçus', stats.recus, C.gold],
+            ['En contrôle', stats.controles, C.indigo],
+            ['Prêts à transmettre', stats.prets, C.teal],
+            ['Transmis au Négociateur', stats.transmis, C.navy],
+          ].map(([label, value, color]) => (
+            <div
+              key={label}
+              className="p-3 rounded-xl bg-white border"
+              style={{ borderColor: C.line }}
+            >
+              <div
+                className="text-[9px] uppercase font-semibold"
+                style={{ color: C.sub }}
+              >
+                {label}
+              </div>
+              <div
+                className="text-2xl font-bold mt-1"
+                style={{ ...F_MONO, color }}
+              >
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="grid grid-cols-4 gap-2 mt-3 text-[10px]"
+          style={{ color: C.sub }}
+        >
+          {[
+            ['1', 'Réception client'],
+            ['2', 'Contrôle chargé clientèle'],
+            ['3', 'Validation & affectation'],
+            ['4', 'Transmission Négociateur'],
+          ].map(([numero, label], index) => (
+            <div
+              key={numero}
+              className="rounded-xl px-3 py-2 flex items-center gap-2"
+              style={{
+                background: index < 3 ? '#FFFFFF' : '#EEF2FA',
+                border: `1px solid ${C.line}`,
+              }}
+            >
+              <span
+                className="w-5 h-5 rounded-full inline-flex items-center justify-center font-bold"
+                style={{
+                  background: index === 3 ? C.navy : '#E8ECF4',
+                  color: index === 3 ? '#fff' : C.navy,
+                }}
+              >
+                {numero}
+              </span>
+              <span className="font-semibold">{label}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-end gap-3 flex-wrap">
+          <label className="text-xs" style={{ color: C.sub }}>
+            Recherche
+            <input
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              className="block border rounded-lg mt-1 p-2 text-xs min-w-[220px]"
+              placeholder="Référence, titre, portefeuille, SGI…"
+            />
+          </label>
+
+          <label className="text-xs" style={{ color: C.sub }}>
+            Statut
+            <select
+              className="block border rounded-lg mt-1 p-2 text-xs"
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value)}
+            >
+              <option>Tous</option>
+              {Object.entries(gsmChatStatus).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-xs" style={{ color: C.sub }}>
+            SGI
+            <select
+              className="block border rounded-lg mt-1 p-2 text-xs"
+              value={sgiFilter}
+              onChange={(e) => setSgiFilter(e.target.value)}
+            >
+              <option>Toutes</option>
+              {sgiNames.map((sgi) => (
+                <option key={sgi}>{sgi}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="text-xs" style={{ color: C.sub }}>
+            Marché
+            <select
+              className="block border rounded-lg mt-1 p-2 text-xs"
+              value={marcheFilter}
+              onChange={(e) => setMarcheFilter(e.target.value)}
+            >
+              <option>Tous</option>
+              {marches.map((marche) => (
+                <option key={marche}>{marche}</option>
+              ))}
+            </select>
+          </label>
+
+          <span className="text-xs pb-2" style={{ color: C.sub }}>
+            {filtered.length} instruction(s)
+          </span>
+        </div>
+
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full" style={{ minWidth: 1280 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Référence</Th>
+                <Th>Réception</Th>
+                <Th>Client</Th>
+                <Th>Portefeuille / SGI</Th>
+                <Th>Instruction</Th>
+                <Th>Montant limite</Th>
+                <Th>Statut</Th>
+                <Th>Négociateur</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const portefeuille = clientGetPortfolios().find(
+                  (p) => p.id === r.portefeuilleId
+                );
+                return (
+                  <tr
+                    key={r.reference}
+                    style={{
+                      borderTop: `1px solid ${C.line}`,
+                      background:
+                        selected?.reference === r.reference
+                          ? '#F7F9FD'
+                          : '#fff',
+                    }}
+                  >
+                    <Td mono>{r.reference}</Td>
+                    <Td>
+                      {new Date(r.createdAt).toLocaleString('fr-FR')}
+                    </Td>
+                    <Td>{CLIENT_GESTION_LIBRE.nom}</Td>
+                    <Td>
+                      <div className="font-semibold">
+                        {portefeuille?.sgi || '—'}
+                      </div>
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        {portefeuille?.nom || '—'}
+                      </div>
+                    </Td>
+                    <Td>
+                      <div className="font-semibold">
+                        {r.sens} {fmt(r.qte)} {r.instrument}
+                      </div>
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        {r.marche} · limite {fmtPrice(r.prix)} {r.devise}
+                      </div>
+                    </Td>
+                    <Td mono>
+                      {fmtPrice(Number(r.qte || 0) * Number(r.prix || 0))}{' '}
+                      {r.devise}
+                    </Td>
+                    <Td>
+                      <Badge
+                        tone={
+                          r.statut === 'rejete'
+                            ? 'coral'
+                            : ['route_simule', 'execute'].includes(r.statut)
+                            ? 'teal'
+                            : r.statut === 'accepte'
+                            ? 'navy'
+                            : 'gold'
+                        }
+                      >
+                        {gsmChatStatus[r.statut] || r.statut}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      {r.negociateur ? (
+                        <>
+                          <div className="font-semibold text-xs">
+                            {r.negociateur.nom}
+                          </div>
+                          <div
+                            className="text-[9px]"
+                            style={{ color: C.sub }}
+                          >
+                            {r.negociateur.desk}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-[10px]" style={{ color: C.sub }}>
+                          Non affecté
+                        </span>
+                      )}
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        onClick={() => ouvrirInstruction(r.reference)}
+                        className="text-xs font-semibold whitespace-nowrap"
+                        style={{ color: C.indigo }}
+                      >
+                        Examiner →
+                      </button>
+                    </Td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <Td>Aucune instruction pour ces filtres.</Td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {selected && (
+        <Card className="p-5">
+          <div className="flex gap-3 flex-wrap justify-between items-start">
+            <div>
+              <Eyebrow>Dossier de l&apos;instruction</Eyebrow>
+              <div
+                className="font-bold text-base"
+                style={{ color: C.ink }}
+              >
+                {selected.reference}
+              </div>
+              <div className="text-xs mt-1" style={{ color: C.sub }}>
+                {CLIENT_GESTION_LIBRE.nom} · {pf?.sgi || '—'} ·{' '}
+                {selected.canal} ·{' '}
+                {gsmChatStatus[selected.statut] || selected.statut}
+              </div>
+            </div>
+            <Badge tone="slate">
+              Reçu {new Date(selected.createdAt).toLocaleString('fr-FR')}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 text-xs">
+            {[
+              ['Titulaire', CLIENT_GESTION_LIBRE.nom],
+              ['Portefeuille', pf?.nom || '—'],
+              ['SGI', pf?.sgi || '—'],
+              ['Compte', pf?.numeroCompte || pf?.id || '—'],
+              ['Instrument', selected.instrument],
+              ['Sens', selected.sens],
+              ['Quantité', fmt(selected.qte)],
+              [
+                'Prix limite',
+                `${fmtPrice(selected.prix)} ${selected.devise}`,
+              ],
+              [
+                'Montant limite',
+                `${fmtPrice(
+                  Number(selected.qte || 0) * Number(selected.prix || 0)
+                )} ${selected.devise}`,
+              ],
+              ['Marché', selected.marche],
+              ['Canal', selected.canal],
+              [
+                'Reliquat',
+                fmt(selected.reliquat ?? selected.qte),
+              ],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="p-3 rounded-xl"
+                style={{ background: '#F5F6F9' }}
+              >
+                <div style={{ color: C.sub }}>{label}</div>
+                <div className="font-semibold mt-1">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="text-xs mt-4 p-3 rounded-xl"
+            style={{ background: '#F5F6F9', color: C.ink }}
+          >
+            <b>Instruction d&apos;origine :</b>{' '}
+            {selected.texteOriginal || 'Instruction structurée'}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div
+              className="rounded-2xl border p-4"
+              style={{ borderColor: C.line }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <Eyebrow>Contrôles avant transmission</Eyebrow>
+                  <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                    Check-list Chargé de Clientèle
+                  </div>
+                </div>
+                <Badge tone={validationSelected ? 'coral' : 'teal'}>
+                  {validationSelected ? 'Anomalie détectée' : 'Contrôles cohérents'}
+                </Badge>
+              </div>
+
+              <div className="space-y-2 mt-3">
+                {[
+                  {
+                    label: 'Confirmation explicite du client',
+                    ok: (selected.journal || []).some(
+                      (event) => event.action === 'confirmation'
+                    ),
+                    detail: selected.canal,
+                  },
+                  {
+                    label: 'Compte-titres / SGI identifié',
+                    ok: Boolean(pf?.id && pf?.sgi),
+                    detail: pf
+                      ? `${pf.sgi} · ${pf.numeroCompte || pf.id}`
+                      : 'Compte introuvable',
+                  },
+                  {
+                    label: 'Instrument cohérent avec le marché',
+                    ok: Boolean(
+                      clientMarket(selected.instrument, selected.marche) &&
+                        pf?.marche === selected.marche
+                    ),
+                    detail: `${selected.instrument} · ${selected.marche}`,
+                  },
+                  {
+                    label:
+                      selected.sens === 'Achat'
+                        ? 'Espèces disponibles suffisantes'
+                        : 'Titres disponibles suffisants',
+                    ok: !validationSelected,
+                    detail:
+                      validationSelected ||
+                      'Disponibilité compatible avec les engagements connus.',
+                  },
+                ].map((controle) => (
+                  <div
+                    key={controle.label}
+                    className="p-3 rounded-xl flex items-start justify-between gap-3"
+                    style={{ background: '#FAFAFC' }}
+                  >
+                    <div>
+                      <div
+                        className="text-xs font-semibold"
+                        style={{ color: C.ink }}
+                      >
+                        {controle.label}
+                      </div>
+                      <div
+                        className="text-[9px] mt-0.5"
+                        style={{ color: C.sub }}
+                      >
+                        {controle.detail}
+                      </div>
+                    </div>
+                    <Badge tone={controle.ok ? 'teal' : 'coral'}>
+                      {controle.ok ? 'OK' : 'À traiter'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+
+              {selected.statut === 'recu_sgi' && (
+                <div className="mt-3">
+                  <Btn onClick={() => doAction('controler')}>
+                    Prendre en charge & ouvrir le contrôle
+                  </Btn>
+                </div>
+              )}
+
+              {selected.statut === 'en_controle' && (
+                <div className="mt-3 flex gap-2 flex-wrap">
+                  <Btn
+                    onClick={() => doAction('accepter')}
+                    disabled={Boolean(validationSelected)}
+                  >
+                    Valider pour négociation
+                  </Btn>
+                  {validationSelected && (
+                    <div
+                      className="text-[10px] self-center"
+                      style={{ color: C.coral }}
+                    >
+                      Corriger l&apos;anomalie avant validation.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {['recu_sgi', 'en_controle'].includes(selected.statut) && (
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <input
+                    aria-label="Motif de rejet"
+                    className="border rounded-lg p-2 text-xs flex-1 min-w-[220px]"
+                    placeholder="Motif obligatoire en cas de rejet"
+                    value={raison}
+                    onChange={(e) => setRaison(e.target.value)}
+                  />
+                  <Btn
+                    tone="ghost"
+                    onClick={() => doAction('rejeter', { raison })}
+                  >
+                    Rejeter l&apos;instruction
+                  </Btn>
+                </div>
+              )}
+            </div>
+
+            <div
+              className="rounded-2xl border p-4"
+              style={{ borderColor: '#D8DFEF', background: '#F7F8FA' }}
+            >
+              <Eyebrow>Affectation</Eyebrow>
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Routage vers le Négociateur
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Une fois validée, l&apos;instruction est affectée à un
+                négociateur compatible avec le marché. Le chargé de clientèle
+                conserve la visibilité sur le statut, mais ne saisit pas le
+                résultat d&apos;exécution.
+              </div>
+
+              {selected.statut === 'accepte' ? (
+                <div className="space-y-3 mt-4">
+                  <label className="block text-xs" style={{ color: C.sub }}>
+                    Négociateur
+                    <select
+                      className="w-full border rounded-xl p-2.5 mt-1 text-xs bg-white"
+                      value={negociateurSelectionne?.id || ''}
+                      onChange={(e) => setNegociateurId(e.target.value)}
+                    >
+                      {negociateursCompatibles.map((negociateur) => (
+                        <option key={negociateur.id} value={negociateur.id}>
+                          {negociateur.nom} · {negociateur.desk}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block text-xs" style={{ color: C.sub }}>
+                    Priorité de traitement
+                    <select
+                      className="w-full border rounded-xl p-2.5 mt-1 text-xs bg-white"
+                      value={priorite}
+                      onChange={(e) => setPriorite(e.target.value)}
+                    >
+                      <option>Normale</option>
+                      <option>Haute</option>
+                      <option>Urgente</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-xs" style={{ color: C.sub }}>
+                    Note au Négociateur
+                    <textarea
+                      rows={3}
+                      className="w-full border rounded-xl p-2.5 mt-1 text-xs bg-white"
+                      value={commentaireRoutage}
+                      onChange={(e) =>
+                        setCommentaireRoutage(e.target.value)
+                      }
+                      placeholder="Contrainte client, contexte, information utile au desk…"
+                    />
+                  </label>
+
+                  <Btn onClick={routerVersNegociateur}>
+                    Transmettre au Négociateur →
+                  </Btn>
+                </div>
+              ) : selected.negociateur ? (
+                <div className="mt-4 space-y-3">
+                  <div className="p-3 rounded-xl bg-white">
+                    <div className="text-[9px]" style={{ color: C.sub }}>
+                      Négociateur affecté
+                    </div>
+                    <div className="text-sm font-bold mt-1" style={{ color: C.ink }}>
+                      {selected.negociateur.nom}
+                    </div>
+                    <div className="text-[10px]" style={{ color: C.sub }}>
+                      {selected.negociateur.desk} · priorité{' '}
+                      {selected.prioriteNegociation || 'Normale'}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-white">
+                    <div className="text-[9px]" style={{ color: C.sub }}>
+                      Transmission
+                    </div>
+                    <div className="text-xs font-semibold mt-1">
+                      {selected.routedAt
+                        ? new Date(selected.routedAt).toLocaleString('fr-FR')
+                        : '—'}
+                    </div>
+                    {selected.commentaireRoutage && (
+                      <div className="text-[10px] mt-2" style={{ color: C.sub }}>
+                        {selected.commentaireRoutage}
+                      </div>
+                    )}
+                  </div>
+
+                  <Btn
+                    tone="ghost"
+                    onClick={() =>
+                      go?.('negociateur-chat-invest', {
+                        reference: selected.reference,
+                      })
+                    }
+                  >
+                    Voir dans la file Négociateur →
+                  </Btn>
+                </div>
+              ) : (
+                <div
+                  className="mt-4 p-3 rounded-xl text-xs"
+                  style={{ background: '#fff', color: C.sub }}
+                >
+                  {selected.statut === 'en_controle'
+                    ? 'Terminez le contrôle et validez l’instruction avant de l’affecter.'
+                    : selected.statut === 'recu_sgi'
+                    ? 'Prenez d’abord l’instruction en charge.'
+                    : selected.statut === 'rejete'
+                    ? 'Instruction rejetée : aucun routage vers le desk.'
+                    : 'Aucune affectation requise pour ce statut.'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {selected.demandeChangement && (
+            <div
+              className="rounded-xl p-4 mt-4"
+              style={{ background: '#FBF1DD' }}
+            >
+              <div className="text-sm font-semibold">
+                Demande client en attente :{' '}
+                {selected.demandeChangement.type}
+              </div>
+              {selected.demandeChangement.type === 'modification' && (
+                <div className="text-xs mt-1">
+                  Nouvelle quantité : {selected.demandeChangement.qte} ·
+                  nouveau prix limite : {selected.demandeChangement.prix}{' '}
+                  {selected.devise}
+                </div>
+              )}
+              <div className="flex gap-2 mt-3">
+                <Btn
+                  onClick={() =>
+                    doAction('traiter_changement', {
+                      decision: 'accepter',
+                    })
+                  }
+                >
+                  Approuver
+                </Btn>
+                <Btn
+                  tone="ghost"
+                  onClick={() =>
+                    doAction('traiter_changement', {
+                      decision: 'refuser',
+                    })
+                  }
+                >
+                  Refuser
+                </Btn>
+              </div>
+            </div>
+          )}
+
+          <div className="font-semibold text-xs mt-5 mb-2">
+            Journal de l&apos;instruction
+          </div>
+          <div className="space-y-2">
+            {(selected.journal || []).map((event, index) => (
+              <div
+                key={index}
+                className="text-[11px] p-2 rounded-lg"
+                style={{ background: '#F7F8FB', color: C.sub }}
+              >
+                {new Date(event.at).toLocaleString('fr-FR')} ·{' '}
+                <b>{event.actor}</b> — {event.action}
+                {event.detail ? ` : ${event.detail}` : ''}
+              </div>
+            ))}
+          </div>
+
+          <div className="text-[10px] mt-3" style={{ color: C.sub }}>
+            Maquette locale : les contrôles et le routage sont tracés dans le
+            navigateur. En production, l&apos;affectation devra être historisée
+            côté serveur avec identité du chargé de clientèle, horodatage et
+            habilitations.
+          </div>
+        </Card>
+      )}
+
+      <Card className="p-4 flex flex-wrap gap-3 items-center justify-between">
+        <div>
+          <div className="font-semibold text-sm">
+            Accès Chat Invest du client de démonstration
+          </div>
+          <div className="text-xs mt-1" style={{ color: C.sub }}>
+            {CLIENT_GESTION_LIBRE.nom} · accès{' '}
+            {accessEnabled ? 'actif' : 'désactivé'}.
+          </div>
+        </div>
+        <Btn
+          tone="ghost"
+          onClick={() => onSetAccess?.(!accessEnabled)}
+        >
+          {accessEnabled ? 'Désactiver' : 'Activer'} l&apos;accès test
+        </Btn>
+      </Card>
+    </div>
+  );
+}
+
+function NegociateurChatInvest({
+  requests = [],
+  onAction,
+  orders = [],
+  go,
+  initial = {},
+}) {
+  const [filtre, setFiltre] = useState('À traiter');
+  const [negociateurFilter, setNegociateurFilter] = useState('Tous');
+  const [selectedRef, setSelectedRef] = useState(initial?.reference || null);
+  const [qteFill, setQteFill] = useState('0');
+  const [prixFill, setPrixFill] = useState('');
+  const [message, setMessage] = useState('');
+
+  const routedStates = [
+    'route_simule',
+    'execute',
+    'partiel',
+    'non_execute',
+  ];
+
+  const routed = requests.filter((request) =>
+    routedStates.includes(request.statut)
+  );
+
+  const filtered = routed.filter((request) => {
+    const matchStatus =
+      filtre === 'Tous' ||
+      (filtre === 'À traiter'
+        ? request.statut === 'route_simule'
+        : request.statut === filtre);
+    const matchNegociateur =
+      negociateurFilter === 'Tous' ||
+      request.negociateur?.id === negociateurFilter;
+    return matchStatus && matchNegociateur;
+  });
+
+  const selected =
+    requests.find((request) => request.reference === selectedRef) ||
+    filtered[0] ||
+    null;
+
+  const pf = clientGetPortfolios().find(
+    (portefeuille) => portefeuille.id === selected?.portefeuilleId
+  );
+
+  useEffect(() => {
+    if (!selected) return;
+    setQteFill(String(selected.qteExecutee || 0));
+    setPrixFill(
+      String(selected.prixExecution || selected.prix || '')
+    );
+  }, [selected?.reference]);
+
+  const doExecution = () => {
+    if (!selected) return;
+    try {
+      const result = onAction(selected.reference, 'execution', {
+        qte: qteFill,
+        prix: prixFill,
+      });
+      setMessage(result?.message || 'Résultat enregistré.');
+    } catch (err) {
+      setMessage(err?.message || 'Impossible d’enregistrer le résultat.');
+    }
+  };
+
+  const negociateursAffectes = GSM_CHAT_NEGOTIATORS.filter((n) =>
+    routed.some((request) => request.negociateur?.id === n.id)
+  );
+
+  return (
+    <div className="space-y-5">
+      <Breadcrumb
+        items={['Accueil', 'Négociateur', 'Ordres Chat Invest']}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Desk de négociation · Ordres clients</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            File des ordres transmis par les Chargés de Clientèle
+          </h2>
+          <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+            Cette vue ne reçoit que les instructions déjà contrôlées et
+            validées. Le Négociateur traite l&apos;ordre dans le respect du
+            sens, de la quantité et du prix limite du client, puis retourne
+            le résultat au circuit de suivi.
+          </div>
+        </div>
+        <Btn tone="ghost" onClick={() => go?.('sgi-chat-invest')}>
+          ← Retour Chargé de Clientèle
+        </Btn>
+      </div>
+
+      <div className="grid grid-cols-4 gap-3">
+        {[
+          [
+            'À traiter',
+            routed.filter((request) => request.statut === 'route_simule')
+              .length,
+            C.gold,
+          ],
+          [
+            'Exécutés',
+            routed.filter((request) => request.statut === 'execute').length,
+            C.teal,
+          ],
+          [
+            'Partiels',
+            routed.filter((request) => request.statut === 'partiel').length,
+            C.indigo,
+          ],
+          [
+            'Non exécutés',
+            routed.filter((request) => request.statut === 'non_execute')
+              .length,
+            C.coral,
+          ],
+        ].map(([label, value, color]) => (
+          <Card key={label} className="p-4">
+            <div className="text-[10px]" style={{ color: C.sub }}>
+              {label}
+            </div>
+            <div
+              className="text-xl font-bold mt-1"
+              style={{ ...F_MONO, color }}
+            >
+              {value}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {message && (
+        <div
+          role="status"
+          className="rounded-xl p-3 text-xs"
+          style={{ background: '#FBF1DD', color: '#684C13' }}
+        >
+          {message}
+        </div>
+      )}
+
+      <Card className="p-4">
+        <div className="flex items-end gap-3 flex-wrap mb-4">
+          <label className="text-xs" style={{ color: C.sub }}>
+            Statut
+            <select
+              className="block border rounded-lg mt-1 p-2 text-xs"
+              value={filtre}
+              onChange={(e) => setFiltre(e.target.value)}
+            >
+              <option>À traiter</option>
+              <option>Tous</option>
+              <option value="execute">Exécuté · fictif</option>
+              <option value="partiel">Partiellement exécuté · fictif</option>
+              <option value="non_execute">Non exécuté · fictif</option>
+            </select>
+          </label>
+
+          <label className="text-xs" style={{ color: C.sub }}>
+            Négociateur
+            <select
+              className="block border rounded-lg mt-1 p-2 text-xs"
+              value={negociateurFilter}
+              onChange={(e) => setNegociateurFilter(e.target.value)}
+            >
+              <option>Tous</option>
+              {negociateursAffectes.map((negociateur) => (
+                <option key={negociateur.id} value={negociateur.id}>
+                  {negociateur.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <span className="text-xs pb-2" style={{ color: C.sub }}>
+            {filtered.length} ordre(s)
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1180 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Priorité</Th>
+                <Th>Référence</Th>
+                <Th>Transmission</Th>
+                <Th>Client / SGI</Th>
+                <Th>Instruction</Th>
+                <Th>Limite client</Th>
+                <Th>Négociateur</Th>
+                <Th>Statut</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((request) => {
+                const portefeuille = clientGetPortfolios().find(
+                  (item) => item.id === request.portefeuilleId
+                );
+                return (
+                  <tr
+                    key={request.reference}
+                    style={{ borderTop: `1px solid ${C.line}` }}
+                  >
+                    <Td>
+                      <Badge
+                        tone={
+                          request.prioriteNegociation === 'Urgente'
+                            ? 'coral'
+                            : request.prioriteNegociation === 'Haute'
+                            ? 'gold'
+                            : 'slate'
+                        }
+                      >
+                        {request.prioriteNegociation || 'Normale'}
+                      </Badge>
+                    </Td>
+                    <Td mono>{request.reference}</Td>
+                    <Td>
+                      {request.routedAt
+                        ? new Date(request.routedAt).toLocaleString('fr-FR')
+                        : '—'}
+                    </Td>
+                    <Td>
+                      <div className="font-semibold">
+                        {CLIENT_GESTION_LIBRE.nom}
+                      </div>
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        {portefeuille?.sgi || '—'}
+                      </div>
+                    </Td>
+                    <Td>
+                      {request.sens} {fmt(request.qte)} {request.instrument}
+                    </Td>
+                    <Td mono>
+                      {fmtPrice(request.prix)} {request.devise}
+                    </Td>
+                    <Td>
+                      <div className="font-semibold">
+                        {request.negociateur?.nom || '—'}
+                      </div>
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        {request.negociateur?.desk || '—'}
+                      </div>
+                    </Td>
+                    <Td>
+                      <Badge
+                        tone={
+                          request.statut === 'execute'
+                            ? 'teal'
+                            : request.statut === 'non_execute'
+                            ? 'coral'
+                            : 'gold'
+                        }
+                      >
+                        {gsmChatStatus[request.statut]}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold"
+                        style={{ color: C.indigo }}
+                        onClick={() => setSelectedRef(request.reference)}
+                      >
+                        Traiter →
+                      </button>
+                    </Td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <Td>Aucun ordre dans cette file.</Td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {selected && routedStates.includes(selected.statut) && (
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Ticket de négociation</Eyebrow>
+              <div className="text-base font-bold" style={{ color: C.ink }}>
+                {selected.reference} · {selected.sens}{' '}
+                {fmt(selected.qte)} {selected.instrument}
+              </div>
+              <div className="text-xs mt-1" style={{ color: C.sub }}>
+                {CLIENT_GESTION_LIBRE.nom} · {pf?.sgi || '—'} ·{' '}
+                {pf?.nom || '—'} · {selected.marche}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Badge
+                tone={
+                  selected.prioriteNegociation === 'Urgente'
+                    ? 'coral'
+                    : selected.prioriteNegociation === 'Haute'
+                    ? 'gold'
+                    : 'slate'
+                }
+              >
+                Priorité {selected.prioriteNegociation || 'Normale'}
+              </Badge>
+              <Badge tone="navy">
+                {selected.negociateur?.nom || 'Négociateur'}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            {[
+              ['Sens', selected.sens],
+              ['Quantité demandée', fmt(selected.qte)],
+              ['Prix limite client', `${fmtPrice(selected.prix)} ${selected.devise}`],
+              ['Marché', selected.marche],
+              ['Déjà exécuté', fmt(selected.qteExecutee || 0)],
+              ['Reliquat', fmt(selected.reliquat ?? selected.qte)],
+              [
+                'Transmission',
+                selected.routedAt
+                  ? new Date(selected.routedAt).toLocaleString('fr-FR')
+                  : '—',
+              ],
+              ['Chargé de clientèle', selected.routedBy || '—'],
+            ].map(([label, value]) => (
+              <div
+                key={label}
+                className="p-3 rounded-xl"
+                style={{ background: '#F5F6F9' }}
+              >
+                <div className="text-[9px]" style={{ color: C.sub }}>
+                  {label}
+                </div>
+                <div className="text-xs font-semibold mt-1">{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {selected.commentaireRoutage && (
+            <div
+              className="p-3 rounded-xl mt-4 text-xs"
+              style={{ background: '#F4F6FB', color: C.ink }}
+            >
+              <b>Note du Chargé de Clientèle :</b>{' '}
+              {selected.commentaireRoutage}
+            </div>
+          )}
+
+          {selected.statut === 'route_simule' ? (
+            <div
+              className="rounded-2xl border p-4 mt-4"
+              style={{ borderColor: '#D8DFEF' }}
+            >
+              <div className="text-sm font-semibold" style={{ color: C.ink }}>
+                Retour d&apos;exécution simulée
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Respecter impérativement le prix limite du client : prix
+                d&apos;achat ≤ limite ; prix de vente ≥ limite.
+              </div>
+
+              <div className="flex gap-3 items-end flex-wrap mt-3">
+                <label className="text-xs" style={{ color: C.sub }}>
+                  Quantité exécutée
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    max={selected.qte}
+                    className="block border rounded-lg p-2 mt-1 w-40"
+                    value={qteFill}
+                    onChange={(e) => setQteFill(e.target.value)}
+                  />
+                </label>
+
+                <label className="text-xs" style={{ color: C.sub }}>
+                  Prix d&apos;exécution
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    className="block border rounded-lg p-2 mt-1 w-44"
+                    value={prixFill}
+                    onChange={(e) => setPrixFill(e.target.value)}
+                  />
+                </label>
+
+                <Btn onClick={doExecution}>
+                  Enregistrer le résultat fictif
+                </Btn>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="rounded-xl p-4 mt-4"
+              style={{ background: '#F1FAF6' }}
+            >
+              <div className="text-sm font-semibold" style={{ color: C.teal }}>
+                Résultat enregistré
+              </div>
+              <div className="text-xs mt-1" style={{ color: C.sub }}>
+                Exécuté {fmt(selected.qteExecutee || 0)} / {fmt(selected.qte)} ·
+                reliquat {fmt(selected.reliquat ?? 0)}
+                {selected.prixExecution
+                  ? ` · prix ${fmtPrice(selected.prixExecution)} ${selected.devise}`
+                  : ''}
+              </div>
+            </div>
+          )}
+
+          <div className="font-semibold text-xs mt-5 mb-2">
+            Traçabilité
+          </div>
+          <div className="space-y-2">
+            {(selected.journal || []).map((event, index) => (
+              <div
+                key={index}
+                className="text-[11px] p-2 rounded-lg"
+                style={{ background: '#F7F8FB', color: C.sub }}
+              >
+                {new Date(event.at).toLocaleString('fr-FR')} ·{' '}
+                <b>{event.actor}</b> — {event.action}
+                {event.detail ? ` : ${event.detail}` : ''}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 function ClientOrderTicket({
@@ -46549,7 +47746,36 @@ export default function App() {
       if (clientOrders.some((o) => o.id === reference)) throw new Error('Référence déjà présente parmi les ordres clients.');
       nextRequest.statut = 'accepte';
     }
-    if (action === 'router') nextRequest.statut = 'route_simule';
+    if (action === 'router') {
+      const negociateur = payload.negociateur;
+      if (!negociateur?.id || !negociateur?.nom)
+        throw new Error('Sélectionnez un négociateur avant la transmission.');
+      if (
+        !(negociateur.marches || []).includes(oldRequest.marche)
+      )
+        throw new Error(
+          `Ce négociateur n'est pas habilité dans la maquette pour le marché ${oldRequest.marche}.`
+        );
+      nextRequest.statut = 'route_simule';
+      nextRequest.negociateur = {
+        id: negociateur.id,
+        nom: negociateur.nom,
+        desk: negociateur.desk,
+        marches: [...(negociateur.marches || [])],
+      };
+      nextRequest.prioriteNegociation = [
+        'Normale',
+        'Haute',
+        'Urgente',
+      ].includes(payload.priorite)
+        ? payload.priorite
+        : 'Normale';
+      nextRequest.commentaireRoutage = String(
+        payload.commentaireRoutage || ''
+      ).trim();
+      nextRequest.routedAt = gsmChatDate();
+      nextRequest.routedBy = 'Chargé de clientèle';
+    }
     if (action === 'execution') {
       const quantity = Number(payload.qte), price = Number(payload.prix);
       if (!Number.isSafeInteger(quantity) || quantity < 0 || quantity > Number(oldRequest.qte))
@@ -46566,10 +47792,31 @@ export default function App() {
     }
     const desc = action === 'execution'
       ? `${nextRequest.qteExecutee} titre(s) exécuté(s) ; reliquat ${nextRequest.reliquat} ; prix ${nextRequest.prixExecution ?? '—'} ${nextRequest.devise}`
-      : action === 'rejeter' ? nextRequest.motifRejet
-      : action === 'traiter_changement' ? `Demande ${oldRequest.demandeChangement.type} ${payload.decision === 'accepter' ? 'approuvée' : 'refusée'}`
+      : action === 'rejeter'
+      ? nextRequest.motifRejet
+      : action === 'traiter_changement'
+      ? `Demande ${oldRequest.demandeChangement.type} ${
+          payload.decision === 'accepter' ? 'approuvée' : 'refusée'
+        }`
+      : action === 'router'
+      ? `Transmis à ${nextRequest.negociateur?.nom || 'Négociateur'} · ${
+          nextRequest.negociateur?.desk || 'desk'
+        } · priorité ${nextRequest.prioriteNegociation}`
       : gsmChatStatus[nextRequest.statut];
-    nextRequest = gsmChatAddEvent(nextRequest, action, 'SGI / Négo (simulation)', desc);
+
+    const actor =
+      action === 'execution'
+        ? `Négociateur ${
+            oldRequest.negociateur?.nom || '(simulation)'
+          }`
+        : 'Chargé de clientèle (simulation)';
+
+    nextRequest = gsmChatAddEvent(
+      nextRequest,
+      action,
+      actor,
+      desc
+    );
     const nextRequests = chatRequests.map((r) => r.reference === reference ? nextRequest : r);
     // Le registre est enregistré avant que les interfaces client / SGI ne soient actualisées.
     try { if (typeof window !== 'undefined') window.localStorage.setItem(GSM_CHAT_INVEST_STORAGE, JSON.stringify(nextRequests)); }
@@ -46585,15 +47832,31 @@ export default function App() {
       }, ...current.filter((o) => o.id !== reference)]);
     }
     if (action === 'router' || action === 'execution') {
-      setClientOrders((current) => current.map((o) => o.id !== reference ? o : {
-        ...o,
-        statut: action === 'router' ? 'En cours'
-          : nextRequest.statut === 'execute' ? 'Exécuté'
-          : nextRequest.statut === 'partiel' ? 'Partiel · fictif' : 'Non exécuté · fictif',
-        qteExecutee: nextRequest.qteExecutee || 0,
-        qteRestante: nextRequest.reliquat ?? nextRequest.qte,
-        prixExecution: nextRequest.prixExecution,
-      }));
+      setClientOrders((current) =>
+        current.map((o) =>
+          o.id !== reference
+            ? o
+            : {
+                ...o,
+                statut:
+                  action === 'router'
+                    ? 'Transmis au négociateur'
+                    : nextRequest.statut === 'execute'
+                    ? 'Exécuté'
+                    : nextRequest.statut === 'partiel'
+                    ? 'Partiel · fictif'
+                    : 'Non exécuté · fictif',
+                negociateur: nextRequest.negociateur || o.negociateur,
+                prioriteNegociation:
+                  nextRequest.prioriteNegociation ||
+                  o.prioriteNegociation,
+                qteExecutee: nextRequest.qteExecutee || 0,
+                qteRestante:
+                  nextRequest.reliquat ?? nextRequest.qte,
+                prixExecution: nextRequest.prixExecution,
+              }
+        )
+      );
     }
     setChatRequests(nextRequests);
     return { message: `Instruction ${reference} : ${gsmChatStatus[nextRequest.statut]}.` };
@@ -46988,9 +48251,27 @@ export default function App() {
                     initialInstrument={ctx.instrument}
                   />
                 )}
-                {screen === 'sgi-chat-invest' && <SgiChatInvestInbox requests={chatRequests} orders={clientOrders}
-                  groupedBatches={clientGroupedBatches} accessEnabled={chatAccessEnabled}
-                  onSetAccess={setChatAccess} onAction={sgiChatAction} go={go} />}
+                {screen === 'sgi-chat-invest' && (
+                  <SgiChatInvestInbox
+                    requests={chatRequests}
+                    orders={clientOrders}
+                    groupedBatches={clientGroupedBatches}
+                    accessEnabled={chatAccessEnabled}
+                    onSetAccess={setChatAccess}
+                    onAction={sgiChatAction}
+                    go={go}
+                    initial={ctx}
+                  />
+                )}
+                {screen === 'negociateur-chat-invest' && (
+                  <NegociateurChatInvest
+                    requests={chatRequests}
+                    orders={clientOrders}
+                    onAction={sgiChatAction}
+                    go={go}
+                    initial={ctx}
+                  />
+                )}
                 {screen === 'alertes' && <Alertes go={go} />}
                 {screen === 'money-management' && (
                   <MoneyManagement go={go} devise={siteDevise} />
