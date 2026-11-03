@@ -5520,6 +5520,307 @@ const CLIENT_ASSET_EXPECTED_RETURN = {
   Liquidité: 2.5,
 };
 
+
+/*
+ * MOTEUR D'OPPORTUNITÉS — GESTION LIBRE
+ *
+ * Ce catalogue matérialise les familles d'opportunités évoquées dans la
+ * Vue consolidée. Les rendements affichés sont des hypothèses de démonstration
+ * destinées à comparer les profils d'opportunités ; ils ne constituent ni une
+ * promesse de rendement, ni une recommandation d'investissement.
+ */
+const CLIENT_INVESTMENT_OPPORTUNITY_CATALOG = {
+  'Actions cotées': [
+    {
+      id: 'listed-value',
+      titre: 'Valeurs décotées / Value',
+      angle:
+        'Rechercher des sociétés dont la valorisation paraît basse au regard des bénéfices, des actifs ou des pairs.',
+      rendementIndicatif: '8–12 % / an · hypothèse',
+      horizon: '2–5 ans',
+      risque: 'Élevé',
+      liquidite: 'Élevée à intermédiaire',
+      signal:
+        'Décote fondamentale, amélioration des résultats, re-rating potentiel.',
+      exemples:
+        'Actions BRVM, NGX ou GSE présentant une décote relative et une liquidité suffisante.',
+    },
+    {
+      id: 'listed-income',
+      titre: 'Actions de rendement / dividendes',
+      angle:
+        'Privilégier les sociétés distribuant des dividendes réguliers avec une capacité bénéficiaire soutenable.',
+      rendementIndicatif: '7–11 % / an · dividendes + cours',
+      horizon: '2–5 ans',
+      risque: 'Élevé',
+      liquidite: 'Élevée à intermédiaire',
+      signal:
+        'Rendement du dividende, stabilité du payout, génération de cash-flow.',
+      exemples:
+        'Télécoms, banques, utilities ou valeurs matures selon le marché.',
+    },
+    {
+      id: 'listed-growth',
+      titre: 'Croissance / momentum fondamental',
+      angle:
+        'Exposition à des entreprises dont les revenus et bénéfices progressent plus vite que leur marché.',
+      rendementIndicatif: '10–15 % / an · hypothèse',
+      horizon: '3–5 ans',
+      risque: 'Très élevé',
+      liquidite: 'Intermédiaire à élevée',
+      signal:
+        'Croissance du chiffre d’affaires, bénéfices, ROE et dynamique de marché.',
+      exemples:
+        'Leaders sectoriels et entreprises en phase d’expansion.',
+    },
+  ],
+  'Actions non cotées': [
+    {
+      id: 'private-growth',
+      titre: 'Growth Equity / PME en croissance',
+      angle:
+        'Financer une entreprise déjà active afin d’accélérer son développement, sa capacité industrielle ou son expansion régionale.',
+      rendementIndicatif: '12–20 % / an · hypothèse long terme',
+      horizon: '5–8 ans',
+      risque: 'Très élevé',
+      liquidite: 'Faible',
+      signal:
+        'Croissance rentable, gouvernance, visibilité de sortie et génération de cash.',
+      exemples:
+        'Agro-industrie, logistique, fintech, énergie, services B2B.',
+    },
+    {
+      id: 'private-strategic',
+      titre: 'Participation stratégique',
+      angle:
+        'Prendre une participation dans une société non cotée avec une logique de création de valeur opérationnelle.',
+      rendementIndicatif: '12–18 % / an · hypothèse',
+      horizon: '5–10 ans',
+      risque: 'Très élevé',
+      liquidite: 'Très faible',
+      signal:
+        'Qualité du management, avantage concurrentiel, capacité de distribution et scénario de sortie.',
+      exemples:
+        'Entreprise familiale, augmentation de capital, co-investissement institutionnel.',
+    },
+    {
+      id: 'private-preipo',
+      titre: 'Pré-IPO / préparation à la cotation',
+      angle:
+        'Entrer au capital avant une introduction en bourse lorsque la trajectoire de cotation est crédible.',
+      rendementIndicatif: '15–25 % / an · hypothèse',
+      horizon: '3–7 ans',
+      risque: 'Très élevé',
+      liquidite: 'Très faible',
+      signal:
+        'Audit, gouvernance, flottant futur, calendrier et valorisation pré-IPO.',
+      exemples:
+        'Sociétés en transformation vers les standards d’un marché organisé.',
+    },
+  ],
+  'Obligations cotées': [
+    {
+      id: 'listed-bond-primary',
+      titre: 'Nouvelles émissions / marché primaire',
+      angle:
+        'Profiter d’une nouvelle émission dont le coupon, le rendement et la maturité correspondent à l’horizon du portefeuille.',
+      rendementIndicatif: '5–16 % / an · selon devise/émetteur',
+      horizon: '1–10 ans',
+      risque: 'Faible à élevé',
+      liquidite: 'Intermédiaire',
+      signal:
+        'Rendement à maturité, spread, qualité de crédit, duration et calendrier de remboursement.',
+      exemples:
+        'OAT/BAT et émissions corporate cotées selon le marché.',
+    },
+    {
+      id: 'listed-bond-discount',
+      titre: 'Obligation sous le pair / rendement relatif',
+      angle:
+        'Identifier un titre coté dont le prix secondaire offre un rendement supérieur à des maturités comparables.',
+      rendementIndicatif: 'Rendement actuariel supérieur au benchmark',
+      horizon: 'Jusqu’à maturité',
+      risque: 'Faible à élevé',
+      liquidite: 'Intermédiaire',
+      signal:
+        'Prix, YTM, spread de crédit, courbe de taux et liquidité secondaire.',
+      exemples:
+        'Arbitrage entre titres souverains ou corporate de maturités voisines.',
+    },
+    {
+      id: 'listed-bond-duration',
+      titre: 'Arbitrage de maturité / duration',
+      angle:
+        'Adapter l’exposition obligataire à une anticipation de taux ou au calendrier de besoins de trésorerie.',
+      rendementIndicatif: 'Coupon + effet de taux · hypothèse',
+      horizon: '1–7 ans',
+      risque: 'Intermédiaire',
+      liquidite: 'Intermédiaire',
+      signal:
+        'Courbe des taux, duration, convexité et tombées futures du portefeuille.',
+      exemples:
+        'Rotation court / moyen / long terme en fonction du profil de taux.',
+    },
+  ],
+  'Obligations non cotées': [
+    {
+      id: 'private-debt',
+      titre: 'Placement privé / dette corporate',
+      angle:
+        'Financer directement une entreprise avec un rendement supérieur en contrepartie d’une liquidité réduite.',
+      rendementIndicatif: '8–14 % / an · hypothèse',
+      horizon: '2–7 ans',
+      risque: 'Élevé',
+      liquidite: 'Faible',
+      signal:
+        'Spread additionnel, covenants, sûretés, DSCR et qualité du débiteur.',
+      exemples:
+        'Dette corporate, banque, industrie, énergie ou infrastructures.',
+    },
+    {
+      id: 'secured-debt',
+      titre: 'Dette sécurisée / projet',
+      angle:
+        'Rechercher une dette adossée à des actifs, contrats ou flux identifiables afin de renforcer la protection du prêteur.',
+      rendementIndicatif: '7–12 % / an · hypothèse',
+      horizon: '3–10 ans',
+      risque: 'Intermédiaire à élevé',
+      liquidite: 'Très faible',
+      signal:
+        'Qualité des garanties, waterfall, couverture des intérêts et flux du projet.',
+      exemples:
+        'Infrastructure, énergie, immobilier, actifs productifs.',
+    },
+  ],
+  FCP: [
+    {
+      id: 'fcp-money',
+      titre: 'FCP monétaire / gestion du cash',
+      angle:
+        'Faire travailler une partie de la liquidité tout en conservant un horizon court et une disponibilité élevée.',
+      rendementIndicatif: '3–7 % / an · selon devise',
+      horizon: '0–2 ans',
+      risque: 'Faible',
+      liquidite: 'Élevée',
+      signal:
+        'Rendement net, frais, duration, qualité des actifs et délai de rachat.',
+      exemples:
+        'Fonds monétaires ou obligataires court terme.',
+    },
+    {
+      id: 'fcp-diversified',
+      titre: 'FCP diversifié',
+      angle:
+        'Accéder à une allocation professionnelle multi-actifs sans sélectionner chaque titre individuellement.',
+      rendementIndicatif: '6–10 % / an · hypothèse',
+      horizon: '3–5 ans',
+      risque: 'Intermédiaire',
+      liquidite: 'Intermédiaire à élevée',
+      signal:
+        'Performance ajustée du risque, frais, diversification et stabilité de l’équipe de gestion.',
+      exemples:
+        'Fonds équilibrés, obligataires, actions ou allocation flexible.',
+    },
+  ],
+  FCTC: [
+    {
+      id: 'fctc-senior',
+      titre: 'Tranche senior de créances titrisées',
+      angle:
+        'Obtenir des flux contractuels issus d’un portefeuille de créances avec priorité de remboursement.',
+      rendementIndicatif: '6–9 % / an · hypothèse',
+      horizon: '2–7 ans',
+      risque: 'Intermédiaire',
+      liquidite: 'Faible',
+      signal:
+        'Qualité du pool, rehaussement de crédit, subordination, défauts et recouvrements.',
+      exemples:
+        'Créances bancaires, leasing, factures, immobilier ou infrastructures.',
+    },
+    {
+      id: 'fctc-mezz',
+      titre: 'Tranche mezzanine / rendement renforcé',
+      angle:
+        'Accepter davantage de risque de crédit pour obtenir un rendement potentiel supérieur.',
+      rendementIndicatif: '9–13 % / an · hypothèse',
+      horizon: '3–7 ans',
+      risque: 'Élevé',
+      liquidite: 'Très faible',
+      signal:
+        'Subordination, stress du portefeuille, niveau de protection et waterfall.',
+      exemples:
+        'Structures de titrisation disposant de plusieurs niveaux de séniorité.',
+    },
+  ],
+  Immobilier: [
+    {
+      id: 'real-estate-income',
+      titre: 'Immobilier de rendement',
+      angle:
+        'Rechercher des actifs générant des loyers réguliers avec un taux d’occupation élevé.',
+      rendementIndicatif: '6–10 % / an · loyers + valeur',
+      horizon: '5–10 ans',
+      risque: 'Intermédiaire',
+      liquidite: 'Faible',
+      signal:
+        'Rendement locatif net, vacance, qualité des locataires, emplacement et charges.',
+      exemples:
+        'Bureaux, commerces, résidentiel, entrepôts et immobilier logistique.',
+    },
+    {
+      id: 'real-estate-valueadd',
+      titre: 'Immobilier value-add / revalorisation',
+      angle:
+        'Acquérir ou financer un actif présentant un potentiel d’amélioration, de repositionnement ou de développement.',
+      rendementIndicatif: '9–14 % / an · hypothèse',
+      horizon: '5–10 ans',
+      risque: 'Élevé',
+      liquidite: 'Très faible',
+      signal:
+        'Coût des travaux, potentiel locatif, permis, demande locale et valeur de sortie.',
+      exemples:
+        'Réhabilitation, extension, logistique, foncier ou développement mixte.',
+    },
+  ],
+  Liquidité: [
+    {
+      id: 'cash-reserve',
+      titre: 'Réserve d’opportunité',
+      angle:
+        'Conserver une poche immédiatement disponible afin de saisir une émission, une décote ou une fenêtre de marché.',
+      rendementIndicatif: '0–3 % / an · disponibilité prioritaire',
+      horizon: '0–6 mois',
+      risque: 'Très faible',
+      liquidite: 'Très élevée',
+      signal:
+        'Calendrier des opportunités, retraits prévus et niveau minimal de sécurité.',
+      exemples:
+        'Compte espèces, trésorerie immédiatement mobilisable.',
+    },
+    {
+      id: 'cash-yield',
+      titre: 'Placement monétaire court terme',
+      angle:
+        'Rémunérer temporairement le cash non utilisé sans immobiliser durablement le portefeuille.',
+      rendementIndicatif: '2–6 % / an · selon devise',
+      horizon: '1–12 mois',
+      risque: 'Faible',
+      liquidite: 'Élevée',
+      signal:
+        'Taux monétaires, maturité, qualité de contrepartie et frais.',
+      exemples:
+        'Fonds monétaire, dépôt rémunéré, titres publics court terme selon éligibilité.',
+    },
+  ],
+};
+
+const clientOpportunityTone = (status) => {
+  if (status === 'Arbitrage / réduction') return 'coral';
+  if (status === 'Capacité limitée') return 'gold';
+  if (status === 'Réserve stratégique') return 'navy';
+  return 'teal';
+};
+
 const clientSimulationSyntheticAssets = (portefeuille) => {
   const currency = portefeuille.devise;
   const suffix = portefeuille.marche;
@@ -36039,6 +36340,8 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     useState(false);
   const [detailsLiquiditePrevisionnelleOuverts, setDetailsLiquiditePrevisionnelleOuverts] =
     useState(false);
+  const [classeOpportunitesOuverte, setClasseOpportunitesOuverte] =
+    useState(null);
   const [limitesAllocation, setLimitesAllocation] = useState(() =>
     clientLoadAllocationLimits()
   );
@@ -36260,6 +36563,88 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   );
   const liquiditePrevisionnelle =
     liquiditeDisponible + totalProchainesTombees;
+
+  const opportunitesParClasse = allocationControle.map((part) => {
+    const catalogue =
+      CLIENT_INVESTMENT_OPPORTUNITY_CATALOG[part.name] || [];
+    const capacitePts = Math.max(0, Number(part.marge || 0));
+    const capaciteMontant =
+      patrimoine > 0 ? (patrimoine * capacitePts) / 100 : 0;
+    const mobilisableMaintenant = Math.min(
+      capaciteMontant,
+      liquiditeDisponible
+    );
+    const mobilisableAvecTombees = Math.min(
+      capaciteMontant,
+      liquiditePrevisionnelle
+    );
+
+    let statutOpportunite = 'À explorer';
+    if (part.depassement > 0) {
+      statutOpportunite = 'Arbitrage / réduction';
+    } else if (part.name === 'Liquidité') {
+      statutOpportunite = 'Réserve stratégique';
+    } else if (capacitePts < 3) {
+      statutOpportunite = 'Capacité limitée';
+    }
+
+    const commentaireOpportunite =
+      statutOpportunite === 'Arbitrage / réduction'
+        ? `La classe dépasse déjà sa limite de ${part.depassement.toFixed(
+            1
+          )} pt(s). Priorité à l'arbitrage avant tout nouvel achat.`
+        : part.name === 'Liquidité'
+        ? `La poche de liquidité sert de réserve d'opportunité et peut être temporairement rémunérée selon l'horizon de disponibilité.`
+        : `${capacitePts.toFixed(
+            1
+          )} pt(s) restent disponibles sous votre limite personnelle. Jusqu'à ${fmt(
+            Math.round(mobilisableAvecTombees)
+          )} ${devise} pourraient être étudiés en intégrant les prochaines tombées.`;
+
+    return {
+      ...part,
+      catalogue,
+      capacitePts,
+      capaciteMontant,
+      mobilisableMaintenant,
+      mobilisableAvecTombees,
+      statutOpportunite,
+      commentaireOpportunite,
+    };
+  });
+
+  const classeOpportuniteSelectionnee =
+    opportunitesParClasse.find(
+      (item) => item.name === classeOpportunitesOuverte
+    ) || null;
+
+  const portefeuillesParLiquidite = [...portefeuilles].sort(
+    (a, b) =>
+      clientAvailableCashIn(b, orders, devise) -
+      clientAvailableCashIn(a, orders, devise)
+  );
+
+  const portefeuilleSimulationOpportunite = (classe) => {
+    const avecClasse = portefeuillesParLiquidite.find((portefeuille) => {
+      if (classe === 'Liquidité') return true;
+      return (portefeuille.lignes || []).some(
+        (ligne) =>
+          clientDetailedAssetClass(ligne.instrument) === classe
+      );
+    });
+    return avecClasse || portefeuillesParLiquidite[0] || null;
+  };
+
+  const simulerClasseOpportunite = (classe, opportuniteId = null) => {
+    const portefeuilleCible =
+      portefeuilleSimulationOpportunite(classe);
+    goClient('client-investment-simulation', {
+      source: 'opportunity-engine',
+      classeActif: classe,
+      opportuniteId,
+      portefeuilleId: portefeuilleCible?.id || null,
+    });
+  };
 
   const ouvrirParametrage = () => {
     setLimitesBrouillon({ ...limitesAllocation });
@@ -36634,6 +37019,184 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         </div>
       </Card>
 
+      <Card className="p-0 overflow-hidden" style={{ borderColor: '#D8DFEF' }}>
+        <div
+          className="p-5 flex items-start justify-between gap-4 flex-wrap"
+          style={{ background: '#F4F6FB' }}
+        >
+          <div>
+            <Eyebrow>Capacité d&apos;investissement & opportunités</Eyebrow>
+            <div className="text-base font-bold" style={{ color: C.ink }}>
+              De l&apos;allocation actuelle vers les opportunités à étudier
+            </div>
+            <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+              Le moteur croise votre allocation consolidée, vos limites personnelles,
+              la liquidité disponible et les prochaines tombées. Il ne recommande pas
+              un achat : il identifie les classes dans lesquelles une capacité
+              d&apos;investissement existe encore et les familles d&apos;opportunités
+              compatibles à analyser.
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone="teal">
+              {
+                opportunitesParClasse.filter(
+                  (item) =>
+                    item.capacitePts >= 3 &&
+                    item.depassement <= 0 &&
+                    item.name !== 'Liquidité'
+                ).length
+              }{' '}
+              classe(s) à explorer
+            </Badge>
+            <Badge tone={alertesLimites.length ? 'coral' : 'navy'}>
+              {alertesLimites.length
+                ? `${alertesLimites.length} dépassement(s)`
+                : 'Aucun dépassement'}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3 p-4" style={{ borderTop: `1px solid ${C.line}` }}>
+          <div className="p-3 rounded-xl" style={{ background: '#F7F8FA' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Liquidité disponible aujourd&apos;hui
+            </div>
+            <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.teal }}>
+              {fmt(Math.round(liquiditeDisponible))} {devise}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#FBF7EE' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Prochaines tombées
+            </div>
+            <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.gold }}>
+              +{fmt(Math.round(totalProchainesTombees))} {devise}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#F1FAF6' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Liquidité prévisionnelle
+            </div>
+            <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.navy }}>
+              {fmt(Math.round(liquiditePrevisionnelle))} {devise}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#F4F6FF' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Logique de décision
+            </div>
+            <div className="text-[10px] font-semibold mt-1" style={{ color: C.indigo }}>
+              Limite → capacité → opportunité → simulation
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: 1280 }}>
+            <thead style={{ background: '#FAFAFC' }}>
+              <tr>
+                <Th>Classe d&apos;actifs</Th>
+                <Th>Allocation</Th>
+                <Th>Limite</Th>
+                <Th>Capacité restante</Th>
+                <Th>Montant théorique</Th>
+                <Th>Mobilisable maintenant</Th>
+                <Th>Avec prochaines tombées</Th>
+                <Th>Familles d&apos;opportunités</Th>
+                <Th>Lecture</Th>
+                <Th></Th>
+              </tr>
+            </thead>
+            <tbody>
+              {opportunitesParClasse.map((item) => (
+                <tr
+                  key={item.name}
+                  style={{ borderTop: `1px solid ${C.line}` }}
+                >
+                  <Td className="font-semibold">{item.name}</Td>
+                  <Td mono>{item.value.toFixed(1)}%</Td>
+                  <Td mono>{item.limite.toFixed(1)}%</Td>
+                  <Td mono>
+                    {item.depassement > 0 ? (
+                      <span style={{ color: C.coral, fontWeight: 700 }}>
+                        -{item.depassement.toFixed(1)} pts
+                      </span>
+                    ) : (
+                      <span style={{ color: C.teal, fontWeight: 700 }}>
+                        +{item.capacitePts.toFixed(1)} pts
+                      </span>
+                    )}
+                  </Td>
+                  <Td mono>
+                    {item.depassement > 0
+                      ? '—'
+                      : `${fmt(Math.round(item.capaciteMontant))} ${devise}`}
+                  </Td>
+                  <Td mono>
+                    {item.depassement > 0
+                      ? '—'
+                      : `${fmt(Math.round(item.mobilisableMaintenant))} ${devise}`}
+                  </Td>
+                  <Td mono>
+                    {item.depassement > 0
+                      ? '—'
+                      : `${fmt(Math.round(item.mobilisableAvecTombees))} ${devise}`}
+                  </Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={() => setClasseOpportunitesOuverte(item.name)}
+                      className="text-xs font-semibold hover:underline underline-offset-4"
+                      style={{ color: C.indigo }}
+                    >
+                      {item.catalogue.length} piste(s) à examiner →
+                    </button>
+                  </Td>
+                  <Td>
+                    <div className="max-w-[260px]">
+                      <Badge tone={clientOpportunityTone(item.statutOpportunite)}>
+                        {item.statutOpportunite}
+                      </Badge>
+                      <div className="text-[9px] mt-1.5 leading-relaxed" style={{ color: C.sub }}>
+                        {item.commentaireOpportunite}
+                      </div>
+                    </div>
+                  </Td>
+                  <Td>
+                    {item.name !== 'Liquidité' && item.depassement <= 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => simulerClasseOpportunite(item.name)}
+                        className="text-xs font-semibold whitespace-nowrap"
+                        style={{ color: C.navy }}
+                      >
+                        Simuler →
+                      </button>
+                    ) : (
+                      <span className="text-[9px]" style={{ color: C.sub }}>
+                        {item.depassement > 0 ? 'Arbitrage requis' : 'Réserve'}
+                      </span>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          className="px-5 py-3 text-[9px]"
+          style={{ borderTop: `1px solid ${C.line}`, background: '#FBF7EE', color: C.sub }}
+        >
+          <b style={{ color: C.ink }}>Lecture :</b> la capacité en montant est une
+          enveloppe théorique issue de l&apos;écart entre votre allocation actuelle et
+          votre plafond. Le montant réellement mobilisable est plafonné par votre
+          liquidité. Les prochaines tombées sont présentées séparément afin de
+          distinguer ce qui est disponible aujourd&apos;hui de ce qui pourrait le devenir.
+        </div>
+      </Card>
+
       <Card className="p-4" style={{ background: '#F7F8FA' }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
@@ -36650,6 +37213,183 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           </Btn>
         </div>
       </Card>
+
+      {classeOpportuniteSelectionnee && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center p-4"
+          style={{ background: 'rgba(15, 27, 51, 0.56)' }}
+          onClick={() => setClasseOpportunitesOuverte(null)}
+        >
+          <div
+            className="bg-white rounded-2xl border shadow-2xl w-full max-w-6xl max-h-[88vh] overflow-hidden"
+            style={{ borderColor: C.line }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div
+              className="p-5 flex items-start justify-between gap-4 border-b"
+              style={{ borderColor: C.line, background: '#F7F8FA' }}
+            >
+              <div>
+                <Eyebrow>Opportunités à analyser</Eyebrow>
+                <div className="text-lg font-bold" style={{ color: C.ink }}>
+                  {classeOpportuniteSelectionnee.name}
+                </div>
+                <div className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+                  Allocation actuelle : {classeOpportuniteSelectionnee.value.toFixed(1)}% ·
+                  limite : {classeOpportuniteSelectionnee.limite.toFixed(1)}% ·{' '}
+                  {classeOpportuniteSelectionnee.depassement > 0
+                    ? `dépassement de ${classeOpportuniteSelectionnee.depassement.toFixed(1)} pt(s)`
+                    : `capacité restante de ${classeOpportuniteSelectionnee.capacitePts.toFixed(1)} pt(s)`}
+                  .
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge tone={clientOpportunityTone(classeOpportuniteSelectionnee.statutOpportunite)}>
+                  {classeOpportuniteSelectionnee.statutOpportunite}
+                </Badge>
+                <button
+                  type="button"
+                  onClick={() => setClasseOpportunitesOuverte(null)}
+                  aria-label="Fermer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto p-5" style={{ maxHeight: '70vh' }}>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="p-3 rounded-xl" style={{ background: '#F4F6FF' }}>
+                  <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                    Capacité théorique
+                  </div>
+                  <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.navy }}>
+                    {classeOpportuniteSelectionnee.depassement > 0
+                      ? '0'
+                      : fmt(Math.round(classeOpportuniteSelectionnee.capaciteMontant))}{' '}
+                    {devise}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl" style={{ background: '#F1FAF6' }}>
+                  <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                    Mobilisable aujourd&apos;hui
+                  </div>
+                  <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.teal }}>
+                    {classeOpportuniteSelectionnee.depassement > 0
+                      ? '0'
+                      : fmt(Math.round(classeOpportuniteSelectionnee.mobilisableMaintenant))}{' '}
+                    {devise}
+                  </div>
+                </div>
+                <div className="p-3 rounded-xl" style={{ background: '#FBF7EE' }}>
+                  <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                    Avec prochaines tombées
+                  </div>
+                  <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.gold }}>
+                    {classeOpportuniteSelectionnee.depassement > 0
+                      ? '0'
+                      : fmt(Math.round(classeOpportuniteSelectionnee.mobilisableAvecTombees))}{' '}
+                    {devise}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                {classeOpportuniteSelectionnee.catalogue.map((opportunite) => (
+                  <div
+                    key={opportunite.id}
+                    className="p-4 rounded-2xl border"
+                    style={{ borderColor: C.line }}
+                  >
+                    <div className="flex items-start justify-between gap-4 flex-wrap">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold" style={{ color: C.ink }}>
+                          {opportunite.titre}
+                        </div>
+                        <div className="text-[10px] mt-1 max-w-4xl leading-relaxed" style={{ color: C.sub }}>
+                          {opportunite.angle}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <Badge tone="navy">{opportunite.horizon}</Badge>
+                        <Badge
+                          tone={
+                            /Très élevé|Élevé/.test(opportunite.risque)
+                              ? 'coral'
+                              : /Intermédiaire/.test(opportunite.risque)
+                              ? 'gold'
+                              : 'teal'
+                          }
+                        >
+                          Risque : {opportunite.risque}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3 mt-3">
+                      <div className="p-3 rounded-xl" style={{ background: '#FAFAFC' }}>
+                        <div className="text-[8px] uppercase font-semibold" style={{ color: C.sub }}>
+                          Rendement indicatif
+                        </div>
+                        <div className="text-[10px] font-bold mt-1" style={{ color: C.ink }}>
+                          {opportunite.rendementIndicatif}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-xl" style={{ background: '#FAFAFC' }}>
+                        <div className="text-[8px] uppercase font-semibold" style={{ color: C.sub }}>
+                          Liquidité
+                        </div>
+                        <div className="text-[10px] font-bold mt-1" style={{ color: C.ink }}>
+                          {opportunite.liquidite}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-xl col-span-2" style={{ background: '#FAFAFC' }}>
+                        <div className="text-[8px] uppercase font-semibold" style={{ color: C.sub }}>
+                          Signal à contrôler
+                        </div>
+                        <div className="text-[10px] font-semibold mt-1" style={{ color: C.ink }}>
+                          {opportunite.signal}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 mt-3 flex-wrap">
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        <b style={{ color: C.ink }}>Exemples :</b>{' '}
+                        {opportunite.exemples}
+                      </div>
+                      {classeOpportuniteSelectionnee.name !== 'Liquidité' &&
+                        classeOpportuniteSelectionnee.depassement <= 0 && (
+                          <Btn
+                            onClick={() =>
+                              simulerClasseOpportunite(
+                                classeOpportuniteSelectionnee.name,
+                                opportunite.id
+                              )
+                            }
+                          >
+                            Simuler cette piste →
+                          </Btn>
+                        )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="mt-4 p-3 rounded-xl text-[9px]"
+                style={{ background: '#FFF8E9', color: C.sub }}
+              >
+                <b style={{ color: C.ink }}>Important :</b> les opportunités,
+                rendements et horizons de cette maquette sont des catégories
+                d&apos;analyse et des hypothèses de démonstration. Une décision réelle
+                doit reposer sur les données de marché, documents d&apos;émission,
+                valorisations, risques, frais, liquidité et situation personnelle du client.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {parametrageLimitesOuvert && (
         <div
@@ -36802,10 +37542,18 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   );
 }
 
-function ClientInvestmentSimulation({ devise, orders = [] }) {
+function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
   const portefeuilles = CLIENT_GESTION_LIBRE.portefeuilles;
-  const [portefeuilleId, setPortefeuilleId] = useState(portefeuilles[0]?.id || '');
-  const [sens, setSens] = useState('Achat');
+  const portefeuilleInitial =
+    portefeuilles.find((item) => item.id === ctx?.portefeuilleId) ||
+    portefeuilles[0];
+  const classePrefill = CLIENT_ASSET_CLASS_ORDER.includes(ctx?.classeActif)
+    ? ctx.classeActif
+    : null;
+  const [portefeuilleId, setPortefeuilleId] = useState(
+    portefeuilleInitial?.id || ''
+  );
+  const [sens, setSens] = useState(ctx?.sens === 'Vente' ? 'Vente' : 'Achat');
   const [instrumentId, setInstrumentId] = useState('');
   const [quantite, setQuantite] = useState('100');
   const [prixSaisi, setPrixSaisi] = useState('');
@@ -36815,7 +37563,12 @@ function ClientInvestmentSimulation({ devise, orders = [] }) {
     portefeuilles.find((item) => item.id === portefeuilleId) || portefeuilles[0];
   const univers = clientSimulationUniverse(portefeuille);
   const instrument =
-    univers.find((item) => item.id === instrumentId) || univers[0] || null;
+    univers.find((item) => item.id === instrumentId) ||
+    (classePrefill
+      ? univers.find((item) => item.classeActif === classePrefill)
+      : null) ||
+    univers[0] ||
+    null;
   const prix = Number(prixSaisi || instrument?.prix || 0);
   const qte = Math.max(0, Number(quantite || 0));
   const montantOperation = qte * prix;
@@ -36908,6 +37661,24 @@ function ClientInvestmentSimulation({ devise, orders = [] }) {
   return (
     <div className="space-y-5">
       <ClientBreadcrumb items={['Espace Client', "Simulation d'investissement"]} />
+
+      {ctx?.source === 'opportunity-engine' && classePrefill && (
+        <Card className="p-4" style={{ borderColor: '#D8DFEF', background: '#F4F6FB' }}>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <Eyebrow>Pré-remplissage depuis le moteur d&apos;opportunités</Eyebrow>
+              <div className="text-sm font-bold" style={{ color: C.ink }}>
+                Classe à étudier : {classePrefill}
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Le portefeuille et un instrument de cette classe ont été proposés
+                automatiquement. Vous pouvez modifier tous les paramètres avant de simuler.
+              </div>
+            </div>
+            <Badge tone="navy">Aucune transmission d&apos;ordre</Badge>
+          </div>
+        </Card>
+      )}
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -44759,6 +45530,7 @@ export default function App() {
                   <ClientInvestmentSimulation
                     devise={siteDevise}
                     orders={clientOrders}
+                    ctx={clientCtx}
                   />
                 )}
                 {clientScreen === 'client-exchanges' && (
