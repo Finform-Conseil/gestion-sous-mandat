@@ -81,10 +81,11 @@ const FX = { XOF: 1, NGN: 1.35, GHS: 78, USD: 615, EUR: 655.957 };
  * et Cession_Retrait. Les données de marché restent dans leur source séparée.
  */
 const GSM_OPERATIONAL_API =
-  typeof process !== 'undefined' &&
-  process?.env?.NEXT_PUBLIC_GSM_API_URL
-    ? process.env.NEXT_PUBLIC_GSM_API_URL
-    : 'http://127.0.0.1:8001';
+  import.meta?.env?.VITE_GSM_API_URL ||
+  (typeof process !== 'undefined'
+    ? process?.env?.NEXT_PUBLIC_GSM_API_URL
+    : null) ||
+  'http://127.0.0.1:8001';
 
 const gsmOperationalUrl = (path = '') =>
   `${GSM_OPERATIONAL_API}${path.startsWith('/') ? path : `/${path}`}`;
@@ -199,7 +200,7 @@ const liquidityHistoryFactor = (key, dateSituation, dateReference) => {
     dateReference instanceof Date
       ? dateReference
       : parseIsoLocalDate(dateReference);
-  const daysBack = Math.max(0, (reference - situation) / 86_400_000);
+  const daysBack = Math.max(0, (reference.getTime() - situation.getTime()) / 86_400_000);
   if (daysBack < 0.5) return 1;
 
   const monthsBack = daysBack / 30.4375;
@@ -2554,7 +2555,7 @@ const parseFR = (d) => {
 };
 const AUJOURDHUI = new Date(2026, 6, 29);
 const joursDepuisAujourdhui = (d) =>
-  Math.round((parseFR(d) - AUJOURDHUI) / 86_400_000);
+  Math.round((parseFR(d).getTime() - AUJOURDHUI.getTime()) / 86_400_000);
 
 const MARKETS_DATA = [
   {
