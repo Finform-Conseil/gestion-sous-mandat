@@ -37545,6 +37545,74 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         </div>
       </div>
 
+      <Card
+        className="p-4"
+        style={{
+          borderColor: '#C9D5EA',
+          background: '#F7F9FD',
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="max-w-3xl">
+            <Eyebrow>Connexion manuelle aux SGI</Eyebrow>
+            <div
+              className="text-sm font-bold"
+              style={{ color: C.ink }}
+            >
+              Ajouter ou mettre à jour un portefeuille détenu auprès d&apos;une SGI
+            </div>
+            <div
+              className="text-[11px] mt-1 leading-relaxed"
+              style={{ color: C.sub }}
+            >
+              Demandez à votre SGI de compléter le modèle Excel GSM puis importez
+              le relevé afin d&apos;intégrer le compte-titres, ses positions, sa
+              liquidité et ses prochaines tombées dans votre vue consolidée.
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Btn
+              tone="ghost"
+              onClick={clientDownloadSgiExcelTemplate}
+            >
+              <Download size={14} /> Télécharger le modèle Excel
+            </Btn>
+            <Btn
+              onClick={() =>
+                goClient('client-portfolios', {
+                  openSgiImport: true,
+                  source: 'client-dashboard-sgi-import',
+                })
+              }
+            >
+              <Briefcase size={14} /> Ajouter un portefeuille SGI
+            </Btn>
+          </div>
+        </div>
+
+        <div
+          className="mt-3 pt-3 flex items-center justify-between gap-4 flex-wrap"
+          style={{ borderTop: `1px solid ${C.line}` }}
+        >
+          <div
+            className="text-[10px]"
+            style={{ color: C.sub }}
+          >
+            {portefeuilles.length} portefeuille(s) actuellement consolidé(s) auprès de{' '}
+            <b style={{ color: C.ink }}>{nombreSgi} SGI</b>.
+          </div>
+          <button
+            type="button"
+            onClick={() => goClient('client-portfolios')}
+            className="text-xs font-semibold"
+            style={{ color: C.indigo }}
+          >
+            Ouvrir Mes portefeuilles &amp; SGI →
+          </button>
+        </div>
+      </Card>
+
       <div className="grid grid-cols-4 gap-4">
         <Card className="p-4">
           <div className="text-xs" style={{ color: C.sub }}>
@@ -39236,9 +39304,11 @@ function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
   );
 }
 
-function ClientPortfolios({ devise, orders }) {
+function ClientPortfolios({ devise, orders, ctx = {} }) {
   const [paysFiltre, setPaysFiltre] = useState('Tous');
-  const [ajoutSgiOuvert, setAjoutSgiOuvert] = useState(false);
+  const [ajoutSgiOuvert, setAjoutSgiOuvert] = useState(
+    Boolean(ctx?.openSgiImport)
+  );
   const [fichierSgi, setFichierSgi] = useState(null);
   const [importSgiEtat, setImportSgiEtat] = useState(null);
   const [importSgiEnCours, setImportSgiEnCours] = useState(false);
@@ -48324,7 +48394,11 @@ export default function App() {
                   />
                 )}
                 {clientScreen === 'client-portfolios' && (
-                  <ClientPortfolios devise={siteDevise} orders={clientOrders} />
+                  <ClientPortfolios
+                    devise={siteDevise}
+                    orders={clientOrders}
+                    ctx={clientCtx}
+                  />
                 )}
                 {clientScreen === 'client-investment-simulation' && (
                   <ClientInvestmentSimulation
