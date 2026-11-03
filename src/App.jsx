@@ -36620,6 +36620,188 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       (item) => item.name === classeOpportunitesOuverte
     ) || null;
 
+  /*
+   * PLAN DE NORMALISATION DES LIMITES
+   *
+   * Le moteur cherche d'abord à ramener chaque classe en dépassement à sa
+   * limite personnelle. Le montant dégagé est ensuite proposé vers les classes
+   * encore sous leur plafond et disposant de familles d'opportunités dans le
+   * catalogue. La priorité est donnée à la capacité restante puis au nombre de
+   * pistes disponibles. La liquidité n'est utilisée qu'en solution d'attente.
+   */
+  const planReequilibrage = (() => {
+    const reductions = alertesLimites.map((part) => {
+      const montantAReduire =
+        patrimoine > 0
+          ? Math.max(0, (patrimoine * Number(part.depassement || 0)) / 100)
+          : 0;
+      return {
+        classe: part.name,
+        depassementPts: Number(part.depassement || 0),
+        montant: montantAReduire,
+        allocationActuelle: part.value,
+        limite: part.limite,
+      };
+    });
+
+    const totalAReduire = reductions.reduce(
+      (somme, item) => somme + Number(item.montant || 0),
+      0
+    );
+
+    const candidatsInvestissement = opportunitesParClasse
+      .filter(
+        (item) =>
+          item.name !== 'Liquidité' &&
+          item.depassement <= 0 &&
+          item.capaciteMontant > 0 &&
+          item.catalogue.length > 0
+      )
+      .map((item) => ({
+        ...item,
+        capaciteRestantePlan: Number(item.capaciteMontant || 0),
+        scorePlan:
+          Number(item.capacitePts || 0) * 10 +
+          Number(item.catalogue.length || 0) * 3,
+      }))
+      .sort(
+        (a, b) =>
+          b.scorePlan - a.scorePlan ||
+          b.capaciteRestantePlan - a.capaciteRestantePlan
+      );
+
+    let restantAReallouer = totalAReduire;
+    const renforcements = [];
+
+    candidatsInvestissement.forEach((destination) => {
+      if (restantAReallouer <= 0) return;
+      const montant = Math.min(
+        restantAReallouer,
+        destination.capaciteRestantePlan
+      );
+      if (montant <= 0) return;
+
+      renforcements.push({
+        classe: destination.name,
+        montant,
+        capacitePts: destination.capacitePts,
+        capaciteMontant: destination.capaciteMontant,
+        opportunite:
+          destination.catalogue[0] || null,
+        nombrePistes: destination.catalogue.length,
+        allocationActuelle: destination.value,
+        limite: destination.limite,
+      });
+      restantAReallouer -= montant;
+    });
+
+    const liquiditeCible = opportunitesParClasse.find(
+      (item) =>
+        item.name === 'Liquidité' &&
+        item.depassement <= 0 &&
+        item.capaciteMontant > 0
+    );
+
+    if (restantAReallouer > 0 && liquiditeCible) {
+      const montant = Math.min(
+        restantAReallouer,
+        liquiditeCible.capaciteMontant
+      );
+      if (montant > 0) {
+        renforcements.push({
+          classe: 'Liquidité',
+          montant,
+          capacitePts: liquiditeCible.capacitePts,
+          capaciteMontant: liquiditeCible.capaciteMontant,
+          opportunite:
+            liquiditeCible.catalogue[0] || null,
+          nombrePistes: liquiditeCible.catalogue.length,
+          allocationActuelle: liquiditeCible.value,
+          limite: liquiditeCible.limite,
+          attente: true,
+        });
+        restantAReallouer -= montant;
+      }
+    }
+
+    return {
+      reductions,
+      renforcements,
+      totalAReduire,
+      nonAffecte: Math.max(0, restantAReallouer),
+      complet:
+        totalAReduire <= 0 ||
+        Math.max(0, restantAReallouer) <=
+          Math.max(1, totalAReduire * 0.001),
+    };
+  })();
+
+  const recommandationControleParClasse = CLIENT_ASSET_CLASS_ORDER.reduce(
+    (acc, classe) => {
+      const reduction = planReequilibrage.reductions.find(
+        (item) => item.classe === classe
+      );
+      const renforcement = planReequilibrage.renforcements.find(
+        (item) => item.classe === classe
+      );
+      const part = allocationControle.find(
+        (item) => item.name === classe
+      );
+
+      if (reduction) {
+        acc[classe] = {
+          tone: 'coral',
+          titre: `Réduire d'environ ${fmt(
+            Math.round(reduction.montant)
+          )} ${devise}`,
+          detail: `Objectif : revenir de ${reduction.allocationActuelle.toFixed(
+            1
+          )}% à la limite de ${reduction.limite.toFixed(1)}%.`,
+          sens: 'Vente',
+        };
+      } else if (renforcement) {
+        acc[classe] = {
+          tone: renforcement.attente ? 'navy' : 'teal',
+          titre: renforcement.attente
+            ? `Solution d'attente : +${fmt(
+                Math.round(renforcement.montant)
+              )} ${devise}`
+            : `Renforcement indicatif : +${fmt(
+                Math.round(renforcement.montant)
+              )} ${devise}`,
+          detail: renforcement.opportunite
+            ? `Piste à examiner : ${renforcement.opportunite.titre}.`
+            : `La classe dispose encore de ${renforcement.capacitePts.toFixed(
+                1
+              )} pt(s) de capacité.`,
+          sens: 'Achat',
+        };
+      } else if (part?.statut === 'Proche de la limite') {
+        acc[classe] = {
+          tone: 'gold',
+          titre: 'Suspendre les nouveaux renforcements importants',
+          detail:
+            'La marge restante est faible ; privilégier les classes disposant d’une capacité plus importante.',
+          sens: null,
+        };
+      } else {
+        acc[classe] = {
+          tone: 'teal',
+          titre: 'Aucune correction nécessaire',
+          detail:
+            part && part.marge > 0
+              ? `${part.marge.toFixed(
+                  1
+                )} pt(s) restent disponibles sous la limite personnelle.`
+              : 'Allocation alignée avec la limite définie.',
+          sens: null,
+        };
+      }
+      return acc;
+    },
+    {}
+  );
+
   const portefeuillesParLiquidite = [...portefeuilles].sort(
     (a, b) =>
       clientAvailableCashIn(b, orders, devise) -
@@ -36637,7 +36819,11 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     return avecClasse || portefeuillesParLiquidite[0] || null;
   };
 
-  const simulerClasseOpportunite = (classe, opportuniteId = null) => {
+  const simulerClasseOpportunite = (
+    classe,
+    opportuniteId = null,
+    sens = 'Achat'
+  ) => {
     const portefeuilleCible =
       portefeuilleSimulationOpportunite(classe);
     goClient('client-investment-simulation', {
@@ -36645,6 +36831,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       classeActif: classe,
       opportuniteId,
       portefeuilleId: portefeuilleCible?.id || null,
+      sens,
     });
   };
 
@@ -36987,8 +37174,330 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         </div>
 
         {limitesFrameOuvert && (
-          <div className="overflow-x-auto">
-          <table className="w-full" style={{ minWidth: 1040 }}>
+          <div>
+            <div
+              className="p-4"
+              style={{
+                borderTop: `1px solid ${C.line}`,
+                background:
+                  planReequilibrage.reductions.length > 0
+                    ? '#FFF9F2'
+                    : '#F1FAF6',
+              }}
+            >
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div
+                    className="text-xs font-bold"
+                    style={{ color: C.ink }}
+                  >
+                    Plan de normalisation proposé
+                  </div>
+                  <div
+                    className="text-[10px] mt-1 max-w-4xl"
+                    style={{ color: C.sub }}
+                  >
+                    {planReequilibrage.reductions.length > 0
+                      ? `Le moteur identifie les montants à réduire dans les classes en dépassement puis propose une réallocation vers les classes encore sous leurs limites et disposant d'opportunités à examiner.`
+                      : `Toutes les classes respectent actuellement vos limites. Aucune opération corrective n'est nécessaire.`}
+                  </div>
+                </div>
+
+                {planReequilibrage.reductions.length > 0 ? (
+                  <Badge tone={planReequilibrage.complet ? 'teal' : 'gold'}>
+                    {planReequilibrage.complet
+                      ? 'Normalisation entièrement couverte'
+                      : 'Réallocation partielle'}
+                  </Badge>
+                ) : (
+                  <Badge tone="teal">Allocation conforme</Badge>
+                )}
+              </div>
+
+              {planReequilibrage.reductions.length > 0 && (
+                <>
+                  <div className="grid grid-cols-3 gap-3 mt-4">
+                    <div
+                      className="p-3 rounded-xl border"
+                      style={{
+                        borderColor: '#F1C5BF',
+                        background: '#FFF',
+                      }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.sub }}
+                      >
+                        À réduire
+                      </div>
+                      <div
+                        className="text-sm font-bold mt-1"
+                        style={{ ...F_MONO, color: C.coral }}
+                      >
+                        {fmt(
+                          Math.round(planReequilibrage.totalAReduire)
+                        )}{' '}
+                        {devise}
+                      </div>
+                      <div
+                        className="text-[9px] mt-1"
+                        style={{ color: C.sub }}
+                      >
+                        Pour ramener les classes en dépassement à leurs
+                        plafonds personnels.
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-3 rounded-xl border"
+                      style={{
+                        borderColor: '#BFE6D9',
+                        background: '#FFF',
+                      }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.sub }}
+                      >
+                        Réallocation proposée
+                      </div>
+                      <div
+                        className="text-sm font-bold mt-1"
+                        style={{ ...F_MONO, color: C.teal }}
+                      >
+                        {fmt(
+                          Math.round(
+                            planReequilibrage.renforcements.reduce(
+                              (sum, item) =>
+                                sum + Number(item.montant || 0),
+                              0
+                            )
+                          )
+                        )}{' '}
+                        {devise}
+                      </div>
+                      <div
+                        className="text-[9px] mt-1"
+                        style={{ color: C.sub }}
+                      >
+                        Vers les classes sous leurs limites disposant
+                        de pistes d&apos;opportunités.
+                      </div>
+                    </div>
+
+                    <div
+                      className="p-3 rounded-xl border"
+                      style={{
+                        borderColor: C.line,
+                        background: '#FFF',
+                      }}
+                    >
+                      <div
+                        className="text-[9px] uppercase font-semibold"
+                        style={{ color: C.sub }}
+                      >
+                        Reste non affecté
+                      </div>
+                      <div
+                        className="text-sm font-bold mt-1"
+                        style={{
+                          ...F_MONO,
+                          color:
+                            planReequilibrage.nonAffecte > 0
+                              ? C.gold
+                              : C.navy,
+                        }}
+                      >
+                        {fmt(
+                          Math.round(planReequilibrage.nonAffecte)
+                        )}{' '}
+                        {devise}
+                      </div>
+                      <div
+                        className="text-[9px] mt-1"
+                        style={{ color: C.sub }}
+                      >
+                        {planReequilibrage.nonAffecte > 0
+                          ? 'À conserver temporairement ou à traiter après revue des limites.'
+                          : 'Le plan indicatif peut absorber tout le dépassement.'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div
+                      className="rounded-xl border overflow-hidden"
+                      style={{ borderColor: C.line, background: '#FFF' }}
+                    >
+                      <div
+                        className="px-3 py-2 text-[10px] font-bold"
+                        style={{
+                          background: '#FFF4F2',
+                          color: C.coral,
+                        }}
+                      >
+                        1. Réductions recommandées
+                      </div>
+                      <div>
+                        {planReequilibrage.reductions.map(
+                          (item, index) => (
+                            <div
+                              key={item.classe}
+                              className="p-3 flex items-center justify-between gap-3"
+                              style={{
+                                borderTop:
+                                  index === 0
+                                    ? 'none'
+                                    : `1px solid ${C.line}`,
+                              }}
+                            >
+                              <div>
+                                <div
+                                  className="text-xs font-semibold"
+                                  style={{ color: C.ink }}
+                                >
+                                  {item.classe}
+                                </div>
+                                <div
+                                  className="text-[9px] mt-0.5"
+                                  style={{ color: C.sub }}
+                                >
+                                  {item.allocationActuelle.toFixed(1)}%
+                                  {' → '}
+                                  {item.limite.toFixed(1)}% · réduire
+                                  d&apos;environ{' '}
+                                  <b style={{ color: C.coral }}>
+                                    {fmt(Math.round(item.montant))}{' '}
+                                    {devise}
+                                  </b>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  simulerClasseOpportunite(
+                                    item.classe,
+                                    null,
+                                    'Vente'
+                                  )
+                                }
+                                className="text-[10px] font-semibold whitespace-nowrap"
+                                style={{ color: C.coral }}
+                              >
+                                Simuler la réduction →
+                              </button>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    <div
+                      className="rounded-xl border overflow-hidden"
+                      style={{ borderColor: C.line, background: '#FFF' }}
+                    >
+                      <div
+                        className="px-3 py-2 text-[10px] font-bold"
+                        style={{
+                          background: '#EEFAF6',
+                          color: C.teal,
+                        }}
+                      >
+                        2. Réallocations selon les opportunités
+                      </div>
+                      <div>
+                        {planReequilibrage.renforcements.map(
+                          (item, index) => (
+                            <div
+                              key={`${item.classe}-${index}`}
+                              className="p-3 flex items-center justify-between gap-3"
+                              style={{
+                                borderTop:
+                                  index === 0
+                                    ? 'none'
+                                    : `1px solid ${C.line}`,
+                              }}
+                            >
+                              <div className="min-w-0">
+                                <div
+                                  className="text-xs font-semibold"
+                                  style={{ color: C.ink }}
+                                >
+                                  {item.attente
+                                    ? `${item.classe} · solution d'attente`
+                                    : item.classe}
+                                </div>
+                                <div
+                                  className="text-[9px] mt-0.5"
+                                  style={{ color: C.sub }}
+                                >
+                                  Réallouer environ{' '}
+                                  <b style={{ color: C.teal }}>
+                                    {fmt(Math.round(item.montant))}{' '}
+                                    {devise}
+                                  </b>
+                                  {item.opportunite
+                                    ? ` · piste : ${item.opportunite.titre}`
+                                    : ''}
+                                </div>
+                              </div>
+                              {!item.attente && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    simulerClasseOpportunite(
+                                      item.classe,
+                                      item.opportunite?.id || null,
+                                      'Achat'
+                                    )
+                                  }
+                                  className="text-[10px] font-semibold whitespace-nowrap"
+                                  style={{ color: C.teal }}
+                                >
+                                  Simuler le renforcement →
+                                </button>
+                              )}
+                            </div>
+                          )
+                        )}
+
+                        {planReequilibrage.renforcements.length === 0 && (
+                          <div
+                            className="p-3 text-[10px]"
+                            style={{ color: C.sub }}
+                          >
+                            Aucune classe ne dispose actuellement d&apos;une
+                            capacité suffisante. Conserver le produit des
+                            réductions en attente ou revoir les limites.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mt-3 p-3 rounded-xl text-[9px]"
+                    style={{
+                      background: '#FAFAFC',
+                      color: C.sub,
+                    }}
+                  >
+                    <b style={{ color: C.ink }}>
+                      Méthode :
+                    </b>{' '}
+                    les destinations sont classées selon leur capacité
+                    restante sous la limite et le nombre de familles
+                    d&apos;opportunités disponibles dans la maquette.
+                    Ce plan est une aide au rééquilibrage : il doit être
+                    confirmé par l&apos;analyse des risques, de la
+                    liquidité, des frais et des instruments réels.
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full" style={{ minWidth: 1040 }}>
             <thead style={{ background: '#FAFAFC' }}>
               <tr>
                 <Th>Type d&apos;instrument</Th>
@@ -37035,15 +37544,65 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                     </Badge>
                   </Td>
                   <Td>
-                    <span className="text-[10px]" style={{ color: C.sub }}>
-                      {part.commentaire}
-                    </span>
+                    <div className="max-w-[360px]">
+                      <div
+                        className="text-[10px]"
+                        style={{ color: C.sub }}
+                      >
+                        {part.commentaire}
+                      </div>
+                      {recommandationControleParClasse[part.name] && (
+                        <div
+                          className="mt-1.5 pt-1.5"
+                          style={{
+                            borderTop: `1px dashed ${C.line}`,
+                          }}
+                        >
+                          <div
+                            className="text-[9px] font-bold"
+                            style={{
+                              color:
+                                recommandationControleParClasse[
+                                  part.name
+                                ].tone === 'coral'
+                                  ? C.coral
+                                  : recommandationControleParClasse[
+                                      part.name
+                                    ].tone === 'gold'
+                                  ? C.gold
+                                  : recommandationControleParClasse[
+                                      part.name
+                                    ].tone === 'navy'
+                                  ? C.navy
+                                  : C.teal,
+                            }}
+                          >
+                            {
+                              recommandationControleParClasse[
+                                part.name
+                              ].titre
+                            }
+                          </div>
+                          <div
+                            className="text-[9px] mt-0.5"
+                            style={{ color: C.sub }}
+                          >
+                            {
+                              recommandationControleParClasse[
+                                part.name
+                              ].detail
+                            }
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </Td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+              </table>
+            </div>
+          </div>
         )}
       </Card>
 
