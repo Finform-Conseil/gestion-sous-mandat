@@ -36321,6 +36321,296 @@ function Comite({
     (s, c) => s + comiteConvertirMontant(c.montant, c.devise, devise), 0
   );
 
+  /* ------------------------------------------------------------------------
+   * RÉSULTAT DES RÉCENTES DÉCISIONS D'INVESTISSEMENT
+   *
+   * Le bloc privilégie le snapshot détaillé du comité précédent lorsqu'il
+   * existe. Les anciennes archives ne conservant qu'un texte, on se replie
+   * sur la dernière décision structurée disponible dans le module « Prise de
+   * décisions ». Les montants et performances restent indicatifs dans cette
+   * maquette : en production, ils devront être rapprochés des ordres exécutés,
+   * allocations finales, affectations par gérant et justificatifs enregistrés.
+   * ---------------------------------------------------------------------- */
+  const decisionsDernierComite = (() => {
+    const archivees = Array.isArray(precedentArchive?.decisionsDetaillees)
+      ? precedentArchive.decisionsDetaillees.filter(
+          (decision) => decision && Array.isArray(decision.allocations)
+        )
+      : [];
+    if (archivees.length) return archivees;
+
+    const borne = precedentArchive?.date || config.dateComite;
+    return [...decisions]
+      .filter((decision) => {
+        const dateDecision = String(decision?.creeLe || '').slice(0, 10);
+        return !borne || !dateDecision || dateDecision <= borne;
+      })
+      .sort((a, b) =>
+        String(b?.creeLe || '').localeCompare(String(a?.creeLe || ''))
+      )
+      .slice(0, 1);
+  })();
+
+  const dateDernierComite =
+    precedentArchive?.date ||
+    String(decisionsDernierComite[0]?.creeLe || '').slice(0, 10) ||
+    (() => {
+      const date = parseIsoLocalDate(config.dateComite || formatIsoLocalDate(new Date()));
+      date.setMonth(date.getMonth() - 3);
+      return formatIsoLocalDate(date);
+    })();
+
+  const allocationsDernierComite = decisionsDernierComite.flatMap((decision) =>
+    (decision.allocations || []).map((allocation, index) => ({
+      decision,
+      allocation,
+      cleSuivi: `${decision.id}-${allocation.id || index}`,
+    }))
+  );
+
+  const comiteCapitalPourAllocation = (allocation) => {
+    const nomsEligibles = Array.isArray(allocation?.portefeuillesEligibles)
+      ? allocation.portefeuillesEligibles.filter(Boolean)
+      : [];
+    const portefeuilles =
+      nomsEligibles.length > 0
+        ? clientsGeres.filter((client) => nomsEligibles.includes(client.nom))
+        : portefeuillesEligiblesDecision(allocation);
+
+    const pourcentageOperation = Math.max(
+      0,
+      Math.min(100, Number(allocation?.pourcentageOperation || 0))
+    );
+
+    return portefeuilles.map((client) => {
+      const encoursRef = comiteConvertirMontant(
+        client.encours,
+        client.devise,
+        devise
+      );
+      const achat = allocation?.sens !== 'Vente';
+      const expositionPct = Math.max(
+        0,
+        Number(exposureOf(client.id, allocation?.instrument) || 0)
+      );
+      const liquiditePct = Math.max(0, Number(client.alloc?.Liquidité || 0));
+      const baseOperation = achat
+        ? (encoursRef * liquiditePct) / 100
+        : (encoursRef * expositionPct) / 100;
+      const montant = (baseOperation * pourcentageOperation) / 100;
+
+      return {
+        client,
+        montant,
+        encoursRef,
+        expositionPct,
+        liquiditePct,
+      };
+    });
+  };
+
+  const comiteVariationDecision = (allocation) => {
+    const marcheHint =
+      allocation?.marche && allocation.marche !== 'Tous'
+        ? allocation.marche
+        : undefined;
+    const instrument = resolveMarketInstrument(
+      allocation?.instrument,
+      marcheHint
+    );
+
+    if (!instrument) {
+      return {
+        variationActif: 0,
+        prixReference: 0,
+        prixActuel: 0,
+        instrument: null,
+      };
+    }
+
+    const historique = buildTechnicalSeries(instrument, 520);
+    const pointReference =
+      historique.find((point) => point.date >= dateDernierComite) ||
+      historique[0];
+    const pointActuel = historique[historique.length - 1];
+
+    const prixReference = Number(
+      pointReference?.close || instrument?.cours || 0
+    );
+    const prixActuel = Number(pointActuel?.close || instrument?.cours || 0);
+    const variationActif =
+      prixReference > 0 ? ((prixActuel / prixReference) - 1) * 100 : 0;
+
+    return {
+      variationActif,
+      prixReference,
+      prixActuel,
+      instrument,
+    };
+  };
+
+  const resultatsDernieresDecisions = allocationsDernierComite.map(
+    ({ decision, allocation, cleSuivi }) => {
+      const variation = comiteVariationDecision(allocation);
+      const mandats = comiteCapitalPourAllocation(allocation);
+      const capital = mandats.reduce(
+        (somme, ligne) => somme + Number(ligne.montant || 0),
+        0
+      );
+      const performanceDecision =
+        allocation?.sens === 'Vente'
+          ? -variation.variationActif
+          : variation.variationActif;
+      const resultat = capital * performanceDecision / 100;
+
+      let commentaire = 'Évolution contenue depuis la dernière séance.';
+      if (Math.abs(variation.variationActif) >= 0.25) {
+        if (allocation?.sens === 'Vente') {
+          commentaire =
+            variation.variationActif <= 0
+              ? `Cession favorable : l'actif a reculé de ${Math.abs(
+                  variation.variationActif
+                ).toFixed(2)} % depuis la séance.`
+              : `Cession à contre-tendance : l'actif a progressé de ${Math.abs(
+                  variation.variationActif
+                ).toFixed(2)} % depuis la séance.`;
+        } else {
+          commentaire =
+            variation.variationActif >= 0
+              ? `Achat favorable : l'actif progresse de ${Math.abs(
+                  variation.variationActif
+                ).toFixed(2)} % depuis la séance.`
+              : `Achat en repli : l'actif baisse de ${Math.abs(
+                  variation.variationActif
+                ).toFixed(2)} % depuis la séance.`;
+        }
+      }
+
+      return {
+        decision,
+        allocation,
+        cleSuivi,
+        ...variation,
+        mandats,
+        capital,
+        performanceDecision,
+        resultat,
+        commentaire,
+      };
+    }
+  );
+
+  const capitalInvestiDernierComite = resultatsDernieresDecisions
+    .filter((ligne) => ligne.allocation?.sens !== 'Vente')
+    .reduce((somme, ligne) => somme + ligne.capital, 0);
+  const capitalCedeDernierComite = resultatsDernieresDecisions
+    .filter((ligne) => ligne.allocation?.sens === 'Vente')
+    .reduce((somme, ligne) => somme + ligne.capital, 0);
+  const capitalTotalSuiviDernierComite =
+    capitalInvestiDernierComite + capitalCedeDernierComite;
+  const resultatGeneralDernierComite = resultatsDernieresDecisions.reduce(
+    (somme, ligne) => somme + ligne.resultat,
+    0
+  );
+  const performanceGeneraleDernierComite =
+    capitalTotalSuiviDernierComite > 0
+      ? (resultatGeneralDernierComite / capitalTotalSuiviDernierComite) * 100
+      : 0;
+
+  const ecartsGestionDernierComite = resultatsDernieresDecisions.flatMap(
+    (ligne) => {
+      const allocation = ligne.allocation;
+      const classeAllocation =
+        allocation?.typeInstrument === 'Actions'
+          ? 'Actions'
+          : allocation?.typeInstrument || '';
+      const demandesParNom = new Set(
+        demandesActives.map((demande) => String(demande.client || ''))
+      );
+
+      return ligne.mandats.flatMap((mandat) => {
+        const client = mandat.client;
+        const cibleClasse = Number(client.cible?.[classeAllocation] || 0);
+        const actuelClasse = Number(client.alloc?.[classeAllocation] || 0);
+        let motif = '';
+
+        if (demandesParNom.has(String(client.nom))) {
+          motif = 'Retrait client / priorité de liquidité';
+        } else if (
+          allocation?.sens !== 'Vente' &&
+          Number(mandat.liquiditePct || 0) < 7
+        ) {
+          motif = 'Liquidité disponible insuffisante';
+        } else if (
+          allocation?.sens !== 'Vente' &&
+          classeAllocation &&
+          actuelClasse >= cibleClasse + 5
+        ) {
+          motif = 'Limite d’allocation / profil de mandat';
+        } else if (
+          allocation?.sens === 'Vente' &&
+          Number(mandat.expositionPct || 0) <= 0.5
+        ) {
+          motif = 'Exposition insuffisante / titre non disponible';
+        } else if (
+          allocation?.sens !== 'Vente' &&
+          Number(allocation?.prixMax || 0) > 0 &&
+          Number(ligne.prixActuel || 0) > Number(allocation.prixMax)
+        ) {
+          motif = 'Cours au-dessus de la fourchette validée';
+        }
+
+        return motif
+          ? [
+              {
+                motif,
+                client: client.nom,
+                montant: mandat.montant,
+              },
+            ]
+          : [];
+      });
+    }
+  );
+
+  const motifsEcartsGestion = Object.values(
+    ecartsGestionDernierComite.reduce((acc, ecart) => {
+      if (!acc[ecart.motif]) {
+        acc[ecart.motif] = {
+          motif: ecart.motif,
+          occurrences: 0,
+          montant: 0,
+          mandats: new Set(),
+        };
+      }
+      acc[ecart.motif].occurrences += 1;
+      acc[ecart.motif].montant += Number(ecart.montant || 0);
+      acc[ecart.motif].mandats.add(ecart.client);
+      return acc;
+    }, {})
+  )
+    .map((item) => ({
+      ...item,
+      mandats: item.mandats.size,
+    }))
+    .sort((a, b) => b.montant - a.montant);
+
+  const nombreMandatsSuivis = new Set(
+    resultatsDernieresDecisions.flatMap((ligne) =>
+      ligne.mandats.map((mandat) => mandat.client.id)
+    )
+  ).size;
+  const nombreMandatsAvecEcart = new Set(
+    ecartsGestionDernierComite.map((ecart) => ecart.client)
+  ).size;
+  const tauxAlignementDernierComite =
+    nombreMandatsSuivis > 0
+      ? Math.max(
+          0,
+          100 - (nombreMandatsAvecEcart / nombreMandatsSuivis) * 100
+        )
+      : 0;
+
   const majSuivi = (id, champ, value) => {
     setSuivi((courant) => {
       const prochain = {
@@ -36470,8 +36760,27 @@ function Comite({
     // à la séance suivante de retrouver ses grandes décisions à discuter.
     const grandesDecisions = agendaPlanifie.filter((p) => p.nature === 'decision' && votesParPoint(p).resultat === 'Adopté')
       .map((p) => `${p.titre}${p.compteRendu ? ` : ${p.compteRendu}` : ''}`);
+    const decisionsDetailleesArchivees = decisionsPourRapport.map((decision) => ({
+      ...decision,
+      allocations: (decision.allocations || []).map((allocation) => ({
+        ...allocation,
+        portefeuillesEligibles: [
+          ...(allocation.portefeuillesEligibles || []),
+        ],
+      })),
+    }));
+    const suiviDecisionsArchive = Object.fromEntries(
+      allocationsPourRapport.map(({ cleSuivi }) => [
+        cleSuivi,
+        { ...(suivi[cleSuivi] || {}) },
+      ])
+    );
     const prochain = [...archivesComite.filter((a) => a.date !== config.dateComite), {
-      date: config.dateComite, genereLe: new Date().toISOString(), decisions: grandesDecisions,
+      date: config.dateComite,
+      genereLe: new Date().toISOString(),
+      decisions: grandesDecisions,
+      decisionsDetaillees: decisionsDetailleesArchivees,
+      suiviDecisions: suiviDecisionsArchive,
     }].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 24);
     setArchivesComite(prochain);
     try { window.localStorage.setItem(COMITE_ARCHIVES_STORAGE_KEY, JSON.stringify(prochain)); }
@@ -37478,7 +37787,8 @@ function Comite({
 
       {onglet === 'synthese' && (
         <div className="space-y-4 gsm-comite-interactive">
-          <Card className="p-5" style={{ borderColor: '#C9D5EA' }}>
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
+            <Card className="p-4 xl:col-span-2" style={{ borderColor: '#C9D5EA' }}>
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <Eyebrow>Évolution des indices de marché</Eyebrow>
@@ -37494,7 +37804,7 @@ function Comite({
               <Badge tone="gold">Historique simulé · maquette</Badge>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4">
               <label className="space-y-1">
                 <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
                   Bourse
@@ -37574,7 +37884,7 @@ function Comite({
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
                   {[
                     {
                       label: `Valeur au ${marcheHistoriquePremier?.label || '—'}`,
@@ -37633,7 +37943,7 @@ function Comite({
                   ))}
                 </div>
 
-                <div className="mt-4" style={{ width: '100%', height: 310 }}>
+                <div className="mt-4" style={{ width: '100%', height: 245 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
                       data={marcheHistoriqueSerie}
@@ -37693,7 +38003,248 @@ function Comite({
                 </div>
               </>
             )}
-          </Card>
+            </Card>
+
+            <Card
+              className="p-4 h-full overflow-hidden"
+              style={{ borderColor: '#C9D5EA', background: '#FCFDFE' }}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Eyebrow>Suivi du comité précédent</Eyebrow>
+                  <h3 className="text-base font-bold" style={{ color: C.ink }}>
+                    Résultat des récentes décisions d'investissement
+                  </h3>
+                  <p className="text-[10px] mt-1 leading-relaxed" style={{ color: C.sub }}>
+                    Lecture depuis le comité du {comiteMarketDateLabel(dateDernierComite)}.
+                    Les résultats sont estimés à partir des décisions structurées et de la
+                    valorisation simulée des actifs.
+                  </p>
+                </div>
+                <Badge tone={resultatsDernieresDecisions.length ? 'navy' : 'slate'}>
+                  {resultatsDernieresDecisions.length} décision(s)
+                </Badge>
+              </div>
+
+              {resultatsDernieresDecisions.length === 0 ? (
+                <div
+                  className="mt-4 rounded-xl border p-4 text-xs"
+                  style={{ borderColor: C.line, background: '#fff', color: C.sub }}
+                >
+                  Aucune décision structurée du comité précédent n'est encore disponible.
+                  Enregistrez les décisions dans « Prise de décisions » puis archivez le PV :
+                  les prochains comités conserveront automatiquement leur détail.
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 mt-4">
+                    {[
+                      {
+                        label: 'Capital investi',
+                        value: `${fmtCompactMontant(capitalInvestiDernierComite)} ${devise}`,
+                        detail: 'achats décidés',
+                        tone: 'navy',
+                      },
+                      {
+                        label: 'Capital cédé / réalloué',
+                        value: `${fmtCompactMontant(capitalCedeDernierComite)} ${devise}`,
+                        detail: 'cessions suivies',
+                        tone: 'slate',
+                      },
+                      {
+                        label: 'Résultat général',
+                        value: `${resultatGeneralDernierComite >= 0 ? '+' : '-'}${fmtCompactMontant(
+                          Math.abs(resultatGeneralDernierComite)
+                        )} ${devise}`,
+                        detail: `${performanceGeneraleDernierComite >= 0 ? '+' : ''}${performanceGeneraleDernierComite.toFixed(2)} %`,
+                        tone: resultatGeneralDernierComite >= 0 ? 'teal' : 'coral',
+                      },
+                      {
+                        label: 'Alignement aux décisions',
+                        value: `${tauxAlignementDernierComite.toFixed(0)} %`,
+                        detail: `${nombreMandatsAvecEcart} mandat(s) avec écart`,
+                        tone: tauxAlignementDernierComite >= 80 ? 'teal' : 'gold',
+                      },
+                    ].map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="rounded-xl border p-2.5"
+                        style={{ borderColor: C.line, background: '#fff' }}
+                      >
+                        <div
+                          className="text-[8px] uppercase font-semibold"
+                          style={{ color: C.sub }}
+                        >
+                          {stat.label}
+                        </div>
+                        <div
+                          className="text-xs font-bold mt-1"
+                          style={{
+                            ...F_MONO,
+                            color:
+                              stat.tone === 'teal'
+                                ? C.teal
+                                : stat.tone === 'coral'
+                                ? C.coral
+                                : stat.tone === 'gold'
+                                ? C.gold
+                                : C.ink,
+                          }}
+                        >
+                          {stat.value}
+                        </div>
+                        <div className="text-[8px] mt-1" style={{ color: C.sub }}>
+                          {stat.detail}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div
+                    className="mt-3 pt-3"
+                    style={{ borderTop: `1px solid ${C.line}` }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] font-bold" style={{ color: C.ink }}>
+                        Évolution des décisions sur les actifs
+                      </div>
+                      <span className="text-[9px]" style={{ color: C.sub }}>
+                        {nombreMandatsSuivis} mandat(s)
+                      </span>
+                    </div>
+
+                    <div className="mt-2 space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {resultatsDernieresDecisions.map((ligne) => (
+                        <div
+                          key={ligne.cleSuivi}
+                          className="rounded-xl border p-2.5"
+                          style={{ borderColor: C.line, background: '#fff' }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div
+                                className="text-[10px] font-bold truncate"
+                                style={{ color: C.ink }}
+                              >
+                                {ligne.allocation?.sens} · {ligne.allocation?.instrument}
+                              </div>
+                              <div className="text-[8px] mt-0.5" style={{ color: C.sub }}>
+                                {ligne.decision?.id} · {ligne.mandats.length} portefeuille(s)
+                              </div>
+                            </div>
+                            <Badge
+                              tone={
+                                ligne.variationActif > 0.15
+                                  ? 'teal'
+                                  : ligne.variationActif < -0.15
+                                  ? 'coral'
+                                  : 'slate'
+                              }
+                            >
+                              Actif {ligne.variationActif >= 0 ? '+' : ''}
+                              {ligne.variationActif.toFixed(2)} %
+                            </Badge>
+                          </div>
+
+                          <div className="text-[9px] mt-2 leading-relaxed" style={{ color: C.sub }}>
+                            {ligne.commentaire}
+                          </div>
+
+                          <div
+                            className="mt-2 pt-2 flex items-center justify-between gap-2 text-[8px]"
+                            style={{ borderTop: `1px solid ${C.line}`, color: C.sub }}
+                          >
+                            <span>
+                              Capital suivi :{' '}
+                              <b style={{ color: C.ink }}>
+                                {fmtCompactMontant(ligne.capital)} {devise}
+                              </b>
+                            </span>
+                            <span
+                              style={{
+                                ...F_MONO,
+                                color:
+                                  ligne.performanceDecision >= 0 ? C.teal : C.coral,
+                              }}
+                            >
+                              Effet décision {ligne.performanceDecision >= 0 ? '+' : ''}
+                              {ligne.performanceDecision.toFixed(2)} %
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div
+                    className="mt-3 pt-3"
+                    style={{ borderTop: `1px solid ${C.line}` }}
+                  >
+                    <div className="text-[10px] font-bold" style={{ color: C.ink }}>
+                      Pourquoi certains gérants ont investi autrement ?
+                    </div>
+                    <p className="text-[8px] mt-1" style={{ color: C.sub }}>
+                      Synthèse des contraintes détectées sur les mandats depuis le dernier comité.
+                    </p>
+
+                    <div className="mt-2 space-y-1.5">
+                      {motifsEcartsGestion.length ? (
+                        motifsEcartsGestion.slice(0, 4).map((motif) => (
+                          <div
+                            key={motif.motif}
+                            className="flex items-start justify-between gap-3 rounded-lg px-2.5 py-2"
+                            style={{ background: '#F7F8FA' }}
+                          >
+                            <div className="min-w-0">
+                              <div className="text-[9px] font-semibold" style={{ color: C.ink }}>
+                                {motif.motif}
+                              </div>
+                              <div className="text-[8px] mt-0.5" style={{ color: C.sub }}>
+                                {motif.mandats} mandat(s) · {motif.occurrences} adaptation(s)
+                              </div>
+                            </div>
+                            <div
+                              className="text-[9px] font-semibold shrink-0"
+                              style={{ ...F_MONO, color: C.coral }}
+                            >
+                              {fmtCompactMontant(motif.montant)} {devise}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div
+                          className="rounded-lg px-2.5 py-2 text-[9px]"
+                          style={{ background: '#EEF8F4', color: C.teal }}
+                        >
+                          Aucun écart matériel détecté à partir des contraintes actuellement
+                          renseignées dans la maquette.
+                        </div>
+                      )}
+                    </div>
+
+                    {!!seance.sujetPrecedent && (
+                      <div
+                        className="mt-2 rounded-lg border p-2.5 text-[9px] leading-relaxed"
+                        style={{ borderColor: C.gold, background: '#FFF9ED', color: C.sub }}
+                      >
+                        <b style={{ color: C.ink }}>Commentaire de suivi saisi :</b>{' '}
+                        {seance.sujetPrecedent}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="mt-3 text-[8px] leading-relaxed"
+                    style={{ color: C.sub }}
+                  >
+                    Simulation analytique : le capital, le résultat et les motifs doivent être
+                    remplacés en production par les exécutions réelles, l'affectation par gérant
+                    et les justifications enregistrées dans le workflow de la SGI.
+                  </div>
+                </>
+              )}
+            </Card>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="p-5">
