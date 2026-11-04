@@ -36284,7 +36284,6 @@ function Comite({
     ['allocation', 'Allocation des fonds'],
     ['synthese', 'Synthèse & marchés'],
     ['liquidite', 'Liquidité & cessions'],
-    ['decisions', `Décisions (${decisions.length})`],
   ];
 
   return (
@@ -37408,92 +37407,6 @@ function Comite({
         </div>
       )}
 
-      {onglet === 'decisions' && (
-        <div className="space-y-4 gsm-comite-interactive">
-          <Card className="p-5">
-            <div className="flex justify-between items-start gap-4 flex-wrap">
-              <div>
-                <Eyebrow>Décisions de comité enregistrées</Eyebrow>
-                <p className="text-xs mt-1" style={{ color: C.sub }}>
-                  Reprise des allocations créées depuis « Prise de décisions » : achat / vente, pourcentage, critères et portefeuilles éligibles.
-                </p>
-              </div>
-              <Btn onClick={() => go('decisions-comite')}>Ajouter ou modifier les décisions</Btn>
-            </div>
-            <div className="flex items-end gap-3 flex-wrap mt-4">
-              <label className="flex-1 min-w-[220px] space-y-1">
-                <span className="text-xs font-semibold" style={{ color: C.sub }}>Sélectionner un comité enregistré</span>
-                <select
-                  value={decisionActive?.id || ''}
-                  onChange={(e) => setDecisionSelectionnee(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border text-sm"
-                  style={{ borderColor: C.line }}
-                >
-                  {!decisions.length && <option value="">Aucune décision enregistrée</option>}
-                  {decisions.map((d) => (
-                    <option key={d.id} value={d.id}>{d.id} · {d.libelleDate || ''} · {d.allocations?.length || 0} allocation(s)</option>
-                  ))}
-                </select>
-              </label>
-              <Badge tone="gold">{lignesDecision.length} allocation(s)</Badge>
-              <Badge tone="navy">{decisionActive?.nombrePortefeuilles || 0} portefeuille(s)</Badge>
-              {decisionActive && (
-                <label className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer" style={{ color: C.ink }}>
-                  <input type="checkbox" className="w-4 h-4 accent-indigo-700"
-                    checked={idsDecisionsRapport.includes(String(decisionActive.id))}
-                    onChange={(e) => modifierDecisionsRapport(decisionActive.id, e.target.checked)} />
-                  Inclure dans ce rapport
-                </label>
-              )}
-            </div>
-            {!decisions.length && (
-              <div className="p-5 mt-3 rounded-xl" style={{ background: '#FBF7EE', color: C.sub }}>
-                Aucune décision n'a encore été enregistrée. Ouvrez « Prise de décisions », ajoutez des allocations puis cliquez sur « Enregistrer Décisions » : elles apparaîtront ici.
-              </div>
-            )}
-          </Card>
-          {!!lignesDecision.length && (
-            <Card className="p-5">
-              <Eyebrow>Tableau des allocations & suivi opérationnel</Eyebrow>
-              <div className="overflow-x-auto mt-3">
-                <table className="w-full" style={{ minWidth: 1500 }}>
-                  <thead><tr>
-                    {['Sens & classe', 'Instrument', 'Marché', '% de cession / liquidité', 'Critère d’exposition', 'Type d’ordre', 'Prix min / max / objectif', 'Portefeuilles concernés', 'Statut du suivi', 'Responsable', 'Échéance', 'Commentaire'].map((s) => <Th key={s}>{s}</Th>)}
-                  </tr></thead>
-                  <tbody>
-                    {lignesDecision.map((a, i) => {
-                      const id = `${decisionActive.id}-${a.id || i}`;
-                      const suiviLigne = suivi[id] || {};
-                      return (
-                        <tr key={id} style={{ borderTop: `1px solid ${C.line}`, verticalAlign: 'top' }}>
-                          <Td><Badge tone={a.sens === 'Vente' ? 'coral' : 'teal'}>{a.sens}</Badge><div className="text-xs mt-1">{a.typeInstrument}</div></Td>
-                          <Td className="font-semibold">{a.instrument}</Td><Td>{a.marche}</Td>
-                          <Td mono>{a.pourcentageOperation}%<div className="text-[9px]">{a.sens === 'Vente' ? 'de cession' : 'de liquidité'}</div></Td>
-                          <Td>{a.operateur} {a.seuil}% · {a.typePortefeuille || 'Tous'}</Td>
-                          <Td>{a.typeOrdre}</Td>
-                          <Td mono>{a.prixMin ?? '—'} / {a.prixMax ?? '—'} / {a.prixObjectif ?? '—'}</Td>
-                          <Td><PortefeuillesConcernesDropdown portefeuilles={a.portefeuillesEligibles || []} /></Td>
-                          <Td>
-                            <select className="rounded-lg border p-2 text-xs min-w-[125px]" style={{ borderColor: C.line }} value={suiviLigne.statut || 'À instruire'} onChange={(e) => majSuivi(id, 'statut', e.target.value)}>
-                              {['À instruire', 'Validée', 'En cours', 'Exécutée', 'Suspendue', 'Rejetée'].map((v) => <option key={v}>{v}</option>)}
-                            </select>
-                          </Td>
-                          <Td><input className="rounded-lg border p-2 text-xs w-32" style={{ borderColor: C.line }} value={suiviLigne.responsable || ''} onChange={(e) => majSuivi(id, 'responsable', e.target.value)} placeholder="Responsable" /></Td>
-                          <Td><input type="date" className="rounded-lg border p-2 text-xs" style={{ borderColor: C.line }} value={suiviLigne.echeance || ''} onChange={(e) => majSuivi(id, 'echeance', e.target.value)} /></Td>
-                          <Td><textarea rows={2} className="rounded-lg border p-2 text-xs w-44" style={{ borderColor: C.line }} value={suiviLigne.commentaire || ''} onChange={(e) => majSuivi(id, 'commentaire', e.target.value)} placeholder="Suivi de l'action" /></Td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <p className="text-[10px] mt-3" style={{ color: C.sub }}>
-                Le statut « Exécutée » est une annotation de suivi du comité ; il ne crée pas d'ordre, de transaction ni d'écriture comptable. À rapprocher du carnet et des avis d'opérés.
-              </p>
-            </Card>
-          )}
-        </div>
-      )}
 
       <section id="gsm-comite-print-full" className="hidden space-y-6">
         <h2 className="text-xl font-bold">Projet de procès-verbal · Comité de gestion</h2>
