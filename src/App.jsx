@@ -35081,6 +35081,145 @@ const comiteConvertirMontant = (montant, deviseSource, deviseCible) => {
 const comitePourcentage = (montant, total) =>
   total > 0 ? (100 * montant) / total : 0;
 
+const COMITE_MARCHE_HISTORIQUE_MIN_DATE = '2024-01-02';
+
+/*
+ * SYNTHÈSE & ÉVOLUTION MARCHÉS — SÉRIES D'INDICES
+ *
+ * Ces séries sont déterministes et simulées afin d'alimenter la maquette tant
+ * que les historiques officiels des places ne sont pas branchés. Les niveaux
+ * de référence servent uniquement à conserver des ordres de grandeur cohérents
+ * avec les autres écrans du prototype ; ils ne doivent pas être présentés comme
+ * des historiques officiels.
+ */
+const COMITE_INDICES_PAR_BOURSE = {
+  BRVM: [
+    { code: 'BRVM-C', label: 'BRVM Composite', reference: 302.84, drift: 0.115, volatilite: 0.020 },
+    { code: 'BRVM-30', label: 'BRVM 30', reference: 149.6, drift: 0.090, volatilite: 0.018 },
+    { code: 'BRVM-IND', label: 'BRVM Industrie', reference: 126.4, drift: 0.075, volatilite: 0.023 },
+    { code: 'BRVM-SPU', label: 'BRVM Services Publics', reference: 711.8, drift: 0.105, volatilite: 0.019 },
+    { code: 'BRVM-FIN', label: 'BRVM Finances', reference: 104.7, drift: 0.082, volatilite: 0.017 },
+    { code: 'BRVM-TRP', label: 'BRVM Transport', reference: 421.3, drift: 0.065, volatilite: 0.028 },
+    { code: 'BRVM-AGR', label: 'BRVM Agriculture', reference: 206.5, drift: 0.095, volatilite: 0.026 },
+    { code: 'BRVM-DIS', label: 'BRVM Distribution', reference: 346.2, drift: 0.035, volatilite: 0.030 },
+    { code: 'BRVM-AUT', label: 'BRVM Autres Secteurs', reference: 1210.0, drift: 0.045, volatilite: 0.032 },
+  ],
+  NGX: [
+    { code: 'NGX-ASI', label: 'NGX All Share Index', reference: 126840.6, drift: 0.185, volatilite: 0.024 },
+    { code: 'NGX-BANK', label: 'NGX Banking Index', reference: 1180.0, drift: 0.150, volatilite: 0.032 },
+    { code: 'NGX-CONS', label: 'NGX Consumer Goods Index', reference: 2140.0, drift: 0.125, volatilite: 0.025 },
+    { code: 'NGX-IND', label: 'NGX Industrial Goods Index', reference: 3920.0, drift: 0.135, volatilite: 0.027 },
+    { code: 'NGX-INS', label: 'NGX Insurance Index', reference: 720.0, drift: 0.165, volatilite: 0.035 },
+    { code: 'NGX-OIL', label: 'NGX Oil & Gas Index', reference: 2840.0, drift: 0.155, volatilite: 0.031 },
+  ],
+  GSE: [
+    { code: 'GSE-CI', label: 'GSE Composite Index', reference: 6942.3, drift: 0.160, volatilite: 0.021 },
+    { code: 'GSE-FSI', label: 'GSE Financial Stocks Index', reference: 3385.0, drift: 0.120, volatilite: 0.020 },
+  ],
+};
+
+const comiteMarketSeed = (value) =>
+  String(value || '')
+    .split('')
+    .reduce(
+      (total, char, index) => total + char.charCodeAt(0) * (index + 5),
+      0
+    );
+
+const comiteMarketDate = (value) => {
+  const parsed = parseIsoLocalDate(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const comiteMarketDateLabel = (value) => {
+  const date = value instanceof Date ? value : comiteMarketDate(value);
+  if (!date) return '—';
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  }).format(date);
+};
+
+const comiteMarketIndexValueAt = (bourse, indice, date) => {
+  const referenceDate = parseIsoLocalDate('2026-11-04');
+  const currentDate = date instanceof Date ? date : comiteMarketDate(date);
+  if (!currentDate || !indice) return 0;
+
+  const seed = comiteMarketSeed(`${bourse}-${indice.code}`);
+  const joursReference =
+    (currentDate.getTime() - referenceDate.getTime()) / 86_400_000;
+  const anneesReference = joursReference / 365.25;
+  const jourAbsolu = Math.floor(currentDate.getTime() / 86_400_000);
+
+  const cycleLong =
+    Math.sin((jourAbsolu + (seed % 97)) * 0.032) * indice.volatilite;
+  const cycleCourt =
+    Math.cos((jourAbsolu + (seed % 43)) * 0.091) * indice.volatilite * 0.42;
+  const micro =
+    Math.sin((jourAbsolu * 1.87 + seed) * 0.17) * indice.volatilite * 0.16;
+
+  // Les cycles sont recentrés sur la date de référence pour conserver le niveau
+  // `reference` de l'indice à proximité de la situation courante de la maquette.
+  const jourRefAbsolu = Math.floor(referenceDate.getTime() / 86_400_000);
+  const cycleLongRef =
+    Math.sin((jourRefAbsolu + (seed % 97)) * 0.032) * indice.volatilite;
+  const cycleCourtRef =
+    Math.cos((jourRefAbsolu + (seed % 43)) * 0.091) * indice.volatilite * 0.42;
+  const microRef =
+    Math.sin((jourRefAbsolu * 1.87 + seed) * 0.17) * indice.volatilite * 0.16;
+
+  const facteur = Math.exp(
+    indice.drift * anneesReference +
+      (cycleLong - cycleLongRef) +
+      (cycleCourt - cycleCourtRef) +
+      (micro - microRef)
+  );
+
+  return Number(Math.max(0.01, indice.reference * facteur).toFixed(2));
+};
+
+const comiteBuildMarketIndexSeries = (bourse, indice, dateDebut, dateFin) => {
+  const debut = comiteMarketDate(dateDebut);
+  const fin = comiteMarketDate(dateFin);
+  if (!debut || !fin || debut > fin || !indice) return [];
+
+  const jours = Math.max(1, (fin.getTime() - debut.getTime()) / 86_400_000);
+  const pasJours = jours > 900 ? 7 : jours > 420 ? 5 : jours > 180 ? 3 : 1;
+  const rows = [];
+  const cursor = new Date(debut);
+  cursor.setHours(12, 0, 0, 0);
+
+  while (cursor <= fin) {
+    const jourSemaine = cursor.getDay();
+    if (jourSemaine !== 0 && jourSemaine !== 6) {
+      rows.push({
+        date: formatIsoLocalDate(cursor),
+        label: comiteMarketDateLabel(cursor),
+        valeur: comiteMarketIndexValueAt(bourse, indice, cursor),
+      });
+    }
+    cursor.setDate(cursor.getDate() + pasJours);
+  }
+
+  const lastDate = rows[rows.length - 1]?.date;
+  const finIso = formatIsoLocalDate(fin);
+  if (lastDate !== finIso && fin.getDay() !== 0 && fin.getDay() !== 6) {
+    rows.push({
+      date: finIso,
+      label: comiteMarketDateLabel(fin),
+      valeur: comiteMarketIndexValueAt(bourse, indice, fin),
+    });
+  }
+
+  return rows;
+};
+
+const comiteMarketVariation = (debut, fin) =>
+  Number(debut || 0) > 0
+    ? ((Number(fin || 0) / Number(debut || 0)) - 1) * 100
+    : 0;
+
 const comiteCsvCellule = (value) => {
   let str = String(value ?? '');
   // Neutralise les formules Excel provenant de champs saisis/libellés de clients.
@@ -35538,6 +35677,16 @@ function Comite({
   const [filtreSecteur, setFiltreSecteur] = useState('Tous');
   const [filtreClient, setFiltreClient] = useState('');
   const [onglet, setOnglet] = useState('seance');
+  const [marcheHistoriqueBourse, setMarcheHistoriqueBourse] = useState('BRVM');
+  const [marcheHistoriqueIndice, setMarcheHistoriqueIndice] = useState('BRVM-C');
+  const [marcheHistoriqueDateDebut, setMarcheHistoriqueDateDebut] = useState(() => {
+    const date = new Date();
+    date.setFullYear(date.getFullYear() - 1);
+    return formatIsoLocalDate(date);
+  });
+  const [marcheHistoriqueDateFin, setMarcheHistoriqueDateFin] = useState(() =>
+    formatIsoLocalDate(new Date())
+  );
   const [allocationAnneeInitiale, setAllocationAnneeInitiale] = useState(
     Math.max(2024, new Date().getFullYear() - 2)
   );
@@ -35810,6 +35959,59 @@ function Comite({
       c.devise, devise
     ), 0
   );
+
+  const marcheHistoriqueBourses = Object.keys(COMITE_INDICES_PAR_BOURSE);
+  const marcheHistoriqueIndices =
+    COMITE_INDICES_PAR_BOURSE[marcheHistoriqueBourse] || [];
+  const marcheHistoriqueIndiceActif =
+    marcheHistoriqueIndices.find(
+      (indice) => indice.code === marcheHistoriqueIndice
+    ) || marcheHistoriqueIndices[0];
+  const marcheHistoriqueDateMax = formatIsoLocalDate(new Date());
+  const marcheHistoriqueDatesValides =
+    marcheHistoriqueDateDebut &&
+    marcheHistoriqueDateFin &&
+    marcheHistoriqueDateDebut <= marcheHistoriqueDateFin;
+  const marcheHistoriqueSerie = marcheHistoriqueDatesValides
+    ? comiteBuildMarketIndexSeries(
+        marcheHistoriqueBourse,
+        marcheHistoriqueIndiceActif,
+        marcheHistoriqueDateDebut,
+        marcheHistoriqueDateFin
+      )
+    : [];
+  const marcheHistoriquePremier = marcheHistoriqueSerie[0] || null;
+  const marcheHistoriqueDernier =
+    marcheHistoriqueSerie[marcheHistoriqueSerie.length - 1] || null;
+  const marcheHistoriqueVariationPeriode = comiteMarketVariation(
+    marcheHistoriquePremier?.valeur,
+    marcheHistoriqueDernier?.valeur
+  );
+  const marcheHistoriqueAnneeFin = Number(
+    String(marcheHistoriqueDateFin || '').slice(0, 4)
+  );
+  const marcheHistoriqueDebutYtd = Number.isFinite(marcheHistoriqueAnneeFin)
+    ? `${marcheHistoriqueAnneeFin}-01-01`
+    : marcheHistoriqueDateDebut;
+  const marcheHistoriqueSerieYtd =
+    marcheHistoriqueIndiceActif && marcheHistoriqueDateFin
+      ? comiteBuildMarketIndexSeries(
+          marcheHistoriqueBourse,
+          marcheHistoriqueIndiceActif,
+          marcheHistoriqueDebutYtd,
+          marcheHistoriqueDateFin
+        )
+      : [];
+  const marcheHistoriqueVariationYtd = comiteMarketVariation(
+    marcheHistoriqueSerieYtd[0]?.valeur,
+    marcheHistoriqueSerieYtd[marcheHistoriqueSerieYtd.length - 1]?.valeur
+  );
+  const marcheHistoriquePlusHaut = marcheHistoriqueSerie.length
+    ? Math.max(...marcheHistoriqueSerie.map((point) => point.valeur))
+    : 0;
+  const marcheHistoriquePlusBas = marcheHistoriqueSerie.length
+    ? Math.min(...marcheHistoriqueSerie.map((point) => point.valeur))
+    : 0;
 
   /* ------------------------------------------------------------------------
    * COMPARAISON HISTORIQUE — ALLOCATION DES FONDS
@@ -36282,7 +36484,7 @@ function Comite({
     ['presence', 'Présences & quorum'],
     ['seance', 'Ordre du jour & votes'],
     ['allocation', 'Allocation des fonds'],
-    ['synthese', 'Synthèse & marchés'],
+    ['synthese', 'Synthèse & évolution marchés'],
     ['liquidite', 'Liquidité & cessions'],
   ];
 
@@ -37276,6 +37478,223 @@ function Comite({
 
       {onglet === 'synthese' && (
         <div className="space-y-4 gsm-comite-interactive">
+          <Card className="p-5" style={{ borderColor: '#C9D5EA' }}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <Eyebrow>Évolution des indices de marché</Eyebrow>
+                <h3 className="text-base font-bold" style={{ color: C.ink }}>
+                  {marcheHistoriqueIndiceActif?.label || 'Indice'} · {marcheHistoriqueBourse}
+                </h3>
+                <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+                  Courbe historique filtrable par place, indice et période. Les séries
+                  affichées sont simulées dans cette maquette et devront être remplacées
+                  par les historiques officiels de chaque bourse en production.
+                </p>
+              </div>
+              <Badge tone="gold">Historique simulé · maquette</Badge>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+              <label className="space-y-1">
+                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
+                  Bourse
+                </span>
+                <select
+                  value={marcheHistoriqueBourse}
+                  onChange={(e) => {
+                    const prochaineBourse = e.target.value;
+                    const premierIndice = COMITE_INDICES_PAR_BOURSE[prochaineBourse]?.[0];
+                    setMarcheHistoriqueBourse(prochaineBourse);
+                    setMarcheHistoriqueIndice(premierIndice?.code || '');
+                  }}
+                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                  style={{ borderColor: C.line, color: C.ink }}
+                >
+                  {marcheHistoriqueBourses.map((bourse) => (
+                    <option key={bourse} value={bourse}>{bourse}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
+                  Indice
+                </span>
+                <select
+                  value={marcheHistoriqueIndiceActif?.code || ''}
+                  onChange={(e) => setMarcheHistoriqueIndice(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                  style={{ borderColor: C.line, color: C.ink }}
+                >
+                  {marcheHistoriqueIndices.map((indice) => (
+                    <option key={indice.code} value={indice.code}>
+                      {indice.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
+                  Date de début
+                </span>
+                <input
+                  type="date"
+                  min={COMITE_MARCHE_HISTORIQUE_MIN_DATE}
+                  max={marcheHistoriqueDateFin || marcheHistoriqueDateMax}
+                  value={marcheHistoriqueDateDebut}
+                  onChange={(e) => setMarcheHistoriqueDateDebut(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                  style={{ borderColor: C.line, color: C.ink }}
+                />
+              </label>
+
+              <label className="space-y-1">
+                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
+                  Date de fin
+                </span>
+                <input
+                  type="date"
+                  min={marcheHistoriqueDateDebut || COMITE_MARCHE_HISTORIQUE_MIN_DATE}
+                  max={marcheHistoriqueDateMax}
+                  value={marcheHistoriqueDateFin}
+                  onChange={(e) => setMarcheHistoriqueDateFin(e.target.value)}
+                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                  style={{ borderColor: C.line, color: C.ink }}
+                />
+              </label>
+            </div>
+
+            {!marcheHistoriqueDatesValides ? (
+              <div
+                className="mt-4 p-4 rounded-xl text-xs"
+                style={{ background: '#FFF4F2', color: C.coral }}
+              >
+                La date de début doit être antérieure ou égale à la date de fin.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mt-4">
+                  {[
+                    {
+                      label: `Valeur au ${marcheHistoriquePremier?.label || '—'}`,
+                      value: fmtPrice(marcheHistoriquePremier?.valeur || 0),
+                      tone: 'navy',
+                    },
+                    {
+                      label: `Valeur au ${marcheHistoriqueDernier?.label || '—'}`,
+                      value: fmtPrice(marcheHistoriqueDernier?.valeur || 0),
+                      tone: 'navy',
+                    },
+                    {
+                      label: 'Variation période',
+                      value: `${marcheHistoriqueVariationPeriode >= 0 ? '+' : ''}${marcheHistoriqueVariationPeriode.toFixed(2)}%`,
+                      tone: marcheHistoriqueVariationPeriode >= 0 ? 'teal' : 'coral',
+                    },
+                    {
+                      label: 'Variation YTD',
+                      value: `${marcheHistoriqueVariationYtd >= 0 ? '+' : ''}${marcheHistoriqueVariationYtd.toFixed(2)}%`,
+                      tone: marcheHistoriqueVariationYtd >= 0 ? 'teal' : 'coral',
+                    },
+                    {
+                      label: 'Plus haut période',
+                      value: fmtPrice(marcheHistoriquePlusHaut),
+                      tone: 'slate',
+                    },
+                    {
+                      label: 'Plus bas période',
+                      value: fmtPrice(marcheHistoriquePlusBas),
+                      tone: 'slate',
+                    },
+                  ].map((stat) => (
+                    <div
+                      key={stat.label}
+                      className="p-3 rounded-xl border"
+                      style={{ borderColor: C.line, background: '#FAFAFC' }}
+                    >
+                      <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                        {stat.label}
+                      </div>
+                      <div
+                        className="text-sm font-bold mt-1"
+                        style={{
+                          ...F_MONO,
+                          color:
+                            stat.tone === 'teal'
+                              ? C.teal
+                              : stat.tone === 'coral'
+                              ? C.coral
+                              : C.ink,
+                        }}
+                      >
+                        {stat.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4" style={{ width: '100%', height: 310 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={marcheHistoriqueSerie}
+                      margin={{ top: 12, right: 20, left: 10, bottom: 8 }}
+                    >
+                      <CartesianGrid stroke={C.line} vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: C.sub }}
+                        axisLine={{ stroke: C.line }}
+                        tickLine={false}
+                        minTickGap={26}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: C.sub }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={72}
+                        domain={['dataMin - 2', 'dataMax + 2']}
+                        tickFormatter={(value) => fmtPrice(value)}
+                      />
+                      <Tooltip
+                        formatter={(value) => [
+                          fmtPrice(Number(value)),
+                          marcheHistoriqueIndiceActif?.label || 'Indice',
+                        ]}
+                        labelFormatter={(label) => `Séance : ${label}`}
+                        contentStyle={{
+                          borderRadius: 10,
+                          border: `1px solid ${C.line}`,
+                          fontSize: 12,
+                        }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="valeur"
+                        name={marcheHistoriqueIndiceActif?.label || 'Indice'}
+                        stroke={C.navy}
+                        strokeWidth={2.6}
+                        dot={marcheHistoriqueSerie.length <= 45 ? { r: 2.2 } : false}
+                        activeDot={{ r: 4 }}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div
+                  className="mt-2 flex items-center justify-between gap-3 flex-wrap text-[10px]"
+                  style={{ color: C.sub }}
+                >
+                  <span>
+                    {marcheHistoriqueSerie.length} observation(s) affichée(s) · période du{' '}
+                    {marcheHistoriquePremier?.label || '—'} au {marcheHistoriqueDernier?.label || '—'}.
+                  </span>
+                  <span style={F_MONO}>{marcheHistoriqueIndiceActif?.code}</span>
+                </div>
+              </>
+            )}
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Card className="p-5">
               <Eyebrow>Répartition des actifs · calculée</Eyebrow>
