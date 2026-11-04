@@ -34032,6 +34032,222 @@ function AnalysePortefeuille({ devise = 'XOF' }) {
 
 const DECISIONS_COMITE_STORAGE_KEY = 'afrimarket-decisions-comite-v1';
 
+const COMITE_DECISIONS_DEMO_ANTERIEURES = [
+  {
+    id: 'DEC-20261007-01',
+    creeLe: '2026-10-07T10:35:00+01:00',
+    libelleDate: '7 oct. 2026, 10:35',
+    nombrePortefeuilles: 8,
+    sourceDemo: 'Comité antérieur simulé',
+    allocations: [
+      {
+        id: 'ALLOC-20261007-SONATEL',
+        typeInstrument: 'Actions',
+        sens: 'Achat',
+        pourcentageOperation: 35,
+        marche: 'BRVM',
+        typePortefeuille: 'Tous',
+        instrument: 'SONATEL',
+        operateur: '<',
+        seuil: 12,
+        typeOrdre: 'Ordre à cours limité',
+        prixMin: 13700,
+        prixMax: 14100,
+        prixObjectif: 16000,
+        portefeuillesEligibles: [
+          'Aïcha Koné',
+          'Fonds Prévoyance CI',
+          'Groupe Assurance Sahel',
+          'Mariam Traoré',
+        ],
+      },
+      {
+        id: 'ALLOC-20261007-ECOBANK',
+        typeInstrument: 'Actions',
+        sens: 'Vente',
+        pourcentageOperation: 40,
+        marche: 'BRVM',
+        typePortefeuille: 'Tous',
+        instrument: 'ECOBANK CI',
+        operateur: '>',
+        seuil: 2,
+        typeOrdre: 'Ordre à cours limité',
+        prixMin: 6500,
+        prixMax: 6800,
+        prixObjectif: 5900,
+        portefeuillesEligibles: [
+          'Aïcha Koné',
+          'Groupe Assurance Sahel',
+          'Mutuelle Horizon CI',
+          'Binta Sow',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'DEC-20261007-02',
+    creeLe: '2026-10-07T10:52:00+01:00',
+    libelleDate: '7 oct. 2026, 10:52',
+    nombrePortefeuilles: 8,
+    sourceDemo: 'Comité antérieur simulé',
+    allocations: [
+      {
+        id: 'ALLOC-20261007-ZENITH',
+        typeInstrument: 'Actions',
+        sens: 'Achat',
+        pourcentageOperation: 30,
+        marche: 'NGX',
+        typePortefeuille: 'Tous',
+        instrument: 'ZENITH BANK',
+        operateur: '<',
+        seuil: 12,
+        typeOrdre: 'Ordre à cours limité',
+        prixMin: 39.5,
+        prixMax: 41.0,
+        prixObjectif: 47,
+        portefeuillesEligibles: [
+          'Emeka Okafor',
+          'Caisse Retraite Littoral',
+          'Tunde Adebayo',
+          'Nneka Obi',
+        ],
+      },
+      {
+        id: 'ALLOC-20261007-GCB',
+        typeInstrument: 'Actions',
+        sens: 'Achat',
+        pourcentageOperation: 25,
+        marche: 'GSE',
+        typePortefeuille: 'Tous',
+        instrument: 'GCB BANK',
+        operateur: '<',
+        seuil: 15,
+        typeOrdre: 'Ordre à cours limité',
+        prixMin: 5.15,
+        prixMax: 5.55,
+        prixObjectif: 6.3,
+        portefeuillesEligibles: [
+          'Ama Boateng',
+          'Kwame Asare',
+          'Pension Trust Accra',
+          'Adjoa Mensah',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'DEC-20261007-03',
+    creeLe: '2026-10-07T11:08:00+01:00',
+    libelleDate: '7 oct. 2026, 11:08',
+    nombrePortefeuilles: 4,
+    sourceDemo: 'Comité antérieur simulé',
+    allocations: [
+      {
+        id: 'ALLOC-20261007-OAT-CI',
+        typeInstrument: 'Obl. souveraines',
+        sens: 'Achat',
+        pourcentageOperation: 45,
+        marche: 'BRVM',
+        typePortefeuille: 'Tous',
+        instrument: 'Obligation Trésor CI 6.5% 2029',
+        operateur: '<',
+        seuil: 18,
+        typeOrdre: 'Ordre à cours limité',
+        prixMin: 9950,
+        prixMax: 10040,
+        prixObjectif: 10150,
+        portefeuillesEligibles: [
+          'Fonds Prévoyance CI',
+          'Groupe Assurance Sahel',
+          'Fonds Retraite UEMOA',
+          'Fondation Patrimoine Afrique',
+        ],
+      },
+    ],
+  },
+];
+
+const COMITE_ARCHIVE_DEMO_ANTERIEUR = {
+  id: 'ARCH-DEMO-20261007',
+  date: '2026-10-07',
+  genereLe: '2026-10-07T12:05:00+01:00',
+  sourceDemo: 'Rapport de comité antérieur simulé',
+  decisions: [
+    'Actions BRVM : renforcer SONATEL et alléger ECOBANK CI.',
+    'Actions régionales : renforcer ZENITH BANK et initier / renforcer GCB BANK.',
+    'Obligations : renforcer la poche souveraine Côte d’Ivoire 6,5 % 2029.',
+  ],
+  decisionsDetaillees: COMITE_DECISIONS_DEMO_ANTERIEURES,
+  suiviDecisions: {
+    'DEC-20261007-01-ALLOC-20261007-SONATEL': {
+      statut: 'Exécuté partiellement',
+      responsable: 'Desk Actions BRVM',
+      echeance: '2026-10-16',
+      commentaire:
+        'Renforcement réalisé progressivement ; certains mandats ont été plafonnés par leurs contraintes d’allocation ou de prix.',
+    },
+    'DEC-20261007-01-ALLOC-20261007-ECOBANK': {
+      statut: 'Exécuté',
+      responsable: 'Desk Actions BRVM',
+      echeance: '2026-10-14',
+      commentaire:
+        'Allègement réalisé sur les comptes disposant d’une exposition suffisante.',
+    },
+    'DEC-20261007-02-ALLOC-20261007-ZENITH': {
+      statut: 'Exécuté partiellement',
+      responsable: 'Desk NGX',
+      echeance: '2026-10-20',
+      commentaire:
+        'Renforcement sélectif ; une partie des portefeuilles est restée sous la limite de prix décidée.',
+    },
+    'DEC-20261007-02-ALLOC-20261007-GCB': {
+      statut: 'Exécuté',
+      responsable: 'Desk GSE',
+      echeance: '2026-10-20',
+      commentaire:
+        'Position initiée / renforcée conformément à la décision du comité.',
+    },
+    'DEC-20261007-03-ALLOC-20261007-OAT-CI': {
+      statut: 'Exécuté partiellement',
+      responsable: 'Desk Obligataire',
+      echeance: '2026-10-23',
+      commentaire:
+        'Renforcement effectué en fonction de la liquidité et des limites de profil de chaque mandat.',
+    },
+  },
+};
+
+const fusionnerDecisionsComiteDemo = (decisions) => {
+  const map = new Map(
+    COMITE_DECISIONS_DEMO_ANTERIEURES.map((decision) => [
+      String(decision.id),
+      decision,
+    ])
+  );
+  (Array.isArray(decisions) ? decisions : []).forEach((decision) => {
+    if (decision?.id) map.set(String(decision.id), decision);
+  });
+  return [...map.values()].sort((a, b) =>
+    String(b?.creeLe || '').localeCompare(String(a?.creeLe || ''))
+  );
+};
+
+const fusionnerArchivesComiteDemo = (archives) => {
+  const liste = Array.isArray(archives) ? archives.filter(Boolean) : [];
+  const existe = liste.some(
+    (archive) =>
+      archive?.id === COMITE_ARCHIVE_DEMO_ANTERIEUR.id ||
+      (
+        archive?.date === COMITE_ARCHIVE_DEMO_ANTERIEUR.date &&
+        Array.isArray(archive?.decisionsDetaillees) &&
+        archive.decisionsDetaillees.length > 0
+      )
+  );
+  return (existe ? liste : [...liste, COMITE_ARCHIVE_DEMO_ANTERIEUR])
+    .sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
+};
+
+
 const instrumentsPourDecision = (typeInstrument) => {
   if (typeInstrument === 'Actions') return ACTIONS_LIST;
   if (typeInstrument === 'Obl. souveraines') {
@@ -34079,13 +34295,15 @@ const nouvelleAllocationDecision = () => {
 };
 
 const lireDecisionsComite = () => {
-  if (typeof window === 'undefined') return [];
+  if (typeof window === 'undefined') {
+    return fusionnerDecisionsComiteDemo([]);
+  }
   try {
     const raw = window.localStorage.getItem(DECISIONS_COMITE_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    return fusionnerDecisionsComiteDemo(parsed);
   } catch {
-    return [];
+    return fusionnerDecisionsComiteDemo([]);
   }
 };
 
@@ -35742,7 +35960,7 @@ function Comite({
   });
   const [archivesComite, setArchivesComite] = useState(() => {
     const archivees = comiteLireStockage(COMITE_ARCHIVES_STORAGE_KEY, []);
-    return Array.isArray(archivees) ? archivees : [];
+    return fusionnerArchivesComiteDemo(archivees);
   });
   const [horlogeSeance, setHorlogeSeance] = useState(Date.now());
   const [nouveauPoint, setNouveauPoint] = useState('');
@@ -36340,15 +36558,22 @@ function Comite({
     if (archivees.length) return archivees;
 
     const borne = precedentArchive?.date || config.dateComite;
-    return [...decisions]
+    const candidates = [...decisions]
       .filter((decision) => {
         const dateDecision = String(decision?.creeLe || '').slice(0, 10);
         return !borne || !dateDecision || dateDecision <= borne;
       })
       .sort((a, b) =>
         String(b?.creeLe || '').localeCompare(String(a?.creeLe || ''))
-      )
-      .slice(0, 1);
+      );
+
+    const dateDecisionPlusRecente = String(candidates[0]?.creeLe || '').slice(0, 10);
+    return dateDecisionPlusRecente
+      ? candidates.filter(
+          (decision) =>
+            String(decision?.creeLe || '').slice(0, 10) === dateDecisionPlusRecente
+        )
+      : candidates.slice(0, 1);
   })();
 
   const dateDernierComite =
@@ -38021,9 +38246,14 @@ function Comite({
                     valorisation simulée des actifs.
                   </p>
                 </div>
-                <Badge tone={resultatsDernieresDecisions.length ? 'navy' : 'slate'}>
-                  {resultatsDernieresDecisions.length} décision(s)
-                </Badge>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  {precedentArchive?.sourceDemo && (
+                    <Badge tone="gold">Données de démonstration</Badge>
+                  )}
+                  <Badge tone={resultatsDernieresDecisions.length ? 'navy' : 'slate'}>
+                    {resultatsDernieresDecisions.length} décision(s)
+                  </Badge>
+                </div>
               </div>
 
               {resultatsDernieresDecisions.length === 0 ? (
