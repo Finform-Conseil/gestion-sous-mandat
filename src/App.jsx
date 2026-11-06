@@ -134,6 +134,12 @@ const gsmOperationalRequest = async (
 const loadGsmOperationalSnapshot = () =>
   gsmOperationalRequest('/api/snapshot');
 
+const requestGsmAdminAccess = (code) =>
+  gsmOperationalRequest('/api/v1/admin-access/', {
+    method: 'POST',
+    body: { code },
+  });
+
 const GSM_OPERATIONAL_WRITE_KEY_STORAGE =
   'opcvm-gsm-operational-admin-key-session';
 
@@ -11708,7 +11714,7 @@ function PortfolioStateCompactTd({
   );
 }
 
-function Portefeuilles({ go, openClient, initialFilter }) {
+function Portefeuilles({ go, openClient, initialFilter, adminRequestId }) {
   const [q, setQ] = useState('');
   const [vuePortefeuillesMode, setVuePortefeuillesMode] =
     useState('liste');
@@ -11726,6 +11732,72 @@ function Portefeuilles({ go, openClient, initialFilter }) {
     portfolioStateCurrencyFilter,
     setPortfolioStateCurrencyFilter,
   ] = useState('Toutes');
+
+  const [adminSgiOpen, setAdminSgiOpen] = useState(false);
+  const [adminSgiCode, setAdminSgiCode] = useState('');
+  const [adminSgiLoading, setAdminSgiLoading] = useState(false);
+  const [adminSgiError, setAdminSgiError] = useState('');
+
+  useEffect(() => {
+    if (adminRequestId) {
+      setAdminSgiOpen(true);
+      setAdminSgiCode('');
+      setAdminSgiError('');
+    }
+  }, [adminRequestId]);
+
+  const fermerAdminSgi = () => {
+    if (adminSgiLoading) return;
+    setAdminSgiOpen(false);
+    setAdminSgiCode('');
+    setAdminSgiError('');
+  };
+
+  const ouvrirAdministrationSgi = async () => {
+    const code = adminSgiCode.trim();
+
+    if (!code) {
+      setAdminSgiError("Le code d'attribution est obligatoire.");
+      return;
+    }
+
+    setAdminSgiLoading(true);
+    setAdminSgiError('');
+
+    const adminWindow =
+      typeof window !== 'undefined'
+        ? window.open('about:blank', 'opcvm-gsm-admin-sgi')
+        : null;
+
+    try {
+      const response = await requestGsmAdminAccess(code);
+
+      if (!response?.admin_url) {
+        throw new Error(
+          "Le serveur n'a pas retourné l'adresse d'administration."
+        );
+      }
+
+      if (adminWindow && !adminWindow.closed) {
+        adminWindow.location.href = response.admin_url;
+      } else if (typeof window !== 'undefined') {
+        window.location.assign(response.admin_url);
+      }
+
+      setAdminSgiOpen(false);
+      setAdminSgiCode('');
+    } catch (error) {
+      if (adminWindow && !adminWindow.closed) {
+        adminWindow.close();
+      }
+      setAdminSgiError(
+        error?.message ||
+          "Accès refusé. Vérifiez votre code d'attribution."
+      );
+    } finally {
+      setAdminSgiLoading(false);
+    }
+  };
 
   const evolutionClient =
     CLIENTS.find((client) => client.id === evolutionClientId) ||
@@ -11923,10 +11995,23 @@ function Portefeuilles({ go, openClient, initialFilter }) {
           )}
         </div>
 
-        <div
-          className="flex items-center gap-1 p-1 rounded-xl"
-          style={{ background: '#EEF0F4' }}
-        >
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <Btn
+            tone="ghost"
+            onClick={() => {
+              setAdminSgiOpen(true);
+              setAdminSgiCode('');
+              setAdminSgiError('');
+            }}
+          >
+            <ExternalLink size={14} />
+            Administration SGI
+          </Btn>
+
+          <div
+            className="flex items-center gap-1 p-1 rounded-xl"
+            style={{ background: '#EEF0F4' }}
+          >
           {[
             {
               id: 'liste',
@@ -11960,8 +12045,144 @@ function Portefeuilles({ go, openClient, initialFilter }) {
               {tab.label}
             </button>
           ))}
+          </div>
         </div>
       </div>
+
+      {adminSgiOpen && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center p-4"
+          style={{
+            background: 'rgba(15,27,51,0.68)',
+            backdropFilter: 'blur(3px)',
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              fermerAdminSgi();
+            }
+          }}
+        >
+          <Card
+            className="w-full p-5"
+            style={{
+              maxWidth: 440,
+              borderColor: C.line,
+              boxShadow: '0 24px 70px rgba(15,27,51,0.28)',
+            }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Eyebrow>Accès sécurisé</Eyebrow>
+                <div
+                  className="text-lg font-bold mt-1"
+                  style={{ ...F_DISPLAY, color: C.ink }}
+                >
+                  Administration SGI
+                </div>
+                <div
+                  className="text-xs mt-1 leading-relaxed"
+                  style={{ color: C.sub }}
+                >
+                  Saisissez le code d&apos;attribution qui vous a été remis par
+                  votre SGI. Le code est vérifié côté serveur et n&apos;est
+                  jamais stocké dans cette interface.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={fermerAdminSgi}
+                disabled={adminSgiLoading}
+                className="p-2 rounded-lg"
+                style={{
+                  color: C.sub,
+                  background: '#F5F6F9',
+                  opacity: adminSgiLoading ? 0.5 : 1,
+                }}
+                aria-label="Fermer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <label
+              className="block text-[10px] uppercase font-semibold mt-5 mb-1.5"
+              style={{ color: C.sub }}
+            >
+              Code d&apos;attribution
+            </label>
+            <input
+              type="password"
+              autoFocus
+              autoComplete="one-time-code"
+              value={adminSgiCode}
+              onChange={(event) => {
+                setAdminSgiCode(event.target.value);
+                setAdminSgiError('');
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  !adminSgiLoading &&
+                  adminSgiCode.trim()
+                ) {
+                  ouvrirAdministrationSgi();
+                }
+              }}
+              placeholder="Ex. GEST-DEMO-001"
+              className="w-full px-3 py-2.5 rounded-xl border outline-none text-sm"
+              style={{
+                borderColor: adminSgiError ? C.coral : C.line,
+                color: C.ink,
+                background: '#FFFFFF',
+                ...F_MONO,
+              }}
+            />
+
+            {adminSgiError && (
+              <div
+                className="mt-2 p-2.5 rounded-xl text-xs"
+                style={{
+                  background: '#FFF0EE',
+                  color: C.coral,
+                  border: '1px solid #FFD6D1',
+                }}
+              >
+                {adminSgiError}
+              </div>
+            )}
+
+            <div
+              className="mt-4 p-3 rounded-xl text-[10px] leading-relaxed"
+              style={{
+                background: '#F7F9FD',
+                color: C.sub,
+                border: `1px solid ${C.line}`,
+              }}
+            >
+              L&apos;accès est limité à la SGI et au rôle liés à votre
+              attribution. Un gestionnaire ne reçoit pas automatiquement des
+              droits de superutilisateur Django.
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5">
+              <Btn
+                tone="ghost"
+                onClick={fermerAdminSgi}
+                disabled={adminSgiLoading}
+              >
+                Annuler
+              </Btn>
+              <Btn
+                onClick={ouvrirAdministrationSgi}
+                disabled={adminSgiLoading || !adminSgiCode.trim()}
+              >
+                {adminSgiLoading ? 'Vérification…' : 'Accéder'}
+              </Btn>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {vuePortefeuillesMode === 'liste' && (
         <>
@@ -49936,21 +50157,19 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() =>
-                    typeof window !== 'undefined' &&
-                    window.open(
-                      gsmOperationalUrl('/admin'),
-                      '_blank',
-                      'noopener,noreferrer'
-                    )
+                    go('portefeuilles', {
+                      adminRequestId: Date.now(),
+                    })
                   }
                   className="w-full mt-2 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[10px] font-semibold"
                   style={{
                     background: 'rgba(201,150,47,0.16)',
                     color: C.gold,
                   }}
+                  title="Accès sécurisé par code d'attribution"
                 >
                   <ExternalLink size={12} />
-                  Administrer les données
+                  Administration SGI
                 </button>
 
                 {operationalDbWriteMessage && (
@@ -50022,6 +50241,7 @@ export default function App() {
                     go={go}
                     openClient={openClient}
                     initialFilter={ctx.filtre}
+                    adminRequestId={ctx.adminRequestId}
                   />
                 )}
                 {screen === 'client' && activeClient && (
