@@ -37707,7 +37707,7 @@ function Comite({
         ))}
       </div>
 
-      {!['seance', 'presence'].includes(onglet) && (
+      {!['seance', 'presence', 'synthese'].includes(onglet) && (
       <Card className="p-4 gsm-comite-no-print">
         <div className="flex items-end gap-3 flex-wrap">
           <label className="flex-1 min-w-[190px] space-y-1">
@@ -38388,7 +38388,8 @@ function Comite({
       {onglet === 'synthese' && (
         <div className="space-y-4 gsm-comite-interactive">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
-            <Card className="p-4 xl:col-span-2" style={{ borderColor: '#C9D5EA' }}>
+            <div className="xl:col-span-2 space-y-4 min-w-0">
+              <Card className="p-4" style={{ borderColor: '#C9D5EA' }}>
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div>
                   <Eyebrow>Évolution des indices de marché</Eyebrow>
@@ -38924,7 +38925,77 @@ function Comite({
                   </div>
                 </div>
               )}
-            </Card>
+              </Card>
+
+              <Card className="p-4 gsm-comite-no-print">
+                <div className="flex items-end gap-3 flex-wrap">
+                  <label className="flex-1 min-w-[190px] space-y-1">
+                    <span
+                      className="block text-xs font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Rechercher un portefeuille
+                    </span>
+                    <input
+                      value={filtreClient}
+                      onChange={(e) => setFiltreClient(e.target.value)}
+                      placeholder="Client, compte, pays…"
+                      className="w-full px-3 py-2 rounded-xl border text-sm"
+                      style={{ borderColor: C.line }}
+                    />
+                  </label>
+
+                  <label className="min-w-[165px] space-y-1">
+                    <span
+                      className="block text-xs font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Marché
+                    </span>
+                    <select
+                      value={filtreBourse}
+                      onChange={(e) => setFiltreBourse(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border text-sm"
+                      style={{ borderColor: C.line }}
+                    >
+                      {boursesDisponibles.map((b) => (
+                        <option key={b}>{b}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="min-w-[165px] space-y-1">
+                    <span
+                      className="block text-xs font-semibold"
+                      style={{ color: C.sub }}
+                    >
+                      Secteur recommandé
+                    </span>
+                    <select
+                      value={filtreSecteur}
+                      onChange={(e) => setFiltreSecteur(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border text-sm"
+                      style={{ borderColor: C.line }}
+                    >
+                      {secteursDisponibles.map((v) => (
+                        <option key={v}>{v}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <Btn
+                    tone="ghost"
+                    onClick={() => {
+                      setFiltreBourse('Toutes');
+                      setFiltreSecteur('Tous');
+                      setFiltreClient('');
+                    }}
+                  >
+                    Effacer filtres
+                  </Btn>
+                </div>
+              </Card>
+            </div>
 
             <Card
               className="p-4 h-full overflow-hidden"
