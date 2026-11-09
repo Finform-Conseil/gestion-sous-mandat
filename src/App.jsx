@@ -34511,9 +34511,19 @@ const nouvelleAllocationDecision = () => {
     operateur: '<',
     seuil: '10',
     typeOrdre: 'Ordre au marché',
-    ...prixDecisionPourInstrument(instrument),
+    prixMin: '',
+    prixMax: '',
+    prixObjectif: '',
   };
 };
+
+const prixDecisionSaisissables = (typeOrdre) =>
+  typeOrdre === 'Ordre limite';
+
+const afficherPrixDecision = (prix) =>
+  prix === null || prix === undefined || prix === ''
+    ? '—'
+    : fmtPrice(prix);
 
 const lireDecisionsComite = () => {
   if (typeof window === 'undefined') {
@@ -34685,25 +34695,48 @@ function PriseDecisions({ go }) {
     allocationCourante.typeInstrument
   );
   const eligiblesCourants = portefeuillesEligiblesDecision(allocationCourante);
+  const prixSaisissables = prixDecisionSaisissables(
+    allocationCourante.typeOrdre
+  );
 
   const mettreAJour = (champ, valeur) => {
     setMessage(null);
     setAllocationCourante((courante) => {
       if (champ === 'typeInstrument') {
         const instrument = instrumentsPourDecision(valeur)[0] || '';
+        const prix = prixDecisionSaisissables(courante.typeOrdre)
+          ? prixDecisionPourInstrument(instrument)
+          : { prixMin: '', prixMax: '', prixObjectif: '' };
+
         return {
           ...courante,
           typeInstrument: valeur,
           instrument,
-          ...prixDecisionPourInstrument(instrument),
+          ...prix,
         };
       }
 
       if (champ === 'instrument') {
+        const prix = prixDecisionSaisissables(courante.typeOrdre)
+          ? prixDecisionPourInstrument(valeur)
+          : { prixMin: '', prixMax: '', prixObjectif: '' };
+
         return {
           ...courante,
           instrument: valeur,
-          ...prixDecisionPourInstrument(valeur),
+          ...prix,
+        };
+      }
+
+      if (champ === 'typeOrdre') {
+        const prix = prixDecisionSaisissables(valeur)
+          ? prixDecisionPourInstrument(courante.instrument)
+          : { prixMin: '', prixMax: '', prixObjectif: '' };
+
+        return {
+          ...courante,
+          typeOrdre: valeur,
+          ...prix,
         };
       }
 
@@ -34740,21 +34773,28 @@ function PriseDecisions({ go }) {
         : 'Le pourcentage de liquidité doit être supérieur à 0 et inférieur ou égal à 100 %.';
     }
 
-    const prixMin = Number(allocation.prixMin);
-    const prixMax = Number(allocation.prixMax);
-    const prixObjectif = Number(allocation.prixObjectif);
-    if (
-      !Number.isFinite(prixMin) ||
-      !Number.isFinite(prixMax) ||
-      !Number.isFinite(prixObjectif) ||
-      prixMin < 0 ||
-      prixMax < 0 ||
-      prixObjectif < 0
-    ) {
-      return 'Renseignez des prix minimum, maximum et objectif valides.';
-    }
-    if (prixMin > prixMax) {
-      return 'Le prix minimum ne peut pas être supérieur au prix maximum.';
+    if (prixDecisionSaisissables(allocation.typeOrdre)) {
+      const prixMin = Number(allocation.prixMin);
+      const prixMax = Number(allocation.prixMax);
+      const prixObjectif = Number(allocation.prixObjectif);
+
+      if (
+        allocation.prixMin === '' ||
+        allocation.prixMax === '' ||
+        allocation.prixObjectif === '' ||
+        !Number.isFinite(prixMin) ||
+        !Number.isFinite(prixMax) ||
+        !Number.isFinite(prixObjectif) ||
+        prixMin < 0 ||
+        prixMax < 0 ||
+        prixObjectif < 0
+      ) {
+        return 'Renseignez des prix minimum, maximum et limite valides.';
+      }
+
+      if (prixMin > prixMax) {
+        return 'Le prix minimum ne peut pas être supérieur au prix maximum.';
+      }
     }
 
     return null;
@@ -34768,14 +34808,15 @@ function PriseDecisions({ go }) {
     }
 
     const eligibles = portefeuillesEligiblesDecision(allocationCourante);
+    const avecPrix = prixDecisionSaisissables(allocationCourante.typeOrdre);
     const allocation = {
       ...allocationCourante,
       id: `ALLOC-${Date.now()}-${allocations.length + 1}`,
       seuil: Number(allocationCourante.seuil),
       pourcentageOperation: Number(allocationCourante.pourcentageOperation),
-      prixMin: Number(allocationCourante.prixMin),
-      prixMax: Number(allocationCourante.prixMax),
-      prixObjectif: Number(allocationCourante.prixObjectif),
+      prixMin: avecPrix ? Number(allocationCourante.prixMin) : null,
+      prixMax: avecPrix ? Number(allocationCourante.prixMax) : null,
+      prixObjectif: avecPrix ? Number(allocationCourante.prixObjectif) : null,
       portefeuillesEligibles: eligibles.map((client) => client.nom),
     };
 
@@ -35151,8 +35192,20 @@ function PriseDecisions({ go }) {
               step="0.01"
               value={allocationCourante.prixMin}
               onChange={(e) => mettreAJour('prixMin', e.target.value)}
+              disabled={!prixSaisissables}
+              aria-disabled={!prixSaisissables}
+              placeholder={
+                prixSaisissables ? 'À renseigner' : 'Non applicable'
+              }
               className="w-full px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, ...F_MONO }}
+              style={{
+                borderColor: C.line,
+                background: prixSaisissables ? '#fff' : '#F1F3F6',
+                color: prixSaisissables ? C.ink : C.sub,
+                cursor: prixSaisissables ? 'text' : 'not-allowed',
+                opacity: prixSaisissables ? 1 : 0.72,
+                ...F_MONO,
+              }}
             />
           </div>
           <div>
@@ -35168,8 +35221,20 @@ function PriseDecisions({ go }) {
               step="0.01"
               value={allocationCourante.prixMax}
               onChange={(e) => mettreAJour('prixMax', e.target.value)}
+              disabled={!prixSaisissables}
+              aria-disabled={!prixSaisissables}
+              placeholder={
+                prixSaisissables ? 'À renseigner' : 'Non applicable'
+              }
               className="w-full px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, ...F_MONO }}
+              style={{
+                borderColor: C.line,
+                background: prixSaisissables ? '#fff' : '#F1F3F6',
+                color: prixSaisissables ? C.ink : C.sub,
+                cursor: prixSaisissables ? 'text' : 'not-allowed',
+                opacity: prixSaisissables ? 1 : 0.72,
+                ...F_MONO,
+              }}
             />
           </div>
           <div>
@@ -35185,14 +35250,41 @@ function PriseDecisions({ go }) {
               step="0.01"
               value={allocationCourante.prixObjectif}
               onChange={(e) => mettreAJour('prixObjectif', e.target.value)}
+              disabled={!prixSaisissables}
+              aria-disabled={!prixSaisissables}
+              placeholder={
+                prixSaisissables ? 'À renseigner' : 'Non applicable'
+              }
               className="w-full px-3 py-2 rounded-xl border text-sm"
-              style={{ borderColor: C.line, ...F_MONO }}
+              style={{
+                borderColor: C.line,
+                background: prixSaisissables ? '#fff' : '#F1F3F6',
+                color: prixSaisissables ? C.ink : C.sub,
+                cursor: prixSaisissables ? 'text' : 'not-allowed',
+                opacity: prixSaisissables ? 1 : 0.72,
+                ...F_MONO,
+              }}
             />
           </div>
           <div className="flex items-center justify-end">
             <Btn onClick={ajouterAllocation}>Ajouter allocation</Btn>
           </div>
         </div>
+
+        {!prixSaisissables && (
+          <div
+            className="mt-2 text-[10px] px-3 py-2 rounded-xl"
+            style={{
+              background: '#F5F6F9',
+              color: C.sub,
+              border: `1px solid ${C.line}`,
+            }}
+          >
+            Prix min, Prix max et Prix Limite sont désactivés pour «{' '}
+            {allocationCourante.typeOrdre} ». Ils ne sont renseignés que pour
+            un Ordre limite.
+          </div>
+        )}
 
         <div className="mt-4 p-3 rounded-xl" style={{ background: '#EFF3FB' }}>
           <div className="text-xs font-semibold" style={{ color: C.ink }}>
@@ -35314,9 +35406,9 @@ function PriseDecisions({ go }) {
                   <Td mono>{allocation.operateur}</Td>
                   <Td mono>{allocation.seuil}%</Td>
                   <Td className="whitespace-nowrap">{allocation.typeOrdre}</Td>
-                  <Td mono>{fmtPrice(allocation.prixMin)}</Td>
-                  <Td mono>{fmtPrice(allocation.prixMax)}</Td>
-                  <Td mono>{fmtPrice(allocation.prixObjectif)}</Td>
+                  <Td mono>{afficherPrixDecision(allocation.prixMin)}</Td>
+                  <Td mono>{afficherPrixDecision(allocation.prixMax)}</Td>
+                  <Td mono>{afficherPrixDecision(allocation.prixObjectif)}</Td>
                   <Td>
                     <PortefeuillesConcernesDropdown
                       portefeuilles={allocation.portefeuillesEligibles || []}
@@ -35478,9 +35570,9 @@ function PriseDecisions({ go }) {
                     <Td className="whitespace-nowrap">
                       {allocation.typeOrdre}
                     </Td>
-                    <Td mono>{fmtPrice(allocation.prixMin)}</Td>
-                    <Td mono>{fmtPrice(allocation.prixMax)}</Td>
-                    <Td mono>{fmtPrice(allocation.prixObjectif)}</Td>
+                    <Td mono>{afficherPrixDecision(allocation.prixMin)}</Td>
+                    <Td mono>{afficherPrixDecision(allocation.prixMax)}</Td>
+                    <Td mono>{afficherPrixDecision(allocation.prixObjectif)}</Td>
                     <Td>
                       <PortefeuillesConcernesDropdown
                         portefeuilles={allocation.portefeuillesEligibles || []}
