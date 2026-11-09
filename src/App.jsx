@@ -36210,6 +36210,14 @@ function Comite({
   const [onglet, setOnglet] = useState('seance');
   const [marcheHistoriqueBourse, setMarcheHistoriqueBourse] = useState('BRVM');
   const [marcheHistoriqueIndice, setMarcheHistoriqueIndice] = useState('BRVM-C');
+  const [
+    marcheHistoriqueBourseSecondaire,
+    setMarcheHistoriqueBourseSecondaire,
+  ] = useState('NGX');
+  const [
+    marcheHistoriqueIndiceSecondaire,
+    setMarcheHistoriqueIndiceSecondaire,
+  ] = useState('NGX-IND');
   const [marcheHistoriqueDateDebut, setMarcheHistoriqueDateDebut] = useState(() => {
     const date = new Date();
     date.setFullYear(date.getFullYear() - 1);
@@ -36543,6 +36551,60 @@ function Comite({
   const marcheHistoriquePlusBas = marcheHistoriqueSerie.length
     ? Math.min(...marcheHistoriqueSerie.map((point) => point.valeur))
     : 0;
+
+  const marcheHistoriqueIndicesSecondaires =
+    COMITE_INDICES_PAR_BOURSE[marcheHistoriqueBourseSecondaire] || [];
+  const marcheHistoriqueIndiceSecondaireActif =
+    marcheHistoriqueIndicesSecondaires.find(
+      (indice) => indice.code === marcheHistoriqueIndiceSecondaire
+    ) || marcheHistoriqueIndicesSecondaires[0];
+
+  const marcheHistoriqueSerieSecondaire = marcheHistoriqueDatesValides
+    ? comiteBuildMarketIndexSeries(
+        marcheHistoriqueBourseSecondaire,
+        marcheHistoriqueIndiceSecondaireActif,
+        marcheHistoriqueDateDebut,
+        marcheHistoriqueDateFin
+      )
+    : [];
+
+  const marcheHistoriquePremierSecondaire =
+    marcheHistoriqueSerieSecondaire[0] || null;
+  const marcheHistoriqueDernierSecondaire =
+    marcheHistoriqueSerieSecondaire[
+      marcheHistoriqueSerieSecondaire.length - 1
+    ] || null;
+
+  const marcheHistoriqueVariationPeriodeSecondaire = comiteMarketVariation(
+    marcheHistoriquePremierSecondaire?.valeur,
+    marcheHistoriqueDernierSecondaire?.valeur
+  );
+
+  const marcheHistoriqueSerieYtdSecondaire =
+    marcheHistoriqueIndiceSecondaireActif && marcheHistoriqueDateFin
+      ? comiteBuildMarketIndexSeries(
+          marcheHistoriqueBourseSecondaire,
+          marcheHistoriqueIndiceSecondaireActif,
+          marcheHistoriqueDebutYtd,
+          marcheHistoriqueDateFin
+        )
+      : [];
+
+  const marcheHistoriqueVariationYtdSecondaire = comiteMarketVariation(
+    marcheHistoriqueSerieYtdSecondaire[0]?.valeur,
+    marcheHistoriqueSerieYtdSecondaire[
+      marcheHistoriqueSerieYtdSecondaire.length - 1
+    ]?.valeur
+  );
+
+  const marcheHistoriquePlusHautSecondaire =
+    marcheHistoriqueSerieSecondaire.length
+      ? Math.max(...marcheHistoriqueSerieSecondaire.map((point) => point.valeur))
+      : 0;
+  const marcheHistoriquePlusBasSecondaire =
+    marcheHistoriqueSerieSecondaire.length
+      ? Math.min(...marcheHistoriqueSerieSecondaire.map((point) => point.valeur))
+      : 0;
 
   /* ------------------------------------------------------------------------
    * COMPARAISON HISTORIQUE — ALLOCATION DES FONDS
@@ -38327,220 +38389,541 @@ function Comite({
         <div className="space-y-4 gsm-comite-interactive">
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-stretch">
             <Card className="p-4 xl:col-span-2" style={{ borderColor: '#C9D5EA' }}>
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <Eyebrow>Évolution des indices de marché</Eyebrow>
-                <h3 className="text-base font-bold" style={{ color: C.ink }}>
-                  {marcheHistoriqueIndiceActif?.label || 'Indice'} · {marcheHistoriqueBourse}
-                </h3>
-                <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
-                  Courbe historique filtrable par place, indice et période. Les séries
-                  affichées sont simulées dans cette maquette et devront être remplacées
-                  par les historiques officiels de chaque bourse en production.
-                </p>
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <Eyebrow>Évolution des indices de marché</Eyebrow>
+                  <h3 className="text-base font-bold" style={{ color: C.ink }}>
+                    Comparaison de deux indices
+                  </h3>
+                  <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+                    Sélectionnez deux indices et comparez leur évolution sur une
+                    même période. Les séries affichées sont simulées dans cette
+                    maquette et devront être remplacées par les historiques
+                    officiels de chaque bourse en production.
+                  </p>
+                </div>
+                <Badge tone="gold">Historique simulé · maquette</Badge>
               </div>
-              <Badge tone="gold">Historique simulé · maquette</Badge>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mt-4">
-              <label className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
-                  Bourse
-                </span>
-                <select
-                  value={marcheHistoriqueBourse}
-                  onChange={(e) => {
-                    const prochaineBourse = e.target.value;
-                    const premierIndice = COMITE_INDICES_PAR_BOURSE[prochaineBourse]?.[0];
-                    setMarcheHistoriqueBourse(prochaineBourse);
-                    setMarcheHistoriqueIndice(premierIndice?.code || '');
-                  }}
-                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
-                  style={{ borderColor: C.line, color: C.ink }}
-                >
-                  {marcheHistoriqueBourses.map((bourse) => (
-                    <option key={bourse} value={bourse}>{bourse}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
-                  Indice
-                </span>
-                <select
-                  value={marcheHistoriqueIndiceActif?.code || ''}
-                  onChange={(e) => setMarcheHistoriqueIndice(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
-                  style={{ borderColor: C.line, color: C.ink }}
-                >
-                  {marcheHistoriqueIndices.map((indice) => (
-                    <option key={indice.code} value={indice.code}>
-                      {indice.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
-                  Date de début
-                </span>
-                <input
-                  type="date"
-                  min={COMITE_MARCHE_HISTORIQUE_MIN_DATE}
-                  max={marcheHistoriqueDateFin || marcheHistoriqueDateMax}
-                  value={marcheHistoriqueDateDebut}
-                  onChange={(e) => setMarcheHistoriqueDateDebut(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
-                  style={{ borderColor: C.line, color: C.ink }}
-                />
-              </label>
-
-              <label className="space-y-1">
-                <span className="text-[10px] font-semibold uppercase" style={{ color: C.sub }}>
-                  Date de fin
-                </span>
-                <input
-                  type="date"
-                  min={marcheHistoriqueDateDebut || COMITE_MARCHE_HISTORIQUE_MIN_DATE}
-                  max={marcheHistoriqueDateMax}
-                  value={marcheHistoriqueDateFin}
-                  onChange={(e) => setMarcheHistoriqueDateFin(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
-                  style={{ borderColor: C.line, color: C.ink }}
-                />
-              </label>
-            </div>
-
-            {!marcheHistoriqueDatesValides ? (
               <div
-                className="mt-4 p-4 rounded-xl text-xs"
-                style={{ background: '#FFF4F2', color: C.coral }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 p-3 rounded-xl"
+                style={{
+                  background: '#F7F9FD',
+                  border: `1px solid ${C.line}`,
+                }}
               >
-                La date de début doit être antérieure ou égale à la date de fin.
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
-                  {[
-                    {
-                      label: `Valeur au ${marcheHistoriquePremier?.label || '—'}`,
-                      value: fmtPrice(marcheHistoriquePremier?.valeur || 0),
-                      tone: 'navy',
-                    },
-                    {
-                      label: `Valeur au ${marcheHistoriqueDernier?.label || '—'}`,
-                      value: fmtPrice(marcheHistoriqueDernier?.valeur || 0),
-                      tone: 'navy',
-                    },
-                    {
-                      label: 'Variation période',
-                      value: `${marcheHistoriqueVariationPeriode >= 0 ? '+' : ''}${marcheHistoriqueVariationPeriode.toFixed(2)}%`,
-                      tone: marcheHistoriqueVariationPeriode >= 0 ? 'teal' : 'coral',
-                    },
-                    {
-                      label: 'Variation YTD',
-                      value: `${marcheHistoriqueVariationYtd >= 0 ? '+' : ''}${marcheHistoriqueVariationYtd.toFixed(2)}%`,
-                      tone: marcheHistoriqueVariationYtd >= 0 ? 'teal' : 'coral',
-                    },
-                    {
-                      label: 'Plus haut période',
-                      value: fmtPrice(marcheHistoriquePlusHaut),
-                      tone: 'slate',
-                    },
-                    {
-                      label: 'Plus bas période',
-                      value: fmtPrice(marcheHistoriquePlusBas),
-                      tone: 'slate',
-                    },
-                  ].map((stat) => (
-                    <div
-                      key={stat.label}
-                      className="p-3 rounded-xl border"
-                      style={{ borderColor: C.line, background: '#FAFAFC' }}
-                    >
-                      <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
-                        {stat.label}
-                      </div>
-                      <div
-                        className="text-sm font-bold mt-1"
-                        style={{
-                          ...F_MONO,
-                          color:
-                            stat.tone === 'teal'
-                              ? C.teal
-                              : stat.tone === 'coral'
-                              ? C.coral
-                              : C.ink,
-                        }}
-                      >
-                        {stat.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-4" style={{ width: '100%', height: 245 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={marcheHistoriqueSerie}
-                      margin={{ top: 12, right: 20, left: 10, bottom: 8 }}
-                    >
-                      <CartesianGrid stroke={C.line} vertical={false} />
-                      <XAxis
-                        dataKey="label"
-                        tick={{ fontSize: 9, fill: C.sub }}
-                        axisLine={{ stroke: C.line }}
-                        tickLine={false}
-                        minTickGap={26}
-                      />
-                      <YAxis
-                        tick={{ fontSize: 9, fill: C.sub }}
-                        axisLine={false}
-                        tickLine={false}
-                        width={72}
-                        domain={['dataMin - 2', 'dataMax + 2']}
-                        tickFormatter={(value) => fmtPrice(value)}
-                      />
-                      <Tooltip
-                        formatter={(value) => [
-                          fmtPrice(Number(value)),
-                          marcheHistoriqueIndiceActif?.label || 'Indice',
-                        ]}
-                        labelFormatter={(label) => `Séance : ${label}`}
-                        contentStyle={{
-                          borderRadius: 10,
-                          border: `1px solid ${C.line}`,
-                          fontSize: 12,
-                        }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="valeur"
-                        name={marcheHistoriqueIndiceActif?.label || 'Indice'}
-                        stroke={C.navy}
-                        strokeWidth={2.6}
-                        dot={marcheHistoriqueSerie.length <= 45 ? { r: 2.2 } : false}
-                        activeDot={{ r: 4 }}
-                        isAnimationActive={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                <div
-                  className="mt-2 flex items-center justify-between gap-3 flex-wrap text-[10px]"
-                  style={{ color: C.sub }}
-                >
-                  <span>
-                    {marcheHistoriqueSerie.length} observation(s) affichée(s) · période du{' '}
-                    {marcheHistoriquePremier?.label || '—'} au {marcheHistoriqueDernier?.label || '—'}.
+                <label className="space-y-1">
+                  <span
+                    className="text-[10px] font-semibold uppercase"
+                    style={{ color: C.sub }}
+                  >
+                    Date de début commune
                   </span>
-                  <span style={F_MONO}>{marcheHistoriqueIndiceActif?.code}</span>
+                  <input
+                    type="date"
+                    min={COMITE_MARCHE_HISTORIQUE_MIN_DATE}
+                    max={marcheHistoriqueDateFin || marcheHistoriqueDateMax}
+                    value={marcheHistoriqueDateDebut}
+                    onChange={(e) => setMarcheHistoriqueDateDebut(e.target.value)}
+                    className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                    style={{ borderColor: C.line, color: C.ink }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span
+                    className="text-[10px] font-semibold uppercase"
+                    style={{ color: C.sub }}
+                  >
+                    Date de fin commune
+                  </span>
+                  <input
+                    type="date"
+                    min={
+                      marcheHistoriqueDateDebut ||
+                      COMITE_MARCHE_HISTORIQUE_MIN_DATE
+                    }
+                    max={marcheHistoriqueDateMax}
+                    value={marcheHistoriqueDateFin}
+                    onChange={(e) => setMarcheHistoriqueDateFin(e.target.value)}
+                    className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                    style={{ borderColor: C.line, color: C.ink }}
+                  />
+                </label>
+              </div>
+
+              {!marcheHistoriqueDatesValides ? (
+                <div
+                  className="mt-4 p-4 rounded-xl text-xs"
+                  style={{ background: '#FFF4F2', color: C.coral }}
+                >
+                  La date de début doit être antérieure ou égale à la date de fin.
                 </div>
-              </>
-            )}
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                  {/* ---------------------------- INDICE 1 ---------------------------- */}
+                  <div
+                    className="rounded-2xl border p-4 min-w-0"
+                    style={{ borderColor: C.line, background: '#FFFFFF' }}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0">
+                        <div
+                          className="text-[9px] uppercase font-bold"
+                          style={{ color: C.gold }}
+                        >
+                          Indice 1
+                        </div>
+                        <div
+                          className="text-sm font-bold mt-0.5 truncate"
+                          style={{ color: C.ink }}
+                          title={marcheHistoriqueIndiceActif?.label || 'Indice'}
+                        >
+                          {marcheHistoriqueIndiceActif?.label || 'Indice'}
+                        </div>
+                      </div>
+                      <Badge tone="navy">{marcheHistoriqueBourse}</Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <label className="space-y-1">
+                        <span
+                          className="text-[9px] font-semibold uppercase"
+                          style={{ color: C.sub }}
+                        >
+                          Bourse
+                        </span>
+                        <select
+                          value={marcheHistoriqueBourse}
+                          onChange={(e) => {
+                            const prochaineBourse = e.target.value;
+                            const premierIndice =
+                              COMITE_INDICES_PAR_BOURSE[prochaineBourse]?.[0];
+                            setMarcheHistoriqueBourse(prochaineBourse);
+                            setMarcheHistoriqueIndice(premierIndice?.code || '');
+                          }}
+                          className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                          style={{ borderColor: C.line, color: C.ink }}
+                        >
+                          {marcheHistoriqueBourses.map((bourse) => (
+                            <option key={bourse} value={bourse}>
+                              {bourse}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="space-y-1">
+                        <span
+                          className="text-[9px] font-semibold uppercase"
+                          style={{ color: C.sub }}
+                        >
+                          Indice
+                        </span>
+                        <select
+                          value={marcheHistoriqueIndiceActif?.code || ''}
+                          onChange={(e) =>
+                            setMarcheHistoriqueIndice(e.target.value)
+                          }
+                          className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                          style={{ borderColor: C.line, color: C.ink }}
+                        >
+                          {marcheHistoriqueIndices.map((indice) => (
+                            <option key={indice.code} value={indice.code}>
+                              {indice.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                      {[
+                        {
+                          label: `Début ${marcheHistoriquePremier?.label || '—'}`,
+                          value: fmtPrice(marcheHistoriquePremier?.valeur || 0),
+                          tone: 'navy',
+                        },
+                        {
+                          label: `Fin ${marcheHistoriqueDernier?.label || '—'}`,
+                          value: fmtPrice(marcheHistoriqueDernier?.valeur || 0),
+                          tone: 'navy',
+                        },
+                        {
+                          label: 'Variation',
+                          value: `${
+                            marcheHistoriqueVariationPeriode >= 0 ? '+' : ''
+                          }${marcheHistoriqueVariationPeriode.toFixed(2)}%`,
+                          tone:
+                            marcheHistoriqueVariationPeriode >= 0
+                              ? 'teal'
+                              : 'coral',
+                        },
+                        {
+                          label: 'Variation YTD',
+                          value: `${
+                            marcheHistoriqueVariationYtd >= 0 ? '+' : ''
+                          }${marcheHistoriqueVariationYtd.toFixed(2)}%`,
+                          tone:
+                            marcheHistoriqueVariationYtd >= 0
+                              ? 'teal'
+                              : 'coral',
+                        },
+                        {
+                          label: 'Plus haut',
+                          value: fmtPrice(marcheHistoriquePlusHaut),
+                          tone: 'slate',
+                        },
+                        {
+                          label: 'Plus bas',
+                          value: fmtPrice(marcheHistoriquePlusBas),
+                          tone: 'slate',
+                        },
+                      ].map((stat) => (
+                        <div
+                          key={`indice-1-${stat.label}`}
+                          className="p-2.5 rounded-xl border"
+                          style={{
+                            borderColor: C.line,
+                            background: '#FAFAFC',
+                          }}
+                        >
+                          <div
+                            className="text-[8px] uppercase font-semibold"
+                            style={{ color: C.sub }}
+                          >
+                            {stat.label}
+                          </div>
+                          <div
+                            className="text-xs font-bold mt-1"
+                            style={{
+                              ...F_MONO,
+                              color:
+                                stat.tone === 'teal'
+                                  ? C.teal
+                                  : stat.tone === 'coral'
+                                  ? C.coral
+                                  : C.ink,
+                            }}
+                          >
+                            {stat.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3" style={{ width: '100%', height: 205 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={marcheHistoriqueSerie}
+                          margin={{ top: 10, right: 12, left: 2, bottom: 4 }}
+                        >
+                          <CartesianGrid stroke={C.line} vertical={false} />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 8, fill: C.sub }}
+                            axisLine={{ stroke: C.line }}
+                            tickLine={false}
+                            minTickGap={30}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 8, fill: C.sub }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={62}
+                            domain={['dataMin - 2', 'dataMax + 2']}
+                            tickFormatter={(value) => fmtPrice(value)}
+                          />
+                          <Tooltip
+                            formatter={(value) => [
+                              fmtPrice(Number(value)),
+                              marcheHistoriqueIndiceActif?.label || 'Indice 1',
+                            ]}
+                            labelFormatter={(label) => `Séance : ${label}`}
+                            contentStyle={{
+                              borderRadius: 10,
+                              border: `1px solid ${C.line}`,
+                              fontSize: 11,
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="valeur"
+                            name={
+                              marcheHistoriqueIndiceActif?.label || 'Indice 1'
+                            }
+                            stroke={C.navy}
+                            strokeWidth={2.4}
+                            dot={
+                              marcheHistoriqueSerie.length <= 45
+                                ? { r: 1.8 }
+                                : false
+                            }
+                            activeDot={{ r: 4 }}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div
+                      className="mt-1 flex items-center justify-between gap-2 text-[9px]"
+                      style={{ color: C.sub }}
+                    >
+                      <span>
+                        {marcheHistoriqueSerie.length} observation(s)
+                      </span>
+                      <span style={F_MONO}>
+                        {marcheHistoriqueIndiceActif?.code}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ---------------------------- INDICE 2 ---------------------------- */}
+                  <div
+                    className="rounded-2xl border p-4 min-w-0"
+                    style={{ borderColor: C.line, background: '#FFFFFF' }}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div className="min-w-0">
+                        <div
+                          className="text-[9px] uppercase font-bold"
+                          style={{ color: C.teal }}
+                        >
+                          Indice 2
+                        </div>
+                        <div
+                          className="text-sm font-bold mt-0.5 truncate"
+                          style={{ color: C.ink }}
+                          title={
+                            marcheHistoriqueIndiceSecondaireActif?.label ||
+                            'Indice'
+                          }
+                        >
+                          {marcheHistoriqueIndiceSecondaireActif?.label ||
+                            'Indice'}
+                        </div>
+                      </div>
+                      <Badge tone="teal">
+                        {marcheHistoriqueBourseSecondaire}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <label className="space-y-1">
+                        <span
+                          className="text-[9px] font-semibold uppercase"
+                          style={{ color: C.sub }}
+                        >
+                          Bourse
+                        </span>
+                        <select
+                          value={marcheHistoriqueBourseSecondaire}
+                          onChange={(e) => {
+                            const prochaineBourse = e.target.value;
+                            const premierIndice =
+                              COMITE_INDICES_PAR_BOURSE[prochaineBourse]?.[0];
+                            setMarcheHistoriqueBourseSecondaire(prochaineBourse);
+                            setMarcheHistoriqueIndiceSecondaire(
+                              premierIndice?.code || ''
+                            );
+                          }}
+                          className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                          style={{ borderColor: C.line, color: C.ink }}
+                        >
+                          {marcheHistoriqueBourses.map((bourse) => (
+                            <option key={bourse} value={bourse}>
+                              {bourse}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="space-y-1">
+                        <span
+                          className="text-[9px] font-semibold uppercase"
+                          style={{ color: C.sub }}
+                        >
+                          Indice
+                        </span>
+                        <select
+                          value={
+                            marcheHistoriqueIndiceSecondaireActif?.code || ''
+                          }
+                          onChange={(e) =>
+                            setMarcheHistoriqueIndiceSecondaire(e.target.value)
+                          }
+                          className="w-full rounded-xl border px-3 py-2 text-xs bg-white"
+                          style={{ borderColor: C.line, color: C.ink }}
+                        >
+                          {marcheHistoriqueIndicesSecondaires.map((indice) => (
+                            <option key={indice.code} value={indice.code}>
+                              {indice.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                      {[
+                        {
+                          label: `Début ${
+                            marcheHistoriquePremierSecondaire?.label || '—'
+                          }`,
+                          value: fmtPrice(
+                            marcheHistoriquePremierSecondaire?.valeur || 0
+                          ),
+                          tone: 'navy',
+                        },
+                        {
+                          label: `Fin ${
+                            marcheHistoriqueDernierSecondaire?.label || '—'
+                          }`,
+                          value: fmtPrice(
+                            marcheHistoriqueDernierSecondaire?.valeur || 0
+                          ),
+                          tone: 'navy',
+                        },
+                        {
+                          label: 'Variation',
+                          value: `${
+                            marcheHistoriqueVariationPeriodeSecondaire >= 0
+                              ? '+'
+                              : ''
+                          }${marcheHistoriqueVariationPeriodeSecondaire.toFixed(
+                            2
+                          )}%`,
+                          tone:
+                            marcheHistoriqueVariationPeriodeSecondaire >= 0
+                              ? 'teal'
+                              : 'coral',
+                        },
+                        {
+                          label: 'Variation YTD',
+                          value: `${
+                            marcheHistoriqueVariationYtdSecondaire >= 0
+                              ? '+'
+                              : ''
+                          }${marcheHistoriqueVariationYtdSecondaire.toFixed(2)}%`,
+                          tone:
+                            marcheHistoriqueVariationYtdSecondaire >= 0
+                              ? 'teal'
+                              : 'coral',
+                        },
+                        {
+                          label: 'Plus haut',
+                          value: fmtPrice(marcheHistoriquePlusHautSecondaire),
+                          tone: 'slate',
+                        },
+                        {
+                          label: 'Plus bas',
+                          value: fmtPrice(marcheHistoriquePlusBasSecondaire),
+                          tone: 'slate',
+                        },
+                      ].map((stat) => (
+                        <div
+                          key={`indice-2-${stat.label}`}
+                          className="p-2.5 rounded-xl border"
+                          style={{
+                            borderColor: C.line,
+                            background: '#FAFAFC',
+                          }}
+                        >
+                          <div
+                            className="text-[8px] uppercase font-semibold"
+                            style={{ color: C.sub }}
+                          >
+                            {stat.label}
+                          </div>
+                          <div
+                            className="text-xs font-bold mt-1"
+                            style={{
+                              ...F_MONO,
+                              color:
+                                stat.tone === 'teal'
+                                  ? C.teal
+                                  : stat.tone === 'coral'
+                                  ? C.coral
+                                  : C.ink,
+                            }}
+                          >
+                            {stat.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="mt-3" style={{ width: '100%', height: 205 }}>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={marcheHistoriqueSerieSecondaire}
+                          margin={{ top: 10, right: 12, left: 2, bottom: 4 }}
+                        >
+                          <CartesianGrid stroke={C.line} vertical={false} />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 8, fill: C.sub }}
+                            axisLine={{ stroke: C.line }}
+                            tickLine={false}
+                            minTickGap={30}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 8, fill: C.sub }}
+                            axisLine={false}
+                            tickLine={false}
+                            width={62}
+                            domain={['dataMin - 2', 'dataMax + 2']}
+                            tickFormatter={(value) => fmtPrice(value)}
+                          />
+                          <Tooltip
+                            formatter={(value) => [
+                              fmtPrice(Number(value)),
+                              marcheHistoriqueIndiceSecondaireActif?.label ||
+                                'Indice 2',
+                            ]}
+                            labelFormatter={(label) => `Séance : ${label}`}
+                            contentStyle={{
+                              borderRadius: 10,
+                              border: `1px solid ${C.line}`,
+                              fontSize: 11,
+                            }}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="valeur"
+                            name={
+                              marcheHistoriqueIndiceSecondaireActif?.label ||
+                              'Indice 2'
+                            }
+                            stroke={C.teal}
+                            strokeWidth={2.4}
+                            dot={
+                              marcheHistoriqueSerieSecondaire.length <= 45
+                                ? { r: 1.8 }
+                                : false
+                            }
+                            activeDot={{ r: 4 }}
+                            isAnimationActive={false}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div
+                      className="mt-1 flex items-center justify-between gap-2 text-[9px]"
+                      style={{ color: C.sub }}
+                    >
+                      <span>
+                        {marcheHistoriqueSerieSecondaire.length} observation(s)
+                      </span>
+                      <span style={F_MONO}>
+                        {marcheHistoriqueIndiceSecondaireActif?.code}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </Card>
 
             <Card
@@ -38589,7 +38972,7 @@ function Comite({
                         tone: 'navy',
                       },
                       {
-                        label: 'Capital cédé / réalloué',
+                        label: 'Capital cédé & réalloué',
                         value: `${fmtCompactMontant(capitalCedeDernierComite)} ${devise}`,
                         detail: 'cessions suivies',
                         tone: 'slate',
