@@ -6624,6 +6624,150 @@ const CLIENT_ALLOCATION_LIMITS_DEFAULT = {
   Liquidité: 25,
 };
 
+const CLIENT_ALLOCATION_MINIMUMS_DEFAULT = {
+  'Actions cotées': 10,
+  'Actions non cotées': 0,
+  'Obligations cotées': 10,
+  'Obligations non cotées': 0,
+  FCP: 0,
+  FCTC: 0,
+  Immobilier: 0,
+  Liquidité: 5,
+};
+
+const CLIENT_ALLOCATION_MINIMUMS_STORAGE_KEY =
+  'opcvm-gsm-client-allocation-minimums-v1';
+
+const clientLoadAllocationMinimums = () => {
+  if (typeof window === 'undefined') {
+    return { ...CLIENT_ALLOCATION_MINIMUMS_DEFAULT };
+  }
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(CLIENT_ALLOCATION_MINIMUMS_STORAGE_KEY) || '{}'
+    );
+    return CLIENT_ASSET_CLASS_ORDER.reduce(
+      (acc, classe) => ({
+        ...acc,
+        [classe]: Number.isFinite(Number(saved?.[classe]))
+          ? Math.max(0, Math.min(100, Number(saved[classe])))
+          : CLIENT_ALLOCATION_MINIMUMS_DEFAULT[classe],
+      }),
+      {}
+    );
+  } catch {
+    return { ...CLIENT_ALLOCATION_MINIMUMS_DEFAULT };
+  }
+};
+
+const clientPersistAllocationMinimums = (minimums) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_ALLOCATION_MINIMUMS_STORAGE_KEY,
+      JSON.stringify(minimums)
+    );
+  } catch {
+    // La maquette reste fonctionnelle même si le stockage navigateur est bloqué.
+  }
+};
+
+/*
+ * MANDAT / CRITÈRES D'INVESTISSEMENT — GESTION LIBRE
+ *
+ * Une case cochée signifie que le critère reste autorisé. Une case décochée
+ * interdit les nouveaux investissements correspondants. Si le portefeuille
+ * détient déjà une position devenue interdite (pays, classe, secteur ou devise),
+ * le moteur génère une proposition de désinvestissement à examiner.
+ */
+const CLIENT_INVESTMENT_REINVESTMENT_OPTIONS = [
+  { id: 'dividendes', label: 'Dividendes' },
+  { id: 'couponsInterets', label: 'Coupons et intérêts' },
+  { id: 'amortissements', label: 'Amortissements / remboursements' },
+  { id: 'distributions', label: 'Distributions FCP / FCTC' },
+  { id: 'produitsCession', label: 'Produits de cession' },
+  { id: 'loyers', label: 'Loyers / revenus immobiliers' },
+  { id: 'autres', label: 'Autres tombées' },
+];
+
+const CLIENT_INVESTMENT_CRITERIA_DEFAULT = {
+  pays: {},
+  classesActifs: CLIENT_ASSET_CLASS_ORDER.reduce(
+    (acc, classe) => ({ ...acc, [classe]: true }),
+    {}
+  ),
+  secteurs: {},
+  devises: {},
+  reinvestissement: CLIENT_INVESTMENT_REINVESTMENT_OPTIONS.reduce(
+    (acc, option) => ({ ...acc, [option.id]: true }),
+    {}
+  ),
+};
+
+const CLIENT_INVESTMENT_CRITERIA_STORAGE_KEY =
+  'opcvm-gsm-client-investment-criteria-v1';
+
+const clientLoadInvestmentCriteria = () => {
+  if (typeof window === 'undefined') {
+    return {
+      ...CLIENT_INVESTMENT_CRITERIA_DEFAULT,
+      classesActifs: { ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs },
+      reinvestissement: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
+      },
+    };
+  }
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(CLIENT_INVESTMENT_CRITERIA_STORAGE_KEY) || '{}'
+    );
+    return {
+      pays: { ...(saved?.pays || {}) },
+      classesActifs: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs,
+        ...(saved?.classesActifs || {}),
+      },
+      secteurs: { ...(saved?.secteurs || {}) },
+      devises: { ...(saved?.devises || {}) },
+      reinvestissement: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
+        ...(saved?.reinvestissement || {}),
+      },
+    };
+  } catch {
+    return {
+      ...CLIENT_INVESTMENT_CRITERIA_DEFAULT,
+      classesActifs: { ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs },
+      reinvestissement: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
+      },
+    };
+  }
+};
+
+const clientPersistInvestmentCriteria = (criteria) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_INVESTMENT_CRITERIA_STORAGE_KEY,
+      JSON.stringify(criteria)
+    );
+  } catch {
+    // La maquette reste fonctionnelle même si le stockage navigateur est bloqué.
+  }
+};
+
+const clientReinvestmentCriterionKey = (type) => {
+  const value = String(type || '').toLowerCase();
+  if (/divid/.test(value)) return 'dividendes';
+  if (/coupon|intérêt|interet/.test(value)) return 'couponsInterets';
+  if (/amort|rembours/.test(value)) return 'amortissements';
+  if (/distribution|fcp|fctc/.test(value)) return 'distributions';
+  if (/cession|vente/.test(value)) return 'produitsCession';
+  if (/loyer|immobil/.test(value)) return 'loyers';
+  return 'autres';
+};
+
 const CLIENT_ALLOCATION_LIMITS_STORAGE_KEY =
   'opcvm-gsm-client-allocation-limits-v1';
 
@@ -39847,6 +39991,53 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     clientLoadAllocationLimits()
   );
 
+  const [minimumsAllocation, setMinimumsAllocation] = useState(() =>
+    clientLoadAllocationMinimums()
+  );
+  const [minimumsBrouillon, setMinimumsBrouillon] = useState(() =>
+    clientLoadAllocationMinimums()
+  );
+  const [criteresInvestissement, setCriteresInvestissement] = useState(() =>
+    clientLoadInvestmentCriteria()
+  );
+  const [criteresBrouillon, setCriteresBrouillon] = useState(() =>
+    clientLoadInvestmentCriteria()
+  );
+
+  const [messageValidationParametrage, setMessageValidationParametrage] =
+    useState('');
+
+  const [deviseIndicateurs, setDeviseIndicateurs] = useState(devise);
+  const [vueHistoriquePatrimoine, setVueHistoriquePatrimoine] =
+    useState('consolide');
+  const [filtreHistoriquePatrimoine, setFiltreHistoriquePatrimoine] =
+    useState('Tous');
+
+  useEffect(() => {
+    setDeviseIndicateurs(devise);
+  }, [devise]);
+
+  const paysCritereOptions = Array.from(
+    new Set(portefeuilles.map((portefeuille) => portefeuille.pays).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+  const secteurCritereOptions = Array.from(
+    new Set([
+      ...Object.values(CLIENT_SECTEUR_INSTRUMENT || {}),
+      ...portefeuilles.flatMap((portefeuille) =>
+        (portefeuille.lignes || []).map((ligne) => clientSector(ligne.instrument))
+      ),
+    ].filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+  const deviseCritereOptions = Array.from(
+    new Set([
+      ...portefeuilles.map((portefeuille) => portefeuille.devise),
+      ...Object.keys(FX),
+    ].filter(Boolean))
+  ).sort();
+
+  const critereAutorise = (groupe, valeur, source = criteresInvestissement) =>
+    source?.[groupe]?.[valeur] !== false;
+
   const patrimoine = portefeuilles.reduce(
     (somme, portefeuille) =>
       somme + clientPortfolioValueIn(portefeuille, devise),
@@ -39897,28 +40088,54 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     const montant = Number(allocationMap[name] || 0);
     const value =
       patrimoine > 0 ? Number(((montant / patrimoine) * 100).toFixed(1)) : 0;
-    const limite = Number(limitesAllocation[name] ?? 100);
-    const depassement = value - limite;
+    const minimum = Math.max(
+      0,
+      Math.min(100, Number(minimumsAllocation[name] ?? 0))
+    );
+    const limite = Math.max(
+      minimum,
+      Math.min(100, Number(limitesAllocation[name] ?? 100))
+    );
+    const depassement = Math.max(0, value - limite);
+    const sousMinimum = Math.max(0, minimum - value);
     const marge = limite - value;
     const statut =
       depassement > 0
-        ? 'Dépassement'
+        ? 'Au-dessus du maximum'
+        : sousMinimum > 0
+        ? 'Sous le minimum'
         : marge <= 2
-        ? 'Proche de la limite'
+        ? 'Proche du maximum'
         : 'Conforme';
     const commentaire =
       depassement > 0
-        ? `Dépassement de ${depassement.toFixed(1)} pt(s) par rapport à votre limite de ${limite.toFixed(1)}%.`
+        ? `Dépassement de ${depassement.toFixed(1)} pt(s) par rapport au maximum de ${limite.toFixed(1)}%.`
+        : sousMinimum > 0
+        ? `Sous-allocation de ${sousMinimum.toFixed(1)} pt(s) par rapport au minimum de ${minimum.toFixed(1)}%.`
         : marge <= 2
-        ? `Marge faible : ${Math.max(0, marge).toFixed(1)} pt(s) avant la limite de ${limite.toFixed(1)}%.`
-        : `Allocation conforme · marge disponible de ${marge.toFixed(1)} pt(s).`;
-    return { name, montant, value, limite, depassement, marge, statut, commentaire, devise };
+        ? `Marge faible : ${Math.max(0, marge).toFixed(1)} pt(s) avant le maximum de ${limite.toFixed(1)}%.`
+        : `Allocation comprise entre ${minimum.toFixed(1)}% et ${limite.toFixed(1)}%.`;
+    return {
+      name,
+      montant,
+      value,
+      minimum,
+      limite,
+      depassement,
+      sousMinimum,
+      marge,
+      statut,
+      commentaire,
+      devise,
+    };
   });
 
   const allocation = allocationControle.filter((part) => part.montant > 0);
   const alertesLimites = allocationControle.filter(
-    (part) => part.depassement > 0
+    (part) => part.depassement > 0 || part.sousMinimum > 0
   );
+  const alertesMaximum = allocationControle.filter((part) => part.depassement > 0);
+  const alertesMinimum = allocationControle.filter((part) => part.sousMinimum > 0);
 
   const montantActifDansPortefeuille = (portefeuille, classeActif) => {
     if (classeActif === 'Liquidité') {
@@ -40059,8 +40276,226 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       somme + convertCurrency(flux.montant, flux.devise, devise),
     0
   );
+  const prochainesTombeesReinvestissables = prochainesTombees.filter((flux) =>
+    critereAutorise(
+      'reinvestissement',
+      clientReinvestmentCriterionKey(flux.type)
+    )
+  );
+  const totalProchainesTombeesReinvestissables =
+    prochainesTombeesReinvestissables.reduce(
+      (somme, flux) =>
+        somme + convertCurrency(flux.montant, flux.devise, devise),
+      0
+    );
+  const totalProchainesTombeesNonReinvesties = Math.max(
+    0,
+    totalProchainesTombees - totalProchainesTombeesReinvestissables
+  );
   const liquiditePrevisionnelle =
-    liquiditeDisponible + totalProchainesTombees;
+    liquiditeDisponible + totalProchainesTombeesReinvestissables;
+
+  /*
+   * INDICATEURS MULTI-DEVISES — GESTION LIBRE
+   *
+   * Le sélecteur ci-dessous est indépendant de la devise générale du dashboard.
+   * Tous les montants des KPI sont convertis dans la devise choisie.
+   * La performance YTD reste un taux ; son équivalent monétaire est affiché
+   * dans la devise sélectionnée.
+   */
+  const patrimoineIndicateurs = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientPortfolioValueIn(portefeuille, deviseIndicateurs),
+    0
+  );
+  const liquiditeTotaleIndicateurs = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientCashIn(portefeuille, deviseIndicateurs),
+    0
+  );
+  const liquiditeReserveeIndicateurs = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme +
+      clientReservedCashIn(portefeuille, orders, deviseIndicateurs),
+    0
+  );
+  const liquiditeDisponibleIndicateurs = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme +
+      clientAvailableCashIn(portefeuille, orders, deviseIndicateurs),
+    0
+  );
+  const perfPondereeIndicateurs =
+    patrimoineIndicateurs > 0
+      ? portefeuilles.reduce(
+          (somme, portefeuille) =>
+            somme +
+            clientPortfolioValueIn(portefeuille, deviseIndicateurs) *
+              Number(portefeuille.perfYtd || 0),
+          0
+        ) / patrimoineIndicateurs
+      : 0;
+  const performanceYtdMontantIndicateurs = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme +
+      (clientPortfolioValueIn(portefeuille, deviseIndicateurs) *
+        Number(portefeuille.perfYtd || 0)) /
+        100,
+    0
+  );
+  const totalProchainesTombeesIndicateurs = prochainesTombees.reduce(
+    (somme, flux) =>
+      somme +
+      convertCurrency(
+        Number(flux.montant || 0),
+        flux.devise,
+        deviseIndicateurs
+      ),
+    0
+  );
+  const totalProchainesTombeesReinvestissablesIndicateurs =
+    prochainesTombeesReinvestissables.reduce(
+      (somme, flux) =>
+        somme +
+        convertCurrency(
+          Number(flux.montant || 0),
+          flux.devise,
+          deviseIndicateurs
+        ),
+      0
+    );
+  const liquiditePrevisionnelleIndicateurs =
+    liquiditeDisponibleIndicateurs +
+    totalProchainesTombeesReinvestissablesIndicateurs;
+
+  /*
+   * HISTORIQUE DU PATRIMOINE — CONSOLIDÉ / PAYS / SGI-PORTefeuille
+   *
+   * La maquette ne possède pas une valorisation historique réelle pour chacun
+   * des portefeuilles natifs. On reprend donc le moteur historique déterministe
+   * déjà utilisé ailleurs dans le prototype. Les portefeuilles importés peuvent
+   * ensuite être remplacés par les valorisations historiques du backend.
+   */
+  const historiquePaysOptions = Array.from(
+    new Set(
+      portefeuilles
+        .map((portefeuille) => portefeuille.pays)
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'fr'));
+
+  const historiquePortefeuilleOptions = portefeuilles.map((portefeuille) => ({
+    id: portefeuille.id,
+    label: `${portefeuille.sgi} · ${portefeuille.nom}`,
+    sgi: portefeuille.sgi,
+    pays: portefeuille.pays,
+  }));
+
+  const dateReferenceHistoriquePatrimoine = parseIsoLocalDate(
+    HISTORY_PERIODS[HISTORY_PERIODS.length - 1]?.date ||
+      formatIsoLocalDate(new Date())
+  );
+
+  const historiqueValeurPortefeuille = (portefeuille, period) => {
+    const valeurActuelle = clientPortfolioValueIn(
+      portefeuille,
+      deviseIndicateurs
+    );
+    return liquidityHistoricalAmount(
+      valeurActuelle,
+      `gestion-libre-patrimoine-${portefeuille.id}`,
+      parseIsoLocalDate(period.date),
+      dateReferenceHistoriquePatrimoine,
+      0.92
+    );
+  };
+
+  const historiquePatrimoineData = HISTORY_PERIODS.map((period) => {
+    const valeursPortefeuilles = portefeuilles.map((portefeuille) => ({
+      portefeuille,
+      valeur: historiqueValeurPortefeuille(portefeuille, period),
+    }));
+
+    const row = {
+      date: period.date,
+      mois: period.mois,
+      TOTAL: valeursPortefeuilles.reduce(
+        (somme, item) => somme + Number(item.valeur || 0),
+        0
+      ),
+    };
+
+    historiquePaysOptions.forEach((pays) => {
+      row[`PAYS:${pays}`] = valeursPortefeuilles
+        .filter((item) => item.portefeuille.pays === pays)
+        .reduce((somme, item) => somme + Number(item.valeur || 0), 0);
+    });
+
+    historiquePortefeuilleOptions.forEach((option) => {
+      row[`PF:${option.id}`] =
+        valeursPortefeuilles.find(
+          (item) => item.portefeuille.id === option.id
+        )?.valeur || 0;
+    });
+
+    return row;
+  });
+
+  const historiqueSeriesDisponibles =
+    vueHistoriquePatrimoine === 'pays'
+      ? historiquePaysOptions.map((pays) => ({
+          key: `PAYS:${pays}`,
+          label: pays,
+          filtre: pays,
+        }))
+      : vueHistoriquePatrimoine === 'sgi'
+      ? historiquePortefeuilleOptions.map((option) => ({
+          key: `PF:${option.id}`,
+          label: option.label,
+          filtre: option.id,
+        }))
+      : [
+          {
+            key: 'TOTAL',
+            label: 'Patrimoine consolidé',
+            filtre: 'Tous',
+          },
+        ];
+
+  const historiqueSeriesAffichees =
+    vueHistoriquePatrimoine === 'consolide' ||
+    filtreHistoriquePatrimoine === 'Tous'
+      ? historiqueSeriesDisponibles
+      : historiqueSeriesDisponibles.filter(
+          (serie) => serie.filtre === filtreHistoriquePatrimoine
+        );
+
+  const historiqueValeurDebut =
+    historiqueSeriesAffichees.length === 1
+      ? Number(
+          historiquePatrimoineData[0]?.[
+            historiqueSeriesAffichees[0]?.key
+          ] || 0
+        )
+      : Number(historiquePatrimoineData[0]?.TOTAL || 0);
+
+  const historiqueValeurFin =
+    historiqueSeriesAffichees.length === 1
+      ? Number(
+          historiquePatrimoineData[
+            historiquePatrimoineData.length - 1
+          ]?.[historiqueSeriesAffichees[0]?.key] || 0
+        )
+      : Number(
+          historiquePatrimoineData[
+            historiquePatrimoineData.length - 1
+          ]?.TOTAL || 0
+        );
+
+  const historiqueVariation =
+    historiqueValeurDebut > 0
+      ? ((historiqueValeurFin / historiqueValeurDebut - 1) * 100)
+      : 0;
 
   const opportunitesParClasse = allocationControle.map((part) => {
     const catalogue =
@@ -40117,6 +40552,78 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     ) || null;
 
   /*
+   * CONTRÔLE DU MANDAT D'INVESTISSEMENT
+   *
+   * Une position existante qui appartient à un pays, une classe d'actifs,
+   * un secteur ou une devise décochés devient incompatible avec le mandat.
+   * Le système ne vend rien automatiquement : il propose le désinvestissement
+   * et laisse l'institutionnel ouvrir la simulation avant toute décision.
+   */
+  const propositionsDesinvestissementCriteres = portefeuilles
+    .flatMap((portefeuille) =>
+      (portefeuille.lignes || []).map((ligne) => {
+        const classe = clientDetailedAssetClass(ligne.instrument);
+        const secteur = clientSector(ligne.instrument);
+        const pays = portefeuille.pays || 'Non renseigné';
+        const devisePosition = portefeuille.devise || devise;
+        const raisons = [];
+
+        if (!critereAutorise('pays', pays)) {
+          raisons.push(`Pays exclu : ${pays}`);
+        }
+        if (!critereAutorise('classesActifs', classe)) {
+          raisons.push(`Classe exclue : ${classe}`);
+        }
+        if (!critereAutorise('secteurs', secteur)) {
+          raisons.push(`Secteur exclu : ${secteur}`);
+        }
+        if (!critereAutorise('devises', devisePosition)) {
+          raisons.push(`Devise exclue : ${devisePosition}`);
+        }
+
+        if (!raisons.length) return null;
+
+        return {
+          id: `${portefeuille.id}-${ligne.instrument}`,
+          portefeuilleId: portefeuille.id,
+          portefeuille: portefeuille.nom,
+          sgi: portefeuille.sgi,
+          instrument: ligne.instrument,
+          classe,
+          secteur,
+          pays,
+          devisePosition,
+          montant: convertCurrency(
+            clientLineValue(ligne),
+            portefeuille.devise,
+            devise
+          ),
+          raisons,
+        };
+      })
+    )
+    .filter(Boolean)
+    .sort((a, b) => b.montant - a.montant);
+
+  const totalDesinvestissementCriteres =
+    propositionsDesinvestissementCriteres.reduce(
+      (somme, item) => somme + Number(item.montant || 0),
+      0
+    );
+
+  const criteresExclusCount =
+    paysCritereOptions.filter((item) => !critereAutorise('pays', item)).length +
+    CLIENT_ASSET_CLASS_ORDER.filter(
+      (item) => !critereAutorise('classesActifs', item)
+    ).length +
+    secteurCritereOptions.filter(
+      (item) => !critereAutorise('secteurs', item)
+    ).length +
+    deviseCritereOptions.filter(
+      (item) => !critereAutorise('devises', item)
+    ).length;
+
+  /*
    * PLAN DE NORMALISATION DES LIMITES
    *
    * Le moteur cherche d'abord à ramener chaque classe en dépassement à sa
@@ -40126,7 +40633,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
    * pistes disponibles. La liquidité n'est utilisée qu'en solution d'attente.
    */
   const planReequilibrage = (() => {
-    const reductions = alertesLimites.map((part) => {
+    const reductions = alertesMaximum.map((part) => {
       const montantAReduire =
         patrimoine > 0
           ? Math.max(0, (patrimoine * Number(part.depassement || 0)) / 100)
@@ -40150,6 +40657,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         (item) =>
           item.name !== 'Liquidité' &&
           item.depassement <= 0 &&
+          critereAutorise('classesActifs', item.name) &&
           item.capaciteMontant > 0 &&
           item.catalogue.length > 0
       )
@@ -40157,6 +40665,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         ...item,
         capaciteRestantePlan: Number(item.capaciteMontant || 0),
         scorePlan:
+          Number(item.sousMinimum || 0) * 100 +
           Number(item.capacitePts || 0) * 10 +
           Number(item.catalogue.length || 0) * 3,
       }))
@@ -40195,6 +40704,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       (item) =>
         item.name === 'Liquidité' &&
         item.depassement <= 0 &&
+        critereAutorise('classesActifs', 'Liquidité') &&
         item.capaciteMontant > 0
     );
 
@@ -40272,7 +40782,16 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               )} pt(s) de capacité.`,
           sens: 'Achat',
         };
-      } else if (part?.statut === 'Proche de la limite') {
+      } else if (part?.sousMinimum > 0 && critereAutorise('classesActifs', classe)) {
+        acc[classe] = {
+          tone: 'gold',
+          titre: `Renforcement à étudier : minimum ${part.minimum.toFixed(1)}%`,
+          detail: `${part.sousMinimum.toFixed(
+            1
+          )} pt(s) manquent pour atteindre le minimum défini.`,
+          sens: 'Achat',
+        };
+      } else if (part?.statut === 'Proche du maximum') {
         acc[classe] = {
           tone: 'gold',
           titre: 'Suspendre les nouveaux renforcements importants',
@@ -40332,24 +40851,103 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   };
 
   const ouvrirParametrage = () => {
+    setMessageValidationParametrage('');
     setLimitesBrouillon({ ...limitesAllocation });
+    setMinimumsBrouillon({ ...minimumsAllocation });
+    setCriteresBrouillon({
+      pays: { ...(criteresInvestissement.pays || {}) },
+      classesActifs: { ...(criteresInvestissement.classesActifs || {}) },
+      secteurs: { ...(criteresInvestissement.secteurs || {}) },
+      devises: { ...(criteresInvestissement.devises || {}) },
+      reinvestissement: {
+        ...(criteresInvestissement.reinvestissement || {}),
+      },
+    });
     setParametrageLimitesOuvert(true);
   };
 
-  const enregistrerLimites = () => {
-    const next = CLIENT_ASSET_CLASS_ORDER.reduce(
-      (acc, classe) => ({
-        ...acc,
-        [classe]: Math.max(
-          0,
-          Math.min(100, Number(limitesBrouillon[classe] || 0))
-        ),
-      }),
-      {}
+  const toggleCritereBrouillon = (groupe, valeur) => {
+    setCriteresBrouillon((current) => ({
+      ...current,
+      [groupe]: {
+        ...(current?.[groupe] || {}),
+        [valeur]: current?.[groupe]?.[valeur] === false,
+      },
+    }));
+  };
+
+  const definirToutCritereBrouillon = (groupe, options, autorise) => {
+    setCriteresBrouillon((current) => ({
+      ...current,
+      [groupe]: {
+        ...(current?.[groupe] || {}),
+        ...Object.fromEntries(options.map((option) => [option, autorise])),
+      },
+    }));
+  };
+
+  const validerParametrage = () => {
+    setMessageValidationParametrage('');
+
+    const incoherence = CLIENT_ASSET_CLASS_ORDER.find(
+      (classe) =>
+        Number(minimumsBrouillon[classe] || 0) >
+        Number(limitesBrouillon[classe] || 0)
     );
-    setLimitesAllocation(next);
-    clientPersistAllocationLimits(next);
-    setParametrageLimitesOuvert(false);
+
+    if (incoherence) {
+      setMessageValidationParametrage(
+        `Impossible de valider : le minimum de ${incoherence} est supérieur au maximum.`
+      );
+      return;
+    }
+
+    const nextMinimums = {};
+    const nextMaximums = {};
+
+    CLIENT_ASSET_CLASS_ORDER.forEach((classe) => {
+      const minimum = Math.max(
+        0,
+        Math.min(100, Number(minimumsBrouillon[classe] || 0))
+      );
+      const maximumBrut = Math.max(
+        0,
+        Math.min(100, Number(limitesBrouillon[classe] || 0))
+      );
+      const maximum = Math.max(minimum, maximumBrut);
+      nextMinimums[classe] = minimum;
+      nextMaximums[classe] = maximum;
+    });
+
+    const nextCriteria = {
+      pays: { ...(criteresBrouillon.pays || {}) },
+      classesActifs: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs,
+        ...(criteresBrouillon.classesActifs || {}),
+      },
+      secteurs: { ...(criteresBrouillon.secteurs || {}) },
+      devises: { ...(criteresBrouillon.devises || {}) },
+      reinvestissement: {
+        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
+        ...(criteresBrouillon.reinvestissement || {}),
+      },
+    };
+
+    setMinimumsAllocation(nextMinimums);
+    setLimitesAllocation(nextMaximums);
+    setCriteresInvestissement(nextCriteria);
+    clientPersistAllocationMinimums(nextMinimums);
+    clientPersistAllocationLimits(nextMaximums);
+    clientPersistInvestmentCriteria(nextCriteria);
+
+    setMessageValidationParametrage(
+      'Paramétrage validé : vos bornes et critères d’investissement sont maintenant actifs.'
+    );
+
+    window.setTimeout(() => {
+      setParametrageLimitesOuvert(false);
+      setMessageValidationParametrage('');
+    }, 650);
   };
 
   return (
@@ -40401,62 +40999,176 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-3">
         <Card className="p-4">
           <div className="text-xs" style={{ color: C.sub }}>
             Patrimoine consolidé
           </div>
-          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
-            {fmt(Math.round(patrimoine))} {devise}
+          <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(patrimoineIndicateurs))} {deviseIndicateurs}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
             {portefeuilles.length} portefeuilles · {nombreSgi} SGI ·{' '}
-            {nombrePays} pays
+            {nombrePays} pays · devise des KPI : {deviseIndicateurs}
           </div>
         </Card>
+
         <Card className="p-4">
-          <div className="text-xs" style={{ color: C.sub }}>
-            Performance YTD pondérée
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité totale
+            </div>
+            <select
+              value={deviseIndicateurs}
+              onChange={(event) => setDeviseIndicateurs(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              className="px-2 py-1 rounded-lg border text-[10px] font-bold"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                minWidth: 62,
+              }}
+              aria-label="Devise d'affichage"
+            >
+              {Object.keys(FX).map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="mt-1">
-            <Pct v={perfPonderee} />
-          </div>
-          <div className="text-[10px] mt-2" style={{ color: C.sub }}>
-            Pondération par la valeur de chaque portefeuille
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs" style={{ color: C.sub }}>
-            Liquidité disponible
-          </div>
-          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
-            {fmt(Math.round(liquiditeDisponible))} {devise}
+          <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(liquiditeTotaleIndicateurs))} {deviseIndicateurs}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            {patrimoine > 0
-              ? ((liquiditeDisponible / patrimoine) * 100).toFixed(1)
-              : '0.0'}
-            % du patrimoine · {fmt(Math.round(liquiditeReservee))} {devise}{' '}
-            réservé(s)
+            Espèces consolidées avant réservations d&apos;ordres
           </div>
         </Card>
+
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Performance YTD pondérée
+            </div>
+            <select
+              value={deviseIndicateurs}
+              onChange={(event) => setDeviseIndicateurs(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              className="px-2 py-1 rounded-lg border text-[10px] font-bold"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                minWidth: 62,
+              }}
+              aria-label="Devise d'affichage"
+            >
+              {Object.keys(FX).map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="mt-1">
+            <Pct v={perfPondereeIndicateurs} />
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            Taux : {perfPondereeIndicateurs >= 0 ? '+' : ''}
+            {perfPondereeIndicateurs.toFixed(1)}% · équivalent ≈{' '}
+            {fmt(Math.round(performanceYtdMontantIndicateurs))}{' '}
+            {deviseIndicateurs}
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="text-xs" style={{ color: C.sub }}>
+              Liquidité disponible
+            </div>
+            <select
+              value={deviseIndicateurs}
+              onChange={(event) => setDeviseIndicateurs(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              className="px-2 py-1 rounded-lg border text-[10px] font-bold"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                minWidth: 62,
+              }}
+              aria-label="Devise d'affichage"
+            >
+              {Object.keys(FX).map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(liquiditeDisponibleIndicateurs))}{' '}
+            {deviseIndicateurs}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+            {patrimoineIndicateurs > 0
+              ? (
+                  (liquiditeDisponibleIndicateurs /
+                    patrimoineIndicateurs) *
+                  100
+                ).toFixed(1)
+              : '0.0'}
+            % du patrimoine ·{' '}
+            {fmt(Math.round(liquiditeReserveeIndicateurs))}{' '}
+            {deviseIndicateurs} réservé(s)
+          </div>
+        </Card>
+
         <Card
           className="p-4"
           onClick={() => setDetailsLiquiditePrevisionnelleOuverts(true)}
           style={{ borderColor: C.teal }}
         >
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <div className="text-xs" style={{ color: C.sub }}>
               Liquidité prévisionnelle
             </div>
-            <Badge tone="teal">Voir les tombées</Badge>
+            <div className="flex items-center gap-1.5">
+              <select
+              value={deviseIndicateurs}
+              onChange={(event) => setDeviseIndicateurs(event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              className="px-2 py-1 rounded-lg border text-[10px] font-bold"
+              style={{
+                borderColor: C.line,
+                background: '#fff',
+                color: C.navy,
+                minWidth: 62,
+              }}
+              aria-label="Devise d'affichage"
+            >
+              {Object.keys(FX).map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+              <Badge tone="teal">Voir les tombées</Badge>
+            </div>
           </div>
-          <div className="text-xl font-bold mt-1" style={F_DISPLAY}>
-            {fmt(Math.round(liquiditePrevisionnelle))} {devise}
+          <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
+            {fmt(Math.round(liquiditePrevisionnelleIndicateurs))}{' '}
+            {deviseIndicateurs}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Disponible + {fmt(Math.round(totalProchainesTombees))} {devise} de
-            dividendes, coupons, loyers et autres rentes à recevoir
+            Disponible +{' '}
+            {fmt(
+              Math.round(
+                totalProchainesTombeesReinvestissablesIndicateurs
+              )
+            )}{' '}
+            {deviseIndicateurs} de tombées réinvestissables
           </div>
         </Card>
       </div>
@@ -40514,16 +41226,16 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                   </Td>
                   <Td mono>
                     {fmt(
-                      Math.round(clientPortfolioValueIn(portefeuille, devise))
+                      Math.round(clientPortfolioValueIn(portefeuille, deviseIndicateurs))
                     )}{' '}
-                    {devise}
+                    {deviseIndicateurs}
                   </Td>
                   <Td>
                     <Pct v={portefeuille.perfYtd} />
                   </Td>
                   <Td mono>
-                    {fmt(Math.round(clientCashIn(portefeuille, devise)))}{' '}
-                    {devise}
+                    {fmt(Math.round(clientCashIn(portefeuille, deviseIndicateurs)))}{' '}
+                    {deviseIndicateurs}
                   </Td>
                 </tr>
               ))}
@@ -40531,10 +41243,14 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           </table>
         </Card>
 
-        <Card className="p-5">
+        <div className="space-y-4">
+          <Card className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <Eyebrow>Allocation consolidée</Eyebrow>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Eyebrow>Allocation consolidée</Eyebrow>
+                <Badge tone="teal">Historique activé</Badge>
+              </div>
               <div className="text-xs font-semibold" style={{ color: C.ink }}>
                 {titreAllocation}
               </div>
@@ -40576,13 +41292,13 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                 className="text-lg font-bold mt-0.5"
                 style={{ color: C.ink, ...F_DISPLAY }}
               >
-                {fmt(Math.round(montantTotalAllocation))} {devise}
+                {fmt(Math.round(convertCurrency(montantTotalAllocation, devise, deviseIndicateurs)))} {deviseIndicateurs}
               </div>
             </div>
-            <Badge tone={alertesLimites.length ? 'coral' : 'teal'}>
+            <Badge tone={alertesLimites.length ? 'gold' : 'teal'}>
               {alertesLimites.length
-                ? `${alertesLimites.length} dépassement(s)`
-                : 'Limites respectées'}
+                ? `${alertesLimites.length} écart(s) min/max`
+                : 'Bornes respectées'}
             </Badge>
           </div>
 
@@ -40626,24 +41342,240 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             )}
           </div>
         </Card>
+
+
+    
+        </div>
       </div>
+
+      <Card className="p-0 overflow-hidden" style={{ borderColor: '#D8DFEF' }}>
+        <div className="p-4 flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <Eyebrow>Historique du patrimoine</Eyebrow>
+            <div className="text-sm font-bold" style={{ color: C.ink }}>
+              Évolution de l&apos;ensemble des avoirs
+            </div>
+            <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+              Consultez l&apos;historique consolidé, comparez les pays ou isolez une
+              SGI / un portefeuille. Les montants suivent la devise des indicateurs
+              sélectionnée ci-dessus.
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2 flex-wrap">
+            <label>
+              <span
+                className="block text-[9px] font-semibold mb-1"
+                style={{ color: C.sub }}
+              >
+                Lecture
+              </span>
+              <select
+                value={vueHistoriquePatrimoine}
+                onChange={(event) => {
+                  setVueHistoriquePatrimoine(event.target.value);
+                  setFiltreHistoriquePatrimoine('Tous');
+                }}
+                className="px-3 py-2 rounded-xl border text-xs font-semibold"
+                style={{ borderColor: C.line, background: '#fff' }}
+              >
+                <option value="consolide">Patrimoine consolidé</option>
+                <option value="pays">Par pays</option>
+                <option value="sgi">Par SGI / portefeuille</option>
+              </select>
+            </label>
+
+            {vueHistoriquePatrimoine !== 'consolide' && (
+              <label>
+                <span
+                  className="block text-[9px] font-semibold mb-1"
+                  style={{ color: C.sub }}
+                >
+                  {vueHistoriquePatrimoine === 'pays'
+                    ? 'Pays affiché'
+                    : 'SGI / portefeuille affiché'}
+                </span>
+                <select
+                  value={filtreHistoriquePatrimoine}
+                  onChange={(event) =>
+                    setFiltreHistoriquePatrimoine(event.target.value)
+                  }
+                  className="px-3 py-2 rounded-xl border text-xs"
+                  style={{
+                    borderColor: C.line,
+                    background: '#fff',
+                    minWidth: 210,
+                  }}
+                >
+                  <option value="Tous">
+                    {vueHistoriquePatrimoine === 'pays'
+                      ? 'Tous les pays'
+                      : 'Tous les portefeuilles'}
+                  </option>
+                  {vueHistoriquePatrimoine === 'pays'
+                    ? historiquePaysOptions.map((pays) => (
+                        <option key={pays} value={pays}>
+                          {pays}
+                        </option>
+                      ))
+                    : historiquePortefeuilleOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                </select>
+              </label>
+            )}
+
+            <div
+              className="px-3 py-2 rounded-xl border"
+              style={{ borderColor: C.line, background: '#FAFAFC' }}
+            >
+              <div className="text-[8px] uppercase font-semibold" style={{ color: C.sub }}>
+                Devise
+              </div>
+              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                {deviseIndicateurs}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="grid grid-cols-3 gap-3 px-4 pb-3"
+          style={{ borderBottom: `1px solid ${C.line}` }}
+        >
+          <div className="p-3 rounded-xl" style={{ background: '#FAFAFC' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Début de période
+            </div>
+            <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.ink }}>
+              {fmt(Math.round(historiqueValeurDebut))} {deviseIndicateurs}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#FAFAFC' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Dernière valeur
+            </div>
+            <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.ink }}>
+              {fmt(Math.round(historiqueValeurFin))} {deviseIndicateurs}
+            </div>
+          </div>
+          <div className="p-3 rounded-xl" style={{ background: '#FAFAFC' }}>
+            <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+              Variation de la période
+            </div>
+            <div className="mt-1">
+              <Pct v={historiqueVariation} />
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <ResponsiveContainer width="100%" height={285}>
+            <LineChart
+              data={historiquePatrimoineData}
+              margin={{ top: 12, right: 18, left: 8, bottom: 4 }}
+            >
+              <CartesianGrid stroke={C.line} vertical={false} />
+              <XAxis
+                dataKey="mois"
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={{ stroke: C.line }}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 10, fill: C.sub }}
+                axisLine={false}
+                tickLine={false}
+                width={82}
+                tickFormatter={(value) =>
+                  new Intl.NumberFormat('fr-FR', {
+                    notation: 'compact',
+                    maximumFractionDigits: 1,
+                  }).format(Number(value || 0))
+                }
+              />
+              <Tooltip
+                formatter={(value, name) => [
+                  `${fmt(Math.round(Number(value || 0)))} ${deviseIndicateurs}`,
+                  name,
+                ]}
+                labelFormatter={(label) => `Période : ${label}`}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: `1px solid ${C.line}`,
+                  fontSize: 11,
+                }}
+              />
+              {historiqueSeriesAffichees.map((serie, index) => (
+                <Line
+                  key={serie.key}
+                  type="monotone"
+                  dataKey={serie.key}
+                  name={serie.label}
+                  stroke={PALETTE[index % PALETTE.length]}
+                  strokeWidth={
+                    historiqueSeriesAffichees.length === 1 ? 2.8 : 2
+                  }
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3">
+            {historiqueSeriesAffichees.map((serie, index) => (
+              <div key={serie.key} className="flex items-center gap-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{
+                    background: PALETTE[index % PALETTE.length],
+                  }}
+                />
+                <span className="text-[10px] font-semibold" style={{ color: C.sub }}>
+                  {serie.label}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div
+            className="mt-4 p-3 rounded-xl text-[9px]"
+            style={{ background: '#F4F6FB', color: C.sub }}
+          >
+            <b style={{ color: C.ink }}>Historique de maquette :</b> les portefeuilles
+            natifs utilisent une reconstitution déterministe cohérente avec leur valeur
+            actuelle. En production, cette série doit être alimentée par les
+            valorisations historiques réelles de chaque compte / SGI.
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-0 overflow-hidden" style={{ borderColor: C.navy }}>
         <div className="p-4 flex items-start justify-between gap-4 flex-wrap">
           <div>
             <Eyebrow>Contrôle des limites d&apos;allocation</Eyebrow>
             <div className="text-sm font-bold" style={{ color: C.ink }}>
-              Limites personnelles par type d&apos;instrument
+              Bornes d&apos;allocation & critères d&apos;investissement
             </div>
             <div className="text-[11px] mt-1 max-w-4xl" style={{ color: C.sub }}>
-              Chaque plafond est indépendant. Le système compare l&apos;allocation
-              consolidée actuelle à la limite maximale que vous avez définie.
+              Le système contrôle pour chaque classe une borne minimale et maximale,
+              puis vérifie le mandat d&apos;investissement : pays, classes d&apos;actifs,
+              secteurs, devises et politique de réinvestissement des tombées.
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Btn tone="ghost" onClick={ouvrirParametrage}>
               <SlidersHorizontal size={14} /> Paramétrer mes limites
             </Btn>
+            <Badge tone={propositionsDesinvestissementCriteres.length ? 'coral' : 'teal'}>
+              {propositionsDesinvestissementCriteres.length
+                ? `${propositionsDesinvestissementCriteres.length} position(s) hors critères`
+                : 'Mandat respecté'}
+            </Badge>
             <button
               type="button"
               onClick={() => setLimitesFrameOuvert((current) => !current)}
@@ -40671,12 +41603,102 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
 
         {limitesFrameOuvert && (
           <div>
+            {propositionsDesinvestissementCriteres.length > 0 && (
+              <div
+                className="p-4"
+                style={{
+                  borderTop: `1px solid ${C.line}`,
+                  background: '#FFF4F1',
+                }}
+              >
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <div className="text-xs font-bold" style={{ color: C.coral }}>
+                      Propositions de désinvestissement · critères décochés
+                    </div>
+                    <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+                      Une position existante ne respecte plus votre mandat. Le système
+                      propose sa réduction / cession ; aucune vente n&apos;est envoyée automatiquement.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge tone="coral">
+                      {propositionsDesinvestissementCriteres.length} position(s)
+                    </Badge>
+                    <Badge tone="slate">
+                      {fmt(Math.round(totalDesinvestissementCriteres))} {devise}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border overflow-hidden" style={{ borderColor: '#F1C5BF', background: '#fff' }}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full" style={{ minWidth: 980 }}>
+                      <thead style={{ background: '#FFF9F7' }}>
+                        <tr>
+                          <Th>Instrument</Th>
+                          <Th>Portefeuille / SGI</Th>
+                          <Th>Classe</Th>
+                          <Th>Pays</Th>
+                          <Th>Secteur</Th>
+                          <Th>Valeur</Th>
+                          <Th>Motif(s)</Th>
+                          <Th>Action</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {propositionsDesinvestissementCriteres.map((item) => (
+                          <tr key={item.id} style={{ borderTop: `1px solid ${C.line}` }}>
+                            <Td className="font-semibold">{item.instrument}</Td>
+                            <Td>
+                              <div className="text-[10px] font-semibold">{item.portefeuille}</div>
+                              <div className="text-[9px]" style={{ color: C.sub }}>{item.sgi}</div>
+                            </Td>
+                            <Td>{item.classe}</Td>
+                            <Td>{item.pays}</Td>
+                            <Td>{item.secteur}</Td>
+                            <Td mono>{fmt(Math.round(item.montant))} {devise}</Td>
+                            <Td>
+                              <div className="flex flex-wrap gap-1">
+                                {item.raisons.map((raison) => (
+                                  <Badge key={raison} tone="coral">{raison}</Badge>
+                                ))}
+                              </div>
+                            </Td>
+                            <Td>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  goClient('client-investment-simulation', {
+                                    source: 'investment-criteria',
+                                    classeActif: item.classe,
+                                    portefeuilleId: item.portefeuilleId,
+                                    instrument: item.instrument,
+                                    sens: 'Vente',
+                                  })
+                                }
+                                className="text-[10px] font-semibold whitespace-nowrap"
+                                style={{ color: C.coral }}
+                              >
+                                Simuler la cession →
+                              </button>
+                            </Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div
               className="p-4"
               style={{
                 borderTop: `1px solid ${C.line}`,
                 background:
-                  planReequilibrage.reductions.length > 0
+                  planReequilibrage.reductions.length > 0 ||
+                  propositionsDesinvestissementCriteres.length > 0
                     ? '#FFF9F2'
                     : '#F1FAF6',
               }}
@@ -40694,8 +41716,10 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                     style={{ color: C.sub }}
                   >
                     {planReequilibrage.reductions.length > 0
-                      ? `Le moteur identifie les montants à réduire dans les classes en dépassement puis propose une réallocation vers les classes encore sous leurs limites et disposant d'opportunités à examiner.`
-                      : `Toutes les classes respectent actuellement vos limites. Aucune opération corrective n'est nécessaire.`}
+                      ? `Le moteur identifie les montants à réduire au-dessus des maximums puis propose une réallocation vers les classes autorisées encore sous leurs bornes.`
+                      : propositionsDesinvestissementCriteres.length > 0
+                      ? `Les bornes d'allocation sont respectées, mais certaines positions sont devenues incompatibles avec des critères d'investissement décochés.`
+                      : `Toutes les classes respectent leurs bornes et aucune position n'est incompatible avec les critères actifs.`}
                   </div>
                 </div>
 
@@ -40999,7 +42023,8 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                 <Th>Type d&apos;instrument</Th>
                 <Th>Montant consolidé</Th>
                 <Th>Allocation actuelle</Th>
-                <Th>Limite maximale</Th>
+                <Th>Minimum</Th>
+                <Th>Maximum</Th>
                 <Th>Écart / marge</Th>
                 <Th>Contrôle</Th>
                 <Th>Commentaire</Th>
@@ -41013,25 +42038,32 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                     {fmt(Math.round(part.montant))} {devise}
                   </Td>
                   <Td mono>{part.value.toFixed(1)}%</Td>
+                  <Td mono>{part.minimum.toFixed(1)}%</Td>
                   <Td mono>{part.limite.toFixed(1)}%</Td>
                   <Td mono>
                     <span
                       style={{
-                        color: part.depassement > 0 ? C.coral : C.teal,
+                        color:
+                          part.depassement > 0 || part.sousMinimum > 0
+                            ? C.coral
+                            : C.teal,
                         fontWeight: 700,
                       }}
                     >
                       {part.depassement > 0
-                        ? `+${part.depassement.toFixed(1)} pts`
-                        : `${part.marge.toFixed(1)} pts`}
+                        ? `+${part.depassement.toFixed(1)} pts au-dessus`
+                        : part.sousMinimum > 0
+                        ? `-${part.sousMinimum.toFixed(1)} pts sous min`
+                        : `${part.marge.toFixed(1)} pts avant max`}
                     </span>
                   </Td>
                   <Td>
                     <Badge
                       tone={
-                        part.statut === 'Dépassement'
+                        part.statut === 'Au-dessus du maximum'
                           ? 'coral'
-                          : part.statut === 'Proche de la limite'
+                          : part.statut === 'Sous le minimum' ||
+                            part.statut === 'Proche du maximum'
                           ? 'gold'
                           : 'teal'
                       }
@@ -41113,8 +42145,9 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               De l&apos;allocation actuelle vers les opportunités à étudier
             </div>
             <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
-              Le moteur croise votre allocation consolidée, vos limites personnelles,
-              la liquidité disponible et les prochaines tombées. Il ne recommande pas
+              Le moteur croise votre allocation consolidée, vos bornes min/max,
+              vos critères d'investissement, la liquidité disponible et uniquement
+              les prochaines tombées autorisées au réinvestissement. Il ne recommande pas
               un achat : il identifie les classes dans lesquelles une capacité
               d&apos;investissement existe encore et les familles d&apos;opportunités
               compatibles à analyser.
@@ -41127,15 +42160,16 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                   (item) =>
                     item.capacitePts >= 3 &&
                     item.depassement <= 0 &&
-                    item.name !== 'Liquidité'
+                    item.name !== 'Liquidité' &&
+                    critereAutorise('classesActifs', item.name)
                 ).length
               }{' '}
               classe(s) à explorer
             </Badge>
-            <Badge tone={alertesLimites.length ? 'coral' : 'navy'}>
+            <Badge tone={alertesLimites.length ? 'gold' : 'navy'}>
               {alertesLimites.length
-                ? `${alertesLimites.length} dépassement(s)`
-                : 'Aucun dépassement'}
+                ? `${alertesLimites.length} écart(s) aux bornes`
+                : 'Bornes respectées'}
             </Badge>
             <button
               type="button"
@@ -41180,7 +42214,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               Prochaines tombées
             </div>
             <div className="text-sm font-bold mt-1" style={{ ...F_MONO, color: C.gold }}>
-              +{fmt(Math.round(totalProchainesTombees))} {devise}
+              +{fmt(Math.round(totalProchainesTombeesReinvestissables))} {devise}
             </div>
           </div>
           <div className="p-3 rounded-xl" style={{ background: '#F1FAF6' }}>
@@ -41509,67 +42543,442 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           onClick={() => setParametrageLimitesOuvert(false)}
         >
           <div
-            className="bg-white rounded-2xl border shadow-2xl w-full max-w-3xl overflow-hidden"
-            style={{ borderColor: C.line }}
+            className="bg-white rounded-2xl border shadow-2xl w-full max-w-6xl overflow-hidden"
+            style={{ borderColor: C.line, maxHeight: '90vh' }}
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-5 flex items-start justify-between gap-4 border-b" style={{ borderColor: C.line }}>
+            <div
+              className="p-5 flex items-start justify-between gap-4 border-b"
+              style={{ borderColor: C.line }}
+            >
               <div>
-                <Eyebrow>Paramétrage</Eyebrow>
+                <Eyebrow>Mandat d&apos;investissement · Gestion libre</Eyebrow>
                 <div className="text-lg font-bold" style={{ color: C.ink }}>
-                  Mes limites maximales d&apos;allocation
+                  Mes limites & critères d&apos;investissement
                 </div>
-                <div className="text-xs mt-1" style={{ color: C.sub }}>
-                  Les limites sont enregistrées dans votre navigateur pour cette maquette.
+                <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+                  Définissez les bornes minimum / maximum de chaque classe puis les
+                  univers autorisés. Décocher un pays, une classe, un secteur ou une
+                  devise déclenche une proposition de désinvestissement si vous y êtes
+                  déjà exposé. Cliquez sur « Valider mon paramétrage » pour rendre ces
+                  règles actives. Aucune vente n&apos;est automatique.
                 </div>
               </div>
-              <button type="button" onClick={() => setParametrageLimitesOuvert(false)}>
+              <button
+                type="button"
+                onClick={() => setParametrageLimitesOuvert(false)}
+                aria-label="Fermer"
+              >
                 <X size={20} />
               </button>
             </div>
-            <div className="p-5 grid grid-cols-2 gap-3">
-              {CLIENT_ASSET_CLASS_ORDER.map((classe) => (
-                <label key={classe} className="p-3 rounded-xl border" style={{ borderColor: C.line }}>
-                  <span className="block text-xs font-semibold" style={{ color: C.ink }}>
-                    {classe}
-                  </span>
-                  <div className="flex items-center gap-2 mt-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="1"
-                      value={limitesBrouillon[classe]}
-                      onChange={(event) =>
-                        setLimitesBrouillon((current) => ({
-                          ...current,
-                          [classe]: event.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 rounded-xl border text-sm"
-                      style={{ borderColor: C.line }}
-                    />
-                    <span className="text-xs font-semibold" style={{ color: C.sub }}>% max</span>
+
+            <div className="overflow-auto" style={{ maxHeight: '72vh' }}>
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: C.ink }}>
+                      1. Bornes par classe d&apos;actifs
+                    </div>
+                    <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                      Minimum = allocation plancher souhaitée. Maximum = plafond à ne
+                      pas dépasser. Le minimum ne peut pas être supérieur au maximum.
+                    </div>
                   </div>
-                </label>
-              ))}
+                  <Badge tone="navy">{CLIENT_ASSET_CLASS_ORDER.length} classes</Badge>
+                </div>
+
+                <div
+                  className="mt-3 rounded-xl border overflow-hidden"
+                  style={{ borderColor: C.line }}
+                >
+                  <table className="w-full">
+                    <thead style={{ background: '#FAFAFC' }}>
+                      <tr>
+                        <Th>Classe d&apos;actifs</Th>
+                        <Th>Minimum</Th>
+                        <Th>Maximum</Th>
+                        <Th>Lecture</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {CLIENT_ASSET_CLASS_ORDER.map((classe) => {
+                        const minimum = Number(minimumsBrouillon[classe] || 0);
+                        const maximum = Number(limitesBrouillon[classe] || 0);
+                        const incoherent = minimum > maximum;
+                        return (
+                          <tr
+                            key={classe}
+                            style={{ borderTop: `1px solid ${C.line}` }}
+                          >
+                            <Td className="font-semibold">{classe}</Td>
+                            <Td>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                  value={minimumsBrouillon[classe]}
+                                  onChange={(event) =>
+                                    setMinimumsBrouillon((current) => ({
+                                      ...current,
+                                      [classe]: event.target.value,
+                                    }))
+                                  }
+                                  className="w-24 px-3 py-2 rounded-xl border text-sm"
+                                  style={{
+                                    borderColor: incoherent ? C.coral : C.line,
+                                  }}
+                                />
+                                <span className="text-xs font-semibold" style={{ color: C.sub }}>
+                                  %
+                                </span>
+                              </div>
+                            </Td>
+                            <Td>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="1"
+                                  value={limitesBrouillon[classe]}
+                                  onChange={(event) =>
+                                    setLimitesBrouillon((current) => ({
+                                      ...current,
+                                      [classe]: event.target.value,
+                                    }))
+                                  }
+                                  className="w-24 px-3 py-2 rounded-xl border text-sm"
+                                  style={{
+                                    borderColor: incoherent ? C.coral : C.line,
+                                  }}
+                                />
+                                <span className="text-xs font-semibold" style={{ color: C.sub }}>
+                                  %
+                                </span>
+                              </div>
+                            </Td>
+                            <Td>
+                              <span
+                                className="text-[10px] font-semibold"
+                                style={{ color: incoherent ? C.coral : C.teal }}
+                              >
+                                {incoherent
+                                  ? 'Le minimum dépasse le maximum'
+                                  : `${minimum}% ≤ allocation ≤ ${maximum}%`}
+                              </span>
+                            </Td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div
+                className="p-5"
+                style={{ borderTop: `1px solid ${C.line}`, background: '#FCFCFD' }}
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-bold" style={{ color: C.ink }}>
+                      2. Critères d&apos;investissement
+                    </div>
+                    <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+                      Cochez ce qui reste autorisé dans votre mandat. Une option
+                      décochée interdit les nouveaux investissements correspondants.
+                    </div>
+                  </div>
+                  <Badge tone="gold">
+                    {criteresExclusCount} exclusion(s) actuellement actives
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  {[
+                    {
+                      id: 'pays',
+                      titre: 'Pays autorisés',
+                      description:
+                        'Une position située dans un pays décoché sera signalée pour désinvestissement.',
+                      options: paysCritereOptions,
+                    },
+                    {
+                      id: 'classesActifs',
+                      titre: "Classes d'actifs autorisées",
+                      description:
+                        'Permet par exemple de sortir entièrement du non coté, de l’immobilier ou d’une poche fonds.',
+                      options: CLIENT_ASSET_CLASS_ORDER,
+                    },
+                    {
+                      id: 'secteurs',
+                      titre: 'Secteurs autorisés',
+                      description:
+                        'Les positions d’un secteur décoché sont identifiées instrument par instrument.',
+                      options: secteurCritereOptions,
+                    },
+                    {
+                      id: 'devises',
+                      titre: 'Devises autorisées',
+                      description:
+                        'Une devise décochée signale les positions détenues dans des portefeuilles libellés dans cette devise.',
+                      options: deviseCritereOptions,
+                    },
+                  ].map((groupe) => (
+                    <div
+                      key={groupe.id}
+                      className="rounded-2xl border p-4"
+                      style={{ borderColor: C.line, background: '#fff' }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold" style={{ color: C.ink }}>
+                            {groupe.titre}
+                          </div>
+                          <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                            {groupe.description}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <button
+                            type="button"
+                            className="text-[9px] font-semibold"
+                            style={{ color: C.teal }}
+                            onClick={() =>
+                              definirToutCritereBrouillon(
+                                groupe.id,
+                                groupe.options,
+                                true
+                              )
+                            }
+                          >
+                            Tout cocher
+                          </button>
+                          <button
+                            type="button"
+                            className="text-[9px] font-semibold"
+                            style={{ color: C.coral }}
+                            onClick={() =>
+                              definirToutCritereBrouillon(
+                                groupe.id,
+                                groupe.options,
+                                false
+                              )
+                            }
+                          >
+                            Tout décocher
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        className="grid grid-cols-2 gap-2 mt-3 overflow-auto pr-1"
+                        style={{ maxHeight: 170 }}
+                      >
+                        {groupe.options.map((option) => {
+                          const checked =
+                            criteresBrouillon?.[groupe.id]?.[option] !== false;
+                          return (
+                            <label
+                              key={option}
+                              className="flex items-center gap-2 p-2 rounded-xl border cursor-pointer"
+                              style={{
+                                borderColor: checked ? '#CFE7DF' : '#F1C5BF',
+                                background: checked ? '#F4FBF8' : '#FFF7F5',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  toggleCritereBrouillon(groupe.id, option)
+                                }
+                              />
+                              <span
+                                className="text-[10px] font-semibold"
+                                style={{ color: checked ? C.ink : C.coral }}
+                              >
+                                {option}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  className="rounded-2xl border p-4 mt-4"
+                  style={{ borderColor: '#E6D7B6', background: '#FFFDF8' }}
+                >
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="text-xs font-bold" style={{ color: C.ink }}>
+                        Réinvestissement des tombées
+                      </div>
+                      <div className="text-[9px] mt-1 max-w-3xl" style={{ color: C.sub }}>
+                        Choisissez quelles catégories de revenus futurs peuvent être
+                        réutilisées par le moteur comme capacité d&apos;investissement.
+                        Une catégorie décochée reste en liquidité et n&apos;alimente plus
+                        les opportunités proposées.
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-[9px] font-semibold"
+                        style={{ color: C.teal }}
+                        onClick={() =>
+                          definirToutCritereBrouillon(
+                            'reinvestissement',
+                            CLIENT_INVESTMENT_REINVESTMENT_OPTIONS.map(
+                              (option) => option.id
+                            ),
+                            true
+                          )
+                        }
+                      >
+                        Tout réinvestir
+                      </button>
+                      <button
+                        type="button"
+                        className="text-[9px] font-semibold"
+                        style={{ color: C.coral }}
+                        onClick={() =>
+                          definirToutCritereBrouillon(
+                            'reinvestissement',
+                            CLIENT_INVESTMENT_REINVESTMENT_OPTIONS.map(
+                              (option) => option.id
+                            ),
+                            false
+                          )
+                        }
+                      >
+                        Ne rien réinvestir
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-2 mt-3">
+                    {CLIENT_INVESTMENT_REINVESTMENT_OPTIONS.map((option) => {
+                      const checked =
+                        criteresBrouillon?.reinvestissement?.[option.id] !== false;
+                      return (
+                        <label
+                          key={option.id}
+                          className="flex items-center gap-2 p-2 rounded-xl border cursor-pointer"
+                          style={{
+                            borderColor: checked ? '#D9E1EF' : '#F1C5BF',
+                            background: checked ? '#F7F9FD' : '#FFF7F5',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() =>
+                              toggleCritereBrouillon(
+                                'reinvestissement',
+                                option.id
+                              )
+                            }
+                          />
+                          <span className="text-[10px] font-semibold" style={{ color: C.ink }}>
+                            {option.label}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div
+                  className="mt-4 p-3 rounded-xl text-[10px]"
+                  style={{ background: '#F4F6FB', color: C.sub }}
+                >
+                  <b style={{ color: C.ink }}>Logique appliquée :</b> une exclusion
+                  pays / classe / secteur / devise produit une proposition de cession
+                  pour les positions déjà détenues. Une exclusion de réinvestissement
+                  ne force pas une vente : elle retire simplement la tombée concernée
+                  de la liquidité future mobilisable.
+                </div>
+              </div>
             </div>
-            <div className="p-4 border-t flex items-center justify-between gap-3" style={{ borderColor: C.line, background: '#FAFAFC' }}>
+
+            {messageValidationParametrage && (
+              <div
+                className="px-5 py-3 text-xs font-semibold"
+                role="status"
+                style={{
+                  borderTop: `1px solid ${C.line}`,
+                  background: messageValidationParametrage.startsWith('Impossible')
+                    ? '#FFF2F0'
+                    : '#EEF9F5',
+                  color: messageValidationParametrage.startsWith('Impossible')
+                    ? C.coral
+                    : C.teal,
+                }}
+              >
+                {messageValidationParametrage}
+              </div>
+            )}
+
+            <div
+              className="p-4 border-t flex items-center justify-between gap-3 sticky bottom-0 z-10"
+              style={{
+                borderColor: C.line,
+                background: '#FAFAFC',
+                boxShadow: '0 -8px 24px rgba(15, 27, 51, 0.06)',
+              }}
+            >
               <button
                 type="button"
                 className="text-xs font-semibold"
                 style={{ color: C.sub }}
-                onClick={() =>
-                  setLimitesBrouillon({ ...CLIENT_ALLOCATION_LIMITS_DEFAULT })
-                }
+                onClick={() => {
+                  setMinimumsBrouillon({
+                    ...CLIENT_ALLOCATION_MINIMUMS_DEFAULT,
+                  });
+                  setLimitesBrouillon({
+                    ...CLIENT_ALLOCATION_LIMITS_DEFAULT,
+                  });
+                  setCriteresBrouillon({
+                    ...CLIENT_INVESTMENT_CRITERIA_DEFAULT,
+                    classesActifs: {
+                      ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs,
+                    },
+                    reinvestissement: {
+                      ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
+                    },
+                  });
+                }}
               >
-                Réinitialiser les valeurs proposées
+                Réinitialiser le mandat proposé
               </button>
               <div className="flex gap-2">
-                <Btn tone="ghost" onClick={() => setParametrageLimitesOuvert(false)}>
+                <Btn
+                  tone="ghost"
+                  onClick={() => setParametrageLimitesOuvert(false)}
+                >
                   Annuler
                 </Btn>
-                <Btn onClick={enregistrerLimites}>Enregistrer les limites</Btn>
+                <button
+                  type="button"
+                  onClick={validerParametrage}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm"
+                  style={{
+                    background: C.navy,
+                    color: '#fff',
+                    border: `1px solid ${C.navy}`,
+                    minWidth: 190,
+                  }}
+                >
+                  <FileCheck2 size={15} />
+                  Valider mon paramétrage
+                </button>
               </div>
             </div>
           </div>
@@ -41599,7 +43008,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               </div>
               <div className="flex items-center gap-3">
                 <Badge tone="teal">
-                  {fmt(Math.round(totalProchainesTombees))} {devise}
+                  {fmt(Math.round(totalProchainesTombeesIndicateurs))} {deviseIndicateurs}
                 </Badge>
                 <button type="button" onClick={() => setDetailsLiquiditePrevisionnelleOuverts(false)}>
                   <X size={20} />
@@ -41636,7 +43045,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                       <Td>{flux.portefeuille?.sgi || '—'}</Td>
                       <Td mono>{fmt(Math.round(flux.montant))} {flux.devise}</Td>
                       <Td mono>
-                        {fmt(Math.round(convertCurrency(flux.montant, flux.devise, devise)))} {devise}
+                        {fmt(Math.round(convertCurrency(flux.montant, flux.devise, deviseIndicateurs)))} {deviseIndicateurs}
                       </Td>
                     </tr>
                   ))}
