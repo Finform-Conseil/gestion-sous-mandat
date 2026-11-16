@@ -40587,7 +40587,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       statutOpportunite === 'Arbitrage / réduction'
         ? `La classe dépasse déjà sa limite de ${part.depassement.toFixed(
             1
-          )} pt(s). Priorité à l'arbitrage avant tout nouvel achat.`
+          )} pt(s). Les opportunités restent consultables et simulables, mais tout nouvel investissement doit être étudié avec un arbitrage, une réduction ailleurs ou une modification du mandat.`
         : part.name === 'Liquidité'
         ? `La poche de liquidité sert de réserve d'opportunité et peut être temporairement rémunérée selon l'horizon de disponibilité.`
         : `${capacitePts.toFixed(
@@ -40903,12 +40903,19 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   ) => {
     const portefeuilleCible =
       portefeuilleSimulationOpportunite(classe);
+    const classeAnalyse =
+      opportunitesParClasse.find((item) => item.name === classe) || null;
+
     goClient('client-investment-simulation', {
       source: 'opportunity-engine',
       classeActif: classe,
       opportuniteId,
       portefeuilleId: portefeuilleCible?.id || null,
       sens,
+      horsLimite: Number(classeAnalyse?.depassement || 0) > 0,
+      depassementPts: Number(classeAnalyse?.depassement || 0),
+      allocationActuelle: Number(classeAnalyse?.value || 0),
+      limiteAllocation: Number(classeAnalyse?.limite || 100),
     });
   };
 
@@ -42347,10 +42354,10 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
               Le moteur croise votre allocation consolidée, vos bornes min/max,
               vos critères d'investissement, la liquidité disponible et uniquement
-              les prochaines tombées autorisées au réinvestissement. Il ne recommande pas
-              un achat : il identifie les classes dans lesquelles une capacité
-              d&apos;investissement existe encore et les familles d&apos;opportunités
-              compatibles à analyser.
+              les prochaines tombées autorisées au réinvestissement. Les opportunités
+              restent visibles même lorsqu&apos;une classe dépasse sa limite : la limite
+              détermine la capacité conforme, mais ne masque pas les pistes à analyser.
+              Toute opportunité hors limite est signalée comme nécessitant un arbitrage.
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -42358,8 +42365,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               {
                 opportunitesParClasse.filter(
                   (item) =>
-                    item.capacitePts >= 3 &&
-                    item.depassement <= 0 &&
+                    item.catalogue.length > 0 &&
                     item.name !== 'Liquidité' &&
                     critereAutorise('classesActifs', item.name)
                 ).length
@@ -42430,7 +42436,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               Logique de décision
             </div>
             <div className="text-[10px] font-semibold mt-1" style={{ color: C.indigo }}>
-              Limite → capacité → opportunité → simulation
+              Opportunité → contrôle de limite → arbitrage éventuel → simulation
             </div>
           </div>
         </div>
@@ -42507,18 +42513,25 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                     </div>
                   </Td>
                   <Td>
-                    {item.name !== 'Liquidité' && item.depassement <= 0 ? (
+                    {item.name !== 'Liquidité' &&
+                    critereAutorise('classesActifs', item.name) ? (
                       <button
                         type="button"
                         onClick={() => simulerClasseOpportunite(item.name)}
                         className="text-xs font-semibold whitespace-nowrap"
-                        style={{ color: C.navy }}
+                        style={{
+                          color: item.depassement > 0 ? C.coral : C.navy,
+                        }}
                       >
-                        Simuler →
+                        {item.depassement > 0
+                          ? 'Simuler hors limite →'
+                          : 'Simuler →'}
                       </button>
                     ) : (
                       <span className="text-[9px]" style={{ color: C.sub }}>
-                        {item.depassement > 0 ? 'Arbitrage requis' : 'Réserve'}
+                        {item.name === 'Liquidité'
+                          ? 'Réserve'
+                          : 'Classe interdite par le mandat'}
                       </span>
                     )}
                   </Td>
@@ -42534,9 +42547,11 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
         >
           <b style={{ color: C.ink }}>Lecture :</b> la capacité en montant est une
           enveloppe théorique issue de l&apos;écart entre votre allocation actuelle et
-          votre plafond. Le montant réellement mobilisable est plafonné par votre
-          liquidité. Les prochaines tombées sont présentées séparément afin de
-          distinguer ce qui est disponible aujourd&apos;hui de ce qui pourrait le devenir.
+          votre plafond. Une capacité nulle ou négative n&apos;empêche plus d&apos;accéder
+          aux opportunités de la classe : elle signifie simplement que tout nouvel
+          investissement serait hors limite et devra être compensé par un arbitrage,
+          une réduction ou une modification du mandat. Les prochaines tombées restent
+          présentées séparément.
         </div>
           </>
         )}
@@ -42603,6 +42618,32 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             </div>
 
             <div className="overflow-auto p-5" style={{ maxHeight: '70vh' }}>
+              {classeOpportuniteSelectionnee.depassement > 0 && (
+                <div
+                  className="mb-4 p-4 rounded-2xl border"
+                  style={{
+                    borderColor: '#F1C5BF',
+                    background: '#FFF7F5',
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-xs font-bold" style={{ color: C.coral }}>
+                        Opportunités disponibles malgré le dépassement
+                      </div>
+                      <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+                        Cette classe est au-dessus de sa limite de{' '}
+                        {classeOpportuniteSelectionnee.depassement.toFixed(1)} pt(s).
+                        Les pistes ci-dessous restent accessibles pour analyse. Une simulation
+                        d&apos;achat devra cependant intégrer un arbitrage, une réduction
+                        compensatrice sur cette classe ou ailleurs, ou une révision du mandat.
+                      </div>
+                    </div>
+                    <Badge tone="coral">Hors limite · simulation autorisée</Badge>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="p-3 rounded-xl" style={{ background: '#F4F6FF' }}>
                   <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
@@ -42704,8 +42745,16 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                         {opportunite.exemples}
                       </div>
                       {classeOpportuniteSelectionnee.name !== 'Liquidité' &&
-                        classeOpportuniteSelectionnee.depassement <= 0 && (
+                        critereAutorise(
+                          'classesActifs',
+                          classeOpportuniteSelectionnee.name
+                        ) && (
                           <Btn
+                            tone={
+                              classeOpportuniteSelectionnee.depassement > 0
+                                ? 'ghost'
+                                : undefined
+                            }
                             onClick={() =>
                               simulerClasseOpportunite(
                                 classeOpportuniteSelectionnee.name,
@@ -42713,7 +42762,9 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                               )
                             }
                           >
-                            Simuler cette piste →
+                            {classeOpportuniteSelectionnee.depassement > 0
+                              ? 'Simuler cette piste hors limite →'
+                              : 'Simuler cette piste →'}
                           </Btn>
                         )}
                     </div>
@@ -44041,7 +44092,13 @@ function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
       )}
 
       {ctx?.source === 'opportunity-engine' && classePrefill && (
-        <Card className="p-4" style={{ borderColor: '#D8DFEF', background: '#F4F6FB' }}>
+        <Card
+          className="p-4"
+          style={{
+            borderColor: ctx?.horsLimite ? '#F1C5BF' : '#D8DFEF',
+            background: ctx?.horsLimite ? '#FFF7F5' : '#F4F6FB',
+          }}
+        >
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <Eyebrow>Pré-remplissage depuis le moteur d&apos;opportunités</Eyebrow>
@@ -44049,11 +44106,20 @@ function ClientInvestmentSimulation({ devise, orders = [], ctx = {} }) {
                 Classe à étudier : {classePrefill}
               </div>
               <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-                Le portefeuille et un instrument de cette classe ont été proposés
-                automatiquement. Vous pouvez modifier tous les paramètres avant de simuler.
+                {ctx?.horsLimite
+                  ? `La classe est déjà au-dessus de sa limite de ${Number(
+                      ctx?.depassementPts || 0
+                    ).toFixed(
+                      1
+                    )} pt(s). La simulation reste possible afin d'étudier l'opportunité, mais elle devra être accompagnée d'un arbitrage ou d'une action compensatrice.`
+                  : `Le portefeuille et un instrument de cette classe ont été proposés automatiquement. Vous pouvez modifier tous les paramètres avant de simuler.`}
               </div>
             </div>
-            <Badge tone="navy">Aucune transmission d&apos;ordre</Badge>
+            <Badge tone={ctx?.horsLimite ? 'coral' : 'navy'}>
+              {ctx?.horsLimite
+                ? 'Hors limite · arbitrage requis'
+                : 'Aucune transmission d’ordre'}
+            </Badge>
           </div>
         </Card>
       )}
