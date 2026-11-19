@@ -4851,24 +4851,27 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 15_000_000,
       perfYtd: 6.4,
       lignes: [
-        { instrument: 'SONATEL', qte: 4_200, pru: 13_250 },
-        { instrument: 'ECOBANK CI', qte: 3_000, pru: 6_920 },
+        { instrument: 'SONATEL', qte: 4_200, pru: 13_250, variationYtd: 9.6 },
+        { instrument: 'ECOBANK CI', qte: 3_000, pru: 6_920, variationYtd: -2.8 },
         {
           instrument: 'Obligation Trésor CI 6.5% 2029',
           qte: 3_500,
           pru: 10_010,
+          variationYtd: 4.3,
         },
         {
           instrument: 'Société Ivoire Services SA',
           qte: 1_800,
           pru: 8_500,
           prixActuel: 9_200,
+          variationYtd: 8.7,
         },
         {
           instrument: 'FCP Horizon UEMOA',
           qte: 1_000,
           pru: 10_000,
           prixActuel: 10_540,
+          variationYtd: 5.4,
         },
       ],
     },
@@ -4883,8 +4886,8 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 8_500_000,
       perfYtd: 5.2,
       lignes: [
-        { instrument: 'SONATEL', qte: 1_600, pru: 13_480 },
-        { instrument: 'PALMCI', qte: 900, pru: 7_950 },
+        { instrument: 'SONATEL', qte: 1_600, pru: 13_480, variationYtd: 9.6 },
+        { instrument: 'PALMCI', qte: 900, pru: 7_950, variationYtd: 6.1 },
         {
           instrument: 'Obligation Trésor CI 6.5% 2029',
           qte: 1_200,
@@ -4895,18 +4898,21 @@ const CLIENT_GESTION_LIBRE = {
           qte: 700,
           pru: 10_000,
           prixActuel: 10_150,
+          variationYtd: 5.1,
         },
         {
           instrument: 'FCTC Créances UEMOA 2029',
           qte: 650,
           pru: 10_000,
           prixActuel: 10_080,
+          variationYtd: 4.8,
         },
         {
           instrument: 'Immeuble Dakar Plateau · Quote-part',
           qte: 1,
           pru: 22_000_000,
           prixActuel: 23_800_000,
+          variationYtd: 7.2,
         },
       ],
     },
@@ -4921,20 +4927,22 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 9_000_000,
       perfYtd: 4.1,
       lignes: [
-        { instrument: 'MTN NIGERIA', qte: 120_000, pru: 205.4 },
-        { instrument: 'ZENITH BANK', qte: 500_000, pru: 38.6 },
-        { instrument: 'Obligation Trésor NGN 2028', qte: 180_000, pru: 99.2 },
+        { instrument: 'MTN NIGERIA', qte: 120_000, pru: 205.4, variationYtd: 7.4 },
+        { instrument: 'ZENITH BANK', qte: 500_000, pru: 38.6, variationYtd: 5.8 },
+        { instrument: 'Obligation Trésor NGN 2028', qte: 180_000, pru: 99.2, variationYtd: 3.9 },
         {
           instrument: 'Lagos Growth Private Ltd',
           qte: 60_000,
           pru: 120,
           prixActuel: 132,
+          variationYtd: 10.0,
         },
         {
           instrument: 'FCP Nigeria Balanced Income',
           qte: 50_000,
           pru: 102,
           prixActuel: 106.4,
+          variationYtd: 6.3,
         },
       ],
     },
@@ -4949,20 +4957,22 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 5_000_000,
       perfYtd: 6.0,
       lignes: [
-        { instrument: 'MTN NIGERIA', qte: 55_000, pru: 209.8 },
-        { instrument: 'ZENITH BANK', qte: 180_000, pru: 39.1 },
-        { instrument: 'Obligation Trésor NGN 2028', qte: 90_000, pru: 98.9 },
+        { instrument: 'MTN NIGERIA', qte: 55_000, pru: 209.8, variationYtd: 7.4 },
+        { instrument: 'ZENITH BANK', qte: 180_000, pru: 39.1, variationYtd: 5.8 },
+        { instrument: 'Obligation Trésor NGN 2028', qte: 90_000, pru: 98.9, variationYtd: 3.9 },
         {
           instrument: 'Obligation Kora Logistics NG 2031',
           qte: 75_000,
           pru: 100,
           prixActuel: 101.3,
+          variationYtd: 4.7,
         },
         {
           instrument: 'FCTC Infrastructure Nigeria 2030',
           qte: 60_000,
           pru: 100,
           prixActuel: 103.1,
+          variationYtd: 6.0,
         },
       ],
     },
@@ -4977,23 +4987,26 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 450_000,
       perfYtd: 8.2,
       lignes: [
-        { instrument: 'GCB BANK', qte: 220_000, pru: 4.85 },
+        { instrument: 'GCB BANK', qte: 220_000, pru: 4.85, variationYtd: 11.2 },
         {
           instrument: 'Obligation Corporate GSE 2027',
           qte: 13_000,
           pru: 100.2,
+          variationYtd: 4.1,
         },
         {
           instrument: 'Accra Agro Processing Ltd',
           qte: 45_000,
           pru: 6.2,
           prixActuel: 6.8,
+          variationYtd: 9.7,
         },
         {
           instrument: 'FCP Ghana Income Fund',
           qte: 20_000,
           pru: 10.1,
           prixActuel: 10.6,
+          variationYtd: 7.1,
         },
       ],
     },
@@ -5008,7 +5021,7 @@ const CLIENT_GESTION_LIBRE = {
       compteEspeces: 280_000,
       perfYtd: 5.7,
       lignes: [
-        { instrument: 'GCB BANK', qte: 95_000, pru: 5.02 },
+        { instrument: 'GCB BANK', qte: 95_000, pru: 5.02, variationYtd: 11.2 },
         {
           instrument: 'Obligation Corporate GSE 2027',
           qte: 7_000,
@@ -5019,12 +5032,14 @@ const CLIENT_GESTION_LIBRE = {
           qte: 1,
           pru: 720_000,
           prixActuel: 775_000,
+          variationYtd: 8.0,
         },
         {
           instrument: 'FCTC Ghana Receivables 2031',
           qte: 10_000,
           pru: 10,
           prixActuel: 10.35,
+          variationYtd: 5.5,
         },
       ],
     },
@@ -5299,6 +5314,11 @@ const CLIENT_NAV = [
     icon: ArrowDownRight,
   },
   {
+    id: 'client-investment-committee',
+    label: "Comité d'investissement",
+    icon: FileBarChart2,
+  },
+  {
     id: 'client-exchanges',
     label: 'Marchés Actions',
     icon: Activity,
@@ -5318,7 +5338,7 @@ const CLIENT_NAV = [
   { id: 'client-documentation', label: 'Documentation', icon: BookOpen },
 ];
 
-const CLIENT_ASSET_CLASS_ORDER = [
+const CLIENT_ASSET_CLASS_BASE_ORDER = [
   'Actions cotées',
   'Actions non cotées',
   'Obligations cotées',
@@ -5328,6 +5348,177 @@ const CLIENT_ASSET_CLASS_ORDER = [
   'Immobilier',
   'Liquidité',
 ];
+
+const CLIENT_INSTITUTION_ASSET_CLASS_PRESETS = {
+  general: {
+    label: 'Institutionnel · univers général',
+    description:
+      'Univers historique de la maquette. À utiliser si aucun profil sectoriel ne correspond exactement au mandat.',
+    classes: [...CLIENT_ASSET_CLASS_BASE_ORDER],
+  },
+  banque: {
+    label: 'Banque',
+    description:
+      'Liste proposée pour une banque : liquidité et instruments monétaires, dépôts, titres obligataires, actions et véhicules de placement.',
+    classes: [
+      'Liquidité',
+      'Titres monétaires / Bons du Trésor',
+      'Dépôts à terme / interbancaires',
+      'Obligations cotées',
+      'Obligations non cotées',
+      'Actions cotées',
+      'FCP',
+      'FCTC',
+      'Immobilier',
+    ],
+  },
+  assurance: {
+    label: 'Assurance',
+    description:
+      'Liste proposée pour un assureur : actifs de taux, actions, fonds, immobilier et poches de diversification de long terme.',
+    classes: [
+      'Liquidité',
+      'Dépôts à terme',
+      'Obligations cotées',
+      'Obligations non cotées',
+      'Actions cotées',
+      'Actions non cotées',
+      'FCP',
+      'FCTC',
+      'Immobilier',
+      'Infrastructures',
+      'Private Equity',
+    ],
+  },
+  retraite: {
+    label: 'Caisse de retraite',
+    description:
+      'Liste proposée pour une caisse de retraite : actifs de long terme, obligations, actions, immobilier, infrastructures et poches de diversification.',
+    classes: [
+      'Liquidité',
+      'Titres monétaires / Bons du Trésor',
+      'Dépôts à terme',
+      'Obligations cotées',
+      'Obligations non cotées',
+      'Actions cotées',
+      'Actions non cotées',
+      'FCP',
+      'FCTC',
+      'Immobilier',
+      'Infrastructures',
+      'Private Equity',
+    ],
+  },
+};
+
+const CLIENT_INSTITUTION_TYPE_STORAGE_KEY =
+  'opcvm-gsm-client-institution-type-v1';
+const CLIENT_CUSTOM_ASSET_CLASSES_STORAGE_KEY =
+  'opcvm-gsm-client-custom-asset-classes-v1';
+
+const clientLoadInstitutionType = () => {
+  if (typeof window === 'undefined') return 'general';
+  try {
+    const saved = window.localStorage.getItem(
+      CLIENT_INSTITUTION_TYPE_STORAGE_KEY
+    );
+    return CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[saved]
+      ? saved
+      : 'general';
+  } catch {
+    return 'general';
+  }
+};
+
+const clientPersistInstitutionType = (type) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_INSTITUTION_TYPE_STORAGE_KEY,
+      CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[type] ? type : 'general'
+    );
+  } catch {
+    // La maquette reste fonctionnelle si le stockage navigateur est indisponible.
+  }
+};
+
+const clientLoadCustomAssetClasses = () => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(
+        CLIENT_CUSTOM_ASSET_CLASSES_STORAGE_KEY
+      ) || '[]'
+    );
+    return Array.from(
+      new Set(
+        (Array.isArray(saved) ? saved : [])
+          .map((item) => String(item || '').trim())
+          .filter(Boolean)
+      )
+    );
+  } catch {
+    return [];
+  }
+};
+
+const clientPersistCustomAssetClasses = (classes) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_CUSTOM_ASSET_CLASSES_STORAGE_KEY,
+      JSON.stringify(
+        Array.from(
+          new Set(
+            (classes || [])
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+          )
+        )
+      )
+    );
+  } catch {
+    // La maquette reste fonctionnelle si le stockage navigateur est indisponible.
+  }
+};
+
+const clientBuildAssetClassOrder = (
+  institutionType = clientLoadInstitutionType(),
+  customClasses = clientLoadCustomAssetClasses(),
+  detectedClasses = []
+) => {
+  const preset =
+    CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[institutionType] ||
+    CLIENT_INSTITUTION_ASSET_CLASS_PRESETS.general;
+  return Array.from(
+    new Set([
+      ...(preset.classes || []),
+      ...(detectedClasses || []),
+      ...(customClasses || []),
+    ])
+  );
+};
+
+/*
+ * Variable volontairement rafraîchissable : les autres écrans de Gestion libre
+ * réutilisent cet univers (opportunités, comité, plan de désinvestissement,
+ * simulation). Un changement de profil institutionnel devient donc visible
+ * partout après validation du paramétrage.
+ */
+let CLIENT_ASSET_CLASS_ORDER = clientBuildAssetClassOrder();
+
+const clientRefreshAssetClassOrder = (
+  institutionType,
+  customClasses,
+  detectedClasses = []
+) => {
+  CLIENT_ASSET_CLASS_ORDER = clientBuildAssetClassOrder(
+    institutionType,
+    customClasses,
+    detectedClasses
+  );
+  return [...CLIENT_ASSET_CLASS_ORDER];
+};
 
 
 /* ---------------- IMPORT EXCEL SGI — GESTION LIBRE ----------------
@@ -5644,6 +5835,7 @@ const clientSgiTemplateRows = () => ({
       'Cours / Valeur unitaire',
       'Valeur de marché',
       'Plus/Moins-value latente',
+      'Variation YTD %',
       'Intérêts courus',
       'Date première acquisition',
       'Taux coupon %',
@@ -5668,6 +5860,7 @@ const clientSgiTemplateRows = () => ({
       14200,
       59640000,
       3990000,
+      9.6,
       0,
       '2025-04-18',
       '',
@@ -6134,6 +6327,15 @@ const clientParseSgiWorkbook = async (file) => {
       valeurMarcheImportee: valeurMarche,
       plusMoinsValueLatente: clientSgiNumber(
         clientSgiRowValue(row, 'Plus/Moins-value latente')
+      ),
+      variationYtd: clientSgiNumber(
+        clientSgiRowValue(
+          row,
+          'Variation YTD %',
+          'Performance YTD %',
+          'Variation annuelle %'
+        ),
+        null
       ),
       interetsCourus: clientSgiNumber(
         clientSgiRowValue(row, 'Intérêts courus')
@@ -6656,7 +6858,7 @@ const clientLoadAllocationMinimums = () => {
         ...acc,
         [classe]: Number.isFinite(Number(saved?.[classe]))
           ? Math.max(0, Math.min(100, Number(saved[classe])))
-          : CLIENT_ALLOCATION_MINIMUMS_DEFAULT[classe],
+          : Number(CLIENT_ALLOCATION_MINIMUMS_DEFAULT[classe] ?? 0),
       }),
       {}
     );
@@ -6789,7 +6991,7 @@ const clientLoadAllocationLimits = () => {
         ...acc,
         [classe]: Number.isFinite(Number(saved?.[classe]))
           ? Math.max(0, Math.min(100, Number(saved[classe])))
-          : CLIENT_ALLOCATION_LIMITS_DEFAULT[classe],
+          : Number(CLIENT_ALLOCATION_LIMITS_DEFAULT[classe] ?? 100),
       }),
       {}
     );
@@ -6875,6 +7077,11 @@ const clientLinePlusMoinsValue = (ligne) => {
   const cmp = clientLineCmp(ligne);
   const quantite = Number(ligne?.qte || 0);
   return quantite * (cours - cmp);
+};
+
+const clientLineVariationYtd = (ligne) => {
+  const value = Number(ligne?.variationYtd);
+  return Number.isFinite(value) ? value : null;
 };
 
 const clientPortfolioValueIn = (portefeuille, devise) =>
@@ -40009,6 +40216,20 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     clientLoadInvestmentCriteria()
   );
 
+  const [typeInstitution, setTypeInstitution] = useState(() =>
+    clientLoadInstitutionType()
+  );
+  const [typeInstitutionBrouillon, setTypeInstitutionBrouillon] = useState(() =>
+    clientLoadInstitutionType()
+  );
+  const [classesActifsPersonnalisees, setClassesActifsPersonnalisees] =
+    useState(() => clientLoadCustomAssetClasses());
+  const [
+    classesActifsPersonnaliseesBrouillon,
+    setClassesActifsPersonnaliseesBrouillon,
+  ] = useState(() => clientLoadCustomAssetClasses());
+  const [nouvelleClasseActif, setNouvelleClasseActif] = useState('');
+
   const [messageValidationParametrage, setMessageValidationParametrage] =
     useState('');
 
@@ -40054,6 +40275,26 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     ].filter(Boolean))
   ).sort();
 
+  const classesActifsDetectees = Array.from(
+    new Set(
+      portefeuilles.flatMap((portefeuille) =>
+        (portefeuille.lignes || [])
+          .map((ligne) => clientDetailedAssetClass(ligne.instrument))
+          .filter(Boolean)
+      )
+    )
+  );
+
+  const classesActifsParametrage = clientBuildAssetClassOrder(
+    typeInstitutionBrouillon,
+    classesActifsPersonnaliseesBrouillon,
+    classesActifsDetectees
+  );
+
+  const profilInstitutionnelBrouillon =
+    CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[typeInstitutionBrouillon] ||
+    CLIENT_INSTITUTION_ASSET_CLASS_PRESETS.general;
+
   const critereAutorise = (groupe, valeur, source = criteresInvestissement) =>
     source?.[groupe]?.[valeur] !== false;
 
@@ -40095,6 +40336,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   portefeuilles.forEach((portefeuille) => {
     (portefeuille.lignes || []).forEach((ligne) => {
       const classe = clientDetailedAssetClass(ligne.instrument);
+      if (!(classe in allocationMap)) allocationMap[classe] = 0;
       allocationMap[classe] += convertCurrency(
         clientLineValue(ligne),
         portefeuille.devise,
@@ -40317,26 +40559,79 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
   /*
    * INDICATEURS MULTI-DEVISES — GESTION LIBRE
    * Le patrimoine consolidé reste dans la devise consolidée.
-   * Chaque autre KPI possède sa propre devise.
+   * Chaque autre KPI est désormais calculé en fonction des portefeuilles
+   * libellés dans la devise spécifiquement sélectionnée pour cette carte.
    */
   const patrimoineConsolide = portefeuilles.reduce(
     (somme, portefeuille) => somme + clientPortfolioValueIn(portefeuille, devise),
     0
   );
 
-  const liquiditeTotaleIndicateurs = portefeuilles.reduce(
-    (somme, portefeuille) => somme + clientCashIn(portefeuille, deviseLiquiditeTotale),
+  /*
+   * PERFORMANCE YTD CONSOLIDÉE DU PATRIMOINE
+   * Chaque portefeuille est pondéré par sa valeur convertie dans la devise
+   * consolidée sélectionnée. La performance reste donc représentative de
+   * l'ensemble du patrimoine, quelle que soit la devise native des comptes.
+   */
+  const variationYtdPatrimoineConsolide =
+    patrimoineConsolide > 0
+      ? portefeuilles.reduce(
+          (somme, portefeuille) =>
+            somme +
+            clientPortfolioValueIn(portefeuille, devise) *
+              Number(portefeuille.perfYtd || 0),
+          0
+        ) / patrimoineConsolide
+      : 0;
+
+  const variationYtdMontantConsolide = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme +
+      (clientPortfolioValueIn(portefeuille, devise) *
+        Number(portefeuille.perfYtd || 0)) /
+        100,
     0
   );
 
-  const patrimoinePerformanceYtd = portefeuilles.reduce(
+  const portefeuillesDansDevise = (code) =>
+    portefeuilles.filter((portefeuille) => portefeuille.devise === code);
+
+  const prochainesTombeesDansDevise = (code) =>
+    prochainesTombees.filter((flux) => {
+      const portefeuilleFlux = portefeuilles.find(
+        (portefeuille) => portefeuille.id === flux.portefeuilleId
+      );
+      return (portefeuilleFlux?.devise || flux.devise) === code;
+    });
+
+  const prochainesTombeesReinvestissablesDansDevise = (code) =>
+    prochainesTombeesReinvestissables.filter((flux) => {
+      const portefeuilleFlux = portefeuilles.find(
+        (portefeuille) => portefeuille.id === flux.portefeuilleId
+      );
+      return (portefeuilleFlux?.devise || flux.devise) === code;
+    });
+
+  const portefeuillesLiquiditeTotale = portefeuillesDansDevise(
+    deviseLiquiditeTotale
+  );
+  const liquiditeTotaleIndicateurs = portefeuillesLiquiditeTotale.reduce(
+    (somme, portefeuille) =>
+      somme + clientCashIn(portefeuille, deviseLiquiditeTotale),
+    0
+  );
+
+  const portefeuillesPerformanceYtd = portefeuillesDansDevise(
+    devisePerformanceYtd
+  );
+  const patrimoinePerformanceYtd = portefeuillesPerformanceYtd.reduce(
     (somme, portefeuille) =>
       somme + clientPortfolioValueIn(portefeuille, devisePerformanceYtd),
     0
   );
   const perfPondereeIndicateurs =
     patrimoinePerformanceYtd > 0
-      ? portefeuilles.reduce(
+      ? portefeuillesPerformanceYtd.reduce(
           (somme, portefeuille) =>
             somme +
             clientPortfolioValueIn(portefeuille, devisePerformanceYtd) *
@@ -40344,7 +40639,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           0
         ) / patrimoinePerformanceYtd
       : 0;
-  const performanceYtdMontantIndicateurs = portefeuilles.reduce(
+  const performanceYtdMontantIndicateurs = portefeuillesPerformanceYtd.reduce(
     (somme, portefeuille) =>
       somme +
       (clientPortfolioValueIn(portefeuille, devisePerformanceYtd) *
@@ -40352,36 +40647,77 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     0
   );
 
-  const patrimoineLiquiditeDisponible = portefeuilles.reduce(
+  const portefeuillesLiquiditeDisponible = portefeuillesDansDevise(
+    deviseLiquiditeDisponible
+  );
+  const patrimoineLiquiditeDisponible = portefeuillesLiquiditeDisponible.reduce(
     (somme, portefeuille) =>
       somme + clientPortfolioValueIn(portefeuille, deviseLiquiditeDisponible),
     0
   );
-  const liquiditeReserveeIndicateurs = portefeuilles.reduce(
+  const liquiditeReserveeIndicateurs = portefeuillesLiquiditeDisponible.reduce(
     (somme, portefeuille) =>
-      somme + clientReservedCashIn(portefeuille, orders, deviseLiquiditeDisponible),
+      somme +
+      clientReservedCashIn(
+        portefeuille,
+        orders,
+        deviseLiquiditeDisponible
+      ),
     0
   );
-  const liquiditeDisponibleIndicateurs = portefeuilles.reduce(
-    (somme, portefeuille) =>
-      somme + clientAvailableCashIn(portefeuille, orders, deviseLiquiditeDisponible),
-    0
-  );
+  const liquiditeDisponibleIndicateurs =
+    portefeuillesLiquiditeDisponible.reduce(
+      (somme, portefeuille) =>
+        somme +
+        clientAvailableCashIn(
+          portefeuille,
+          orders,
+          deviseLiquiditeDisponible
+        ),
+      0
+    );
 
-  const liquiditeDisponiblePrevisionnelle = portefeuilles.reduce(
-    (somme, portefeuille) =>
-      somme + clientAvailableCashIn(portefeuille, orders, deviseLiquiditePrevisionnelle),
-    0
+  const portefeuillesLiquiditePrevisionnelle = portefeuillesDansDevise(
+    deviseLiquiditePrevisionnelle
   );
-  const totalProchainesTombeesIndicateurs = prochainesTombees.reduce(
+  const fluxPrevisionnelsDansDevise = prochainesTombeesDansDevise(
+    deviseLiquiditePrevisionnelle
+  );
+  const fluxPrevisionnelsReinvestissablesDansDevise =
+    prochainesTombeesReinvestissablesDansDevise(
+      deviseLiquiditePrevisionnelle
+    );
+
+  const liquiditeDisponiblePrevisionnelle =
+    portefeuillesLiquiditePrevisionnelle.reduce(
+      (somme, portefeuille) =>
+        somme +
+        clientAvailableCashIn(
+          portefeuille,
+          orders,
+          deviseLiquiditePrevisionnelle
+        ),
+      0
+    );
+  const totalProchainesTombeesIndicateurs = fluxPrevisionnelsDansDevise.reduce(
     (somme, flux) =>
-      somme + convertCurrency(Number(flux.montant || 0), flux.devise, deviseLiquiditePrevisionnelle),
+      somme +
+      convertCurrency(
+        Number(flux.montant || 0),
+        flux.devise,
+        deviseLiquiditePrevisionnelle
+      ),
     0
   );
   const totalProchainesTombeesReinvestissablesIndicateurs =
-    prochainesTombeesReinvestissables.reduce(
+    fluxPrevisionnelsReinvestissablesDansDevise.reduce(
       (somme, flux) =>
-        somme + convertCurrency(Number(flux.montant || 0), flux.devise, deviseLiquiditePrevisionnelle),
+        somme +
+        convertCurrency(
+          Number(flux.montant || 0),
+          flux.devise,
+          deviseLiquiditePrevisionnelle
+        ),
       0
     );
   const liquiditePrevisionnelleIndicateurs =
@@ -40921,6 +41257,11 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
 
   const ouvrirParametrage = () => {
     setMessageValidationParametrage('');
+    setTypeInstitutionBrouillon(typeInstitution);
+    setClassesActifsPersonnaliseesBrouillon([
+      ...classesActifsPersonnalisees,
+    ]);
+    setNouvelleClasseActif('');
     setLimitesBrouillon({ ...limitesAllocation });
     setMinimumsBrouillon({ ...minimumsAllocation });
     setCriteresBrouillon({
@@ -40955,10 +41296,118 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     }));
   };
 
+  const ajouterClasseActifPersonnalisee = () => {
+    const classe = String(nouvelleClasseActif || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!classe) {
+      setMessageValidationParametrage(
+        "Renseignez le nom de la classe d'actifs à ajouter."
+      );
+      return;
+    }
+
+    if (
+      classesActifsParametrage.some(
+        (item) => item.toLowerCase() === classe.toLowerCase()
+      )
+    ) {
+      setMessageValidationParametrage(
+        `La classe « ${classe} » existe déjà dans votre univers.`
+      );
+      return;
+    }
+
+    setClassesActifsPersonnaliseesBrouillon((current) => [
+      ...current,
+      classe,
+    ]);
+    setMinimumsBrouillon((current) => ({
+      ...current,
+      [classe]: 0,
+    }));
+    setLimitesBrouillon((current) => ({
+      ...current,
+      [classe]: 100,
+    }));
+    setCriteresBrouillon((current) => ({
+      ...current,
+      classesActifs: {
+        ...(current?.classesActifs || {}),
+        [classe]: true,
+      },
+    }));
+    setNouvelleClasseActif('');
+    setMessageValidationParametrage(
+      `Classe « ${classe} » ajoutée au brouillon. Validez le paramétrage pour la conserver.`
+    );
+  };
+
+  const retirerClasseActifPersonnalisee = (classe) => {
+    if (classesActifsDetectees.includes(classe)) {
+      setMessageValidationParametrage(
+        `Impossible de retirer « ${classe} » : cette classe est déjà détectée dans votre patrimoine.`
+      );
+      return;
+    }
+
+    setClassesActifsPersonnaliseesBrouillon((current) =>
+      current.filter((item) => item !== classe)
+    );
+    setMessageValidationParametrage(
+      `Classe personnalisée « ${classe} » retirée du brouillon.`
+    );
+  };
+
+  const appliquerProfilInstitutionnel = (type) => {
+    const preset =
+      CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[type] ||
+      CLIENT_INSTITUTION_ASSET_CLASS_PRESETS.general;
+    const nextClasses = clientBuildAssetClassOrder(
+      type,
+      classesActifsPersonnaliseesBrouillon,
+      classesActifsDetectees
+    );
+
+    setMinimumsBrouillon((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        nextClasses.map((classe) => [
+          classe,
+          current?.[classe] ??
+            CLIENT_ALLOCATION_MINIMUMS_DEFAULT[classe] ??
+            0,
+        ])
+      ),
+    }));
+    setLimitesBrouillon((current) => ({
+      ...current,
+      ...Object.fromEntries(
+        nextClasses.map((classe) => [
+          classe,
+          current?.[classe] ??
+            CLIENT_ALLOCATION_LIMITS_DEFAULT[classe] ??
+            100,
+        ])
+      ),
+    }));
+    setCriteresBrouillon((current) => ({
+      ...current,
+      classesActifs: {
+        ...(current?.classesActifs || {}),
+        ...Object.fromEntries(nextClasses.map((classe) => [classe, true])),
+      },
+    }));
+    setMessageValidationParametrage(
+      `Liste proposée « ${preset.label} » chargée : ${nextClasses.length} classe(s), y compris vos classes détenues et personnalisées.`
+    );
+  };
+
   const validerParametrage = () => {
     setMessageValidationParametrage('');
 
-    const incoherence = CLIENT_ASSET_CLASS_ORDER.find(
+    const incoherence = classesActifsParametrage.find(
       (classe) =>
         Number(minimumsBrouillon[classe] || 0) >
         Number(limitesBrouillon[classe] || 0)
@@ -40974,7 +41423,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     const nextMinimums = {};
     const nextMaximums = {};
 
-    CLIENT_ASSET_CLASS_ORDER.forEach((classe) => {
+    classesActifsParametrage.forEach((classe) => {
       const minimum = Math.max(
         0,
         Math.min(100, Number(minimumsBrouillon[classe] || 0))
@@ -40991,7 +41440,9 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
     const nextCriteria = {
       pays: { ...(criteresBrouillon.pays || {}) },
       classesActifs: {
-        ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs,
+        ...Object.fromEntries(
+          classesActifsParametrage.map((classe) => [classe, true])
+        ),
         ...(criteresBrouillon.classesActifs || {}),
       },
       secteurs: { ...(criteresBrouillon.secteurs || {}) },
@@ -41002,15 +41453,32 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
       },
     };
 
+    const classesActifsValidees = clientRefreshAssetClassOrder(
+      typeInstitutionBrouillon,
+      classesActifsPersonnaliseesBrouillon,
+      classesActifsDetectees
+    );
+
+    setTypeInstitution(typeInstitutionBrouillon);
+    setClassesActifsPersonnalisees([
+      ...classesActifsPersonnaliseesBrouillon,
+    ]);
     setMinimumsAllocation(nextMinimums);
     setLimitesAllocation(nextMaximums);
     setCriteresInvestissement(nextCriteria);
+    clientPersistInstitutionType(typeInstitutionBrouillon);
+    clientPersistCustomAssetClasses(
+      classesActifsPersonnaliseesBrouillon
+    );
     clientPersistAllocationMinimums(nextMinimums);
     clientPersistAllocationLimits(nextMaximums);
     clientPersistInvestmentCriteria(nextCriteria);
 
     setMessageValidationParametrage(
-      'Paramétrage validé : vos bornes et critères d’investissement sont maintenant actifs.'
+      `Paramétrage validé : profil ${(
+        CLIENT_INSTITUTION_ASSET_CLASS_PRESETS[typeInstitutionBrouillon] ||
+        CLIENT_INSTITUTION_ASSET_CLASS_PRESETS.general
+      ).label}, ${classesActifsValidees.length} classe(s) d'actifs actives.`
     );
 
     window.setTimeout(() => {
@@ -41076,6 +41544,31 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           <div className="text-lg font-bold mt-1" style={F_DISPLAY}>
             {fmt(Math.round(patrimoineConsolide))} {devise}
           </div>
+
+          <div
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
+            style={{
+              color:
+                variationYtdPatrimoineConsolide >= 0 ? C.teal : C.coral,
+              ...F_MONO,
+            }}
+            title="Performance YTD pondérée de tous les portefeuilles, calculée dans la devise consolidée"
+          >
+            {variationYtdPatrimoineConsolide >= 0 ? (
+              <ArrowUpRight size={13} />
+            ) : (
+              <ArrowDownRight size={13} />
+            )}
+            Variation YTD consolidée :{' '}
+            {variationYtdPatrimoineConsolide >= 0 ? '+' : ''}
+            {variationYtdPatrimoineConsolide.toFixed(1)}%
+          </div>
+
+          <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+            Équivalent YTD ≈{' '}
+            {fmt(Math.round(variationYtdMontantConsolide))} {devise}
+          </div>
+
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
             {portefeuilles.length} portefeuilles · {nombreSgi} SGI ·{' '}
             {nombrePays} pays · devise consolidée : {devise}
@@ -41111,7 +41604,9 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             {fmt(Math.round(liquiditeTotaleIndicateurs))} {deviseLiquiditeTotale}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Espèces consolidées avant réservations d&apos;ordres
+            {portefeuillesLiquiditeTotale.length > 0
+              ? `Espèces de ${portefeuillesLiquiditeTotale.length} portefeuille(s) libellé(s) en ${deviseLiquiditeTotale}, avant réservations d'ordres`
+              : `Aucun portefeuille libellé en ${deviseLiquiditeTotale}` }
           </div>
         </Card>
 
@@ -41144,10 +41639,17 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             <Pct v={perfPondereeIndicateurs} />
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Taux : {perfPondereeIndicateurs >= 0 ? '+' : ''}
-            {perfPondereeIndicateurs.toFixed(1)}% · équivalent ≈{' '}
-            {fmt(Math.round(performanceYtdMontantIndicateurs))}{' '}
-            {devisePerformanceYtd}
+            {portefeuillesPerformanceYtd.length > 0
+              ? (
+                  <>
+                    Taux : {perfPondereeIndicateurs >= 0 ? '+' : ''}
+                    {perfPondereeIndicateurs.toFixed(1)}% · {portefeuillesPerformanceYtd.length}{' '}
+                    portefeuille(s) en {devisePerformanceYtd} · équivalent ≈{' '}
+                    {fmt(Math.round(performanceYtdMontantIndicateurs))}{' '}
+                    {devisePerformanceYtd}
+                  </>
+                )
+              : `Aucun portefeuille libellé en ${devisePerformanceYtd}` }
           </div>
         </Card>
 
@@ -41181,16 +41683,23 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             {deviseLiquiditeDisponible}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            {patrimoineLiquiditeDisponible > 0
+            {portefeuillesLiquiditeDisponible.length > 0
               ? (
-                  (liquiditeDisponibleIndicateurs /
-                    patrimoineLiquiditeDisponible) *
-                  100
-                ).toFixed(1)
-              : '0.0'}
-            % du patrimoine ·{' '}
-            {fmt(Math.round(liquiditeReserveeIndicateurs))}{' '}
-            {deviseLiquiditeDisponible} réservé(s)
+                  <>
+                    {patrimoineLiquiditeDisponible > 0
+                      ? (
+                          (liquiditeDisponibleIndicateurs /
+                            patrimoineLiquiditeDisponible) *
+                          100
+                        ).toFixed(1)
+                      : '0.0'}
+                    % du patrimoine des {portefeuillesLiquiditeDisponible.length}{' '}
+                    portefeuille(s) en {deviseLiquiditeDisponible} ·{' '}
+                    {fmt(Math.round(liquiditeReserveeIndicateurs))}{' '}
+                    {deviseLiquiditeDisponible} réservé(s)
+                  </>
+                )
+              : `Aucun portefeuille libellé en ${deviseLiquiditeDisponible}` }
           </div>
         </Card>
 
@@ -41231,13 +41740,20 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
             {deviseLiquiditePrevisionnelle}
           </div>
           <div className="text-[10px] mt-1" style={{ color: C.sub }}>
-            Disponible +{' '}
-            {fmt(
-              Math.round(
-                totalProchainesTombeesReinvestissablesIndicateurs
-              )
-            )}{' '}
-            {deviseLiquiditePrevisionnelle} de tombées réinvestissables
+            {portefeuillesLiquiditePrevisionnelle.length > 0
+              ? (
+                  <>
+                    {portefeuillesLiquiditePrevisionnelle.length} portefeuille(s) en{' '}
+                    {deviseLiquiditePrevisionnelle} · Disponible +{' '}
+                    {fmt(
+                      Math.round(
+                        totalProchainesTombeesReinvestissablesIndicateurs
+                      )
+                    )}{' '}
+                    {deviseLiquiditePrevisionnelle} de tombées réinvestissables
+                  </>
+                )
+              : `Aucun portefeuille libellé en ${deviseLiquiditePrevisionnelle}` }
           </div>
         </Card>
       </div>
@@ -41769,20 +42285,16 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
               Bornes d&apos;allocation & critères d&apos;investissement
             </div>
             <div className="text-[11px] mt-1 max-w-4xl" style={{ color: C.sub }}>
-              Le système contrôle pour chaque classe une borne minimale et maximale,
-              puis vérifie le mandat d&apos;investissement : pays, classes d&apos;actifs,
-              secteurs, devises et politique de réinvestissement des tombées.
+              Le système contrôle ici uniquement les bornes minimales et maximales
+              définies pour chaque classe d&apos;actifs. Les contraintes liées aux critères
+              d&apos;investissement et les actions de désinvestissement sont traitées dans
+              l&apos;onglet « Plan de désinvestissement ».
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Btn tone="ghost" onClick={ouvrirParametrage}>
               <SlidersHorizontal size={14} /> Paramétrer mes limites
             </Btn>
-            <Badge tone={propositionsDesinvestissementCriteres.length ? 'coral' : 'teal'}>
-              {propositionsDesinvestissementCriteres.length
-                ? `${propositionsDesinvestissementCriteres.length} position(s) hors critères`
-                : 'Mandat respecté'}
-            </Badge>
             <button
               type="button"
               onClick={() => setLimitesFrameOuvert((current) => !current)}
@@ -41810,102 +42322,12 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
 
         {limitesFrameOuvert && (
           <div>
-            {propositionsDesinvestissementCriteres.length > 0 && (
-              <div
-                className="p-4"
-                style={{
-                  borderTop: `1px solid ${C.line}`,
-                  background: '#FFF4F1',
-                }}
-              >
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                  <div>
-                    <div className="text-xs font-bold" style={{ color: C.coral }}>
-                      Propositions de désinvestissement · critères décochés
-                    </div>
-                    <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
-                      Une position existante ne respecte plus votre mandat. Le système
-                      propose sa réduction / cession ; aucune vente n&apos;est envoyée automatiquement.
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge tone="coral">
-                      {propositionsDesinvestissementCriteres.length} position(s)
-                    </Badge>
-                    <Badge tone="slate">
-                      {fmt(Math.round(totalDesinvestissementCriteres))} {devise}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="mt-3 rounded-xl border overflow-hidden" style={{ borderColor: '#F1C5BF', background: '#fff' }}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full" style={{ minWidth: 980 }}>
-                      <thead style={{ background: '#FFF9F7' }}>
-                        <tr>
-                          <Th>Instrument</Th>
-                          <Th>Portefeuille / SGI</Th>
-                          <Th>Classe</Th>
-                          <Th>Pays</Th>
-                          <Th>Secteur</Th>
-                          <Th>Valeur</Th>
-                          <Th>Motif(s)</Th>
-                          <Th>Action</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {propositionsDesinvestissementCriteres.map((item) => (
-                          <tr key={item.id} style={{ borderTop: `1px solid ${C.line}` }}>
-                            <Td className="font-semibold">{item.instrument}</Td>
-                            <Td>
-                              <div className="text-[10px] font-semibold">{item.portefeuille}</div>
-                              <div className="text-[9px]" style={{ color: C.sub }}>{item.sgi}</div>
-                            </Td>
-                            <Td>{item.classe}</Td>
-                            <Td>{item.pays}</Td>
-                            <Td>{item.secteur}</Td>
-                            <Td mono>{fmt(Math.round(item.montant))} {devise}</Td>
-                            <Td>
-                              <div className="flex flex-wrap gap-1">
-                                {item.raisons.map((raison) => (
-                                  <Badge key={raison} tone="coral">{raison}</Badge>
-                                ))}
-                              </div>
-                            </Td>
-                            <Td>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  goClient('client-investment-simulation', {
-                                    source: 'investment-criteria',
-                                    classeActif: item.classe,
-                                    portefeuilleId: item.portefeuilleId,
-                                    instrument: item.instrument,
-                                    sens: 'Vente',
-                                  })
-                                }
-                                className="text-[10px] font-semibold whitespace-nowrap"
-                                style={{ color: C.coral }}
-                              >
-                                Simuler la cession →
-                              </button>
-                            </Td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div
               className="p-4"
               style={{
                 borderTop: `1px solid ${C.line}`,
                 background:
-                  planReequilibrage.reductions.length > 0 ||
-                  propositionsDesinvestissementCriteres.length > 0
+                  planReequilibrage.reductions.length > 0
                     ? '#FFF9F2'
                     : '#F1FAF6',
               }}
@@ -41924,9 +42346,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                   >
                     {planReequilibrage.reductions.length > 0
                       ? `Le moteur identifie les montants à réduire au-dessus des maximums puis propose une réallocation vers les classes autorisées encore sous leurs bornes.`
-                      : propositionsDesinvestissementCriteres.length > 0
-                      ? `Les bornes d'allocation sont respectées, mais certaines positions sont devenues incompatibles avec des critères d'investissement décochés.`
-                      : `Toutes les classes respectent leurs bornes et aucune position n'est incompatible avec les critères actifs.`}
+                      : `Toutes les classes respectent actuellement leurs bornes minimales et maximales.`}
                   </div>
                 </div>
 
@@ -42808,8 +43228,11 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                   Mes limites & critères d&apos;investissement
                 </div>
                 <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
-                  Définissez les bornes minimum / maximum de chaque classe puis les
-                  univers autorisés. Décocher un pays, une classe, un secteur ou une
+                  Commencez par choisir votre profil institutionnel (Banque,
+                  Assurance ou Caisse de retraite) pour obtenir une liste de classes
+                  d&apos;actifs proposée, puis adaptez-la à votre mandat. Définissez les
+                  bornes minimum / maximum de chaque classe puis les univers autorisés.
+                  Décocher un pays, une classe, un secteur ou une
                   devise déclenche une proposition de désinvestissement si vous y êtes
                   déjà exposé. Cliquez sur « Valider mon paramétrage » pour rendre ces
                   règles actives. Aucune vente n&apos;est automatique.
@@ -42826,6 +43249,175 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
 
             <div className="overflow-auto" style={{ maxHeight: '72vh' }}>
               <div className="p-5">
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{ borderColor: '#D8DFEF', background: '#F7F9FD' }}
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-sm font-bold" style={{ color: C.ink }}>
+                        0. Profil institutionnel & univers de classes d&apos;actifs
+                      </div>
+                      <div className="text-[10px] mt-1 max-w-4xl" style={{ color: C.sub }}>
+                        Choisissez le type d&apos;institution. Le système charge une
+                        liste de classes d&apos;actifs proposée comme point de départ.
+                        Les classes déjà détenues dans votre patrimoine sont toujours
+                        conservées, et vous pouvez ajouter vos propres classes si votre
+                        politique d&apos;investissement le nécessite.
+                      </div>
+                    </div>
+                    <Badge tone="navy">
+                      {classesActifsParametrage.length} classe(s) dans l&apos;univers
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-4">
+                    <label className="lg:col-span-1">
+                      <span
+                        className="block text-[9px] font-semibold mb-1"
+                        style={{ color: C.sub }}
+                      >
+                        Type d&apos;institution
+                      </span>
+                      <select
+                        value={typeInstitutionBrouillon}
+                        onChange={(event) => {
+                          const type = event.target.value;
+                          setTypeInstitutionBrouillon(type);
+                          appliquerProfilInstitutionnel(type);
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border text-xs font-semibold"
+                        style={{ borderColor: C.line, background: '#fff' }}
+                      >
+                        {Object.entries(
+                          CLIENT_INSTITUTION_ASSET_CLASS_PRESETS
+                        ).map(([id, profil]) => (
+                          <option key={id} value={id}>
+                            {profil.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <div
+                      className="lg:col-span-2 p-3 rounded-xl border"
+                      style={{ borderColor: C.line, background: '#fff' }}
+                    >
+                      <div className="text-xs font-bold" style={{ color: C.ink }}>
+                        Liste proposée · {profilInstitutionnelBrouillon.label}
+                      </div>
+                      <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                        {profilInstitutionnelBrouillon.description}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-3">
+                        {profilInstitutionnelBrouillon.classes.map((classe) => (
+                          <span
+                            key={classe}
+                            className="px-2 py-1 rounded-lg text-[9px] font-semibold"
+                            style={{
+                              background: '#EEF2F8',
+                              color: C.navy,
+                            }}
+                          >
+                            {classe}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    className="mt-4 p-3 rounded-xl border"
+                    style={{ borderColor: C.line, background: '#fff' }}
+                  >
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div>
+                        <div className="text-xs font-bold" style={{ color: C.ink }}>
+                          Ajouter une classe d&apos;actifs
+                        </div>
+                        <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                          Utilisez cette option pour une classe propre à votre
+                          réglementation, votre politique d&apos;investissement ou
+                          votre nomenclature interne.
+                        </div>
+                      </div>
+                      <Badge tone="gold">
+                        {classesActifsPersonnaliseesBrouillon.length} personnalisée(s)
+                      </Badge>
+                    </div>
+
+                    <div className="flex gap-2 mt-3">
+                      <input
+                        value={nouvelleClasseActif}
+                        onChange={(event) =>
+                          setNouvelleClasseActif(event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            ajouterClasseActifPersonnalisee();
+                          }
+                        }}
+                        placeholder="Ex. Infrastructure verte, Or, Dette privée..."
+                        className="flex-1 px-3 py-2 rounded-xl border text-xs"
+                        style={{ borderColor: C.line }}
+                      />
+                      <Btn onClick={ajouterClasseActifPersonnalisee}>
+                        Ajouter la classe
+                      </Btn>
+                    </div>
+
+                    {classesActifsPersonnaliseesBrouillon.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {classesActifsPersonnaliseesBrouillon.map((classe) => {
+                          const detectee = classesActifsDetectees.includes(classe);
+                          return (
+                            <span
+                              key={classe}
+                              className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-[10px] font-semibold"
+                              style={{
+                                borderColor: detectee ? '#BFE6D9' : '#E6D7B6',
+                                background: detectee ? '#F2FBF7' : '#FFFDF8',
+                                color: C.ink,
+                              }}
+                            >
+                              {classe}
+                              {detectee ? (
+                                <span style={{ color: C.teal }}>détenue</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    retirerClasseActifPersonnalisee(classe)
+                                  }
+                                  style={{ color: C.coral }}
+                                  aria-label={`Retirer ${classe}`}
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {classesActifsDetectees.length > 0 && (
+                      <div className="text-[9px] mt-3" style={{ color: C.sub }}>
+                        <b style={{ color: C.ink }}>Classes déjà détectées :</b>{' '}
+                        {classesActifsDetectees.join(' · ')}. Elles restent
+                        automatiquement dans l&apos;univers afin de ne pas masquer
+                        une exposition existante.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="p-5"
+                style={{ borderTop: `1px solid ${C.line}` }}
+              >
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
                     <div className="text-sm font-bold" style={{ color: C.ink }}>
@@ -42836,7 +43428,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                       pas dépasser. Le minimum ne peut pas être supérieur au maximum.
                     </div>
                   </div>
-                  <Badge tone="navy">{CLIENT_ASSET_CLASS_ORDER.length} classes</Badge>
+                  <Badge tone="navy">{classesActifsParametrage.length} classes</Badge>
                 </div>
 
                 <div
@@ -42853,7 +43445,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {CLIENT_ASSET_CLASS_ORDER.map((classe) => {
+                      {classesActifsParametrage.map((classe) => {
                         const minimum = Number(minimumsBrouillon[classe] || 0);
                         const maximum = Number(limitesBrouillon[classe] || 0);
                         const incoherent = minimum > maximum;
@@ -42962,7 +43554,7 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                       titre: "Classes d'actifs autorisées",
                       description:
                         'Permet par exemple de sortir entièrement du non coté, de l’immobilier ou d’une poche fonds.',
-                      options: CLIENT_ASSET_CLASS_ORDER,
+                      options: classesActifsParametrage,
                     },
                     {
                       id: 'secteurs',
@@ -43190,17 +43782,32 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
                 className="text-xs font-semibold"
                 style={{ color: C.sub }}
                 onClick={() => {
-                  setMinimumsBrouillon({
-                    ...CLIENT_ALLOCATION_MINIMUMS_DEFAULT,
-                  });
-                  setLimitesBrouillon({
-                    ...CLIENT_ALLOCATION_LIMITS_DEFAULT,
-                  });
+                  const classesReset = clientBuildAssetClassOrder(
+                    typeInstitutionBrouillon,
+                    classesActifsPersonnaliseesBrouillon,
+                    classesActifsDetectees
+                  );
+                  setMinimumsBrouillon(
+                    Object.fromEntries(
+                      classesReset.map((classe) => [
+                        classe,
+                        CLIENT_ALLOCATION_MINIMUMS_DEFAULT[classe] ?? 0,
+                      ])
+                    )
+                  );
+                  setLimitesBrouillon(
+                    Object.fromEntries(
+                      classesReset.map((classe) => [
+                        classe,
+                        CLIENT_ALLOCATION_LIMITS_DEFAULT[classe] ?? 100,
+                      ])
+                    )
+                  );
                   setCriteresBrouillon({
                     ...CLIENT_INVESTMENT_CRITERIA_DEFAULT,
-                    classesActifs: {
-                      ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.classesActifs,
-                    },
+                    classesActifs: Object.fromEntries(
+                      classesReset.map((classe) => [classe, true])
+                    ),
                     reinvestissement: {
                       ...CLIENT_INVESTMENT_CRITERIA_DEFAULT.reinvestissement,
                     },
@@ -43309,6 +43916,2246 @@ function ClientDashboard({ goClient, devise, onDeviseChange, orders }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+
+
+/* ---------------- COMITÉ D'INVESTISSEMENT — GESTION LIBRE ----------------
+ *
+ * Espace de gouvernance de l'institutionnel.
+ * Le comité prépare, documente, vote et suit les décisions d'investissement.
+ * Aucune décision ne transmet un ordre directement : une décision adoptée peut
+ * être envoyée vers la Simulation d'investissement pour contrôle préalable.
+ */
+const CLIENT_INVESTMENT_COMMITTEE_STORAGE_KEY =
+  'opcvm-gsm-client-investment-committee-v1';
+
+const clientLoadInvestmentCommittee = () => {
+  if (typeof window === 'undefined') {
+    return { propositions: [], seances: [] };
+  }
+
+  try {
+    const saved = JSON.parse(
+      window.localStorage.getItem(CLIENT_INVESTMENT_COMMITTEE_STORAGE_KEY) ||
+        '{}'
+    );
+    return {
+      propositions: Array.isArray(saved?.propositions)
+        ? saved.propositions
+        : [],
+      seances: Array.isArray(saved?.seances) ? saved.seances : [],
+    };
+  } catch {
+    return { propositions: [], seances: [] };
+  }
+};
+
+const clientPersistInvestmentCommittee = (payload) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      CLIENT_INVESTMENT_COMMITTEE_STORAGE_KEY,
+      JSON.stringify(payload)
+    );
+  } catch {
+    // La maquette reste utilisable même si le stockage local est indisponible.
+  }
+};
+
+function ClientInvestmentCommittee({ goClient, devise, orders = [] }) {
+  const portefeuilles = clientGetPortfolios();
+  const [onglet, setOnglet] = useState('presence');
+  const [stockage, setStockage] = useState(() =>
+    clientLoadInvestmentCommittee()
+  );
+  const [message, setMessage] = useState('');
+
+  const dateAujourdhui = new Date().toISOString().slice(0, 10);
+
+  const [seance, setSeance] = useState({
+    titre: "Comité d'investissement périodique",
+    date: dateAujourdhui,
+    heure: '10:00',
+    president: 'Président du comité',
+    rapporteur: 'Secrétaire / Rapporteur',
+    objet:
+      "Décisions d'allocation, d'investissement, de désinvestissement et de gestion de la liquidité.",
+    commentaires: '',
+  });
+
+  const [participants, setParticipants] = useState([
+    { id: 'p1', nom: 'Président du comité', fonction: 'Présidence', present: true },
+    { id: 'p2', nom: 'Direction financière', fonction: 'Finance', present: true },
+    { id: 'p3', nom: 'Direction générale', fonction: 'Direction', present: true },
+    { id: 'p4', nom: 'Responsable des investissements', fonction: 'Investissement', present: true },
+    { id: 'p5', nom: 'Contrôle des risques', fonction: 'Risques / conformité', present: false },
+  ]);
+
+  const [agenda, setAgenda] = useState([
+    {
+      id: 'agenda-1',
+      titre: 'Validation du quorum et adoption de l’ordre du jour',
+      duree: 10,
+      nature: 'gouvernance',
+      statut: 'À traiter',
+      compteRendu: '',
+      conclusion: '',
+      demarreAt: null,
+      termineAt: null,
+    },
+    {
+      id: 'agenda-2',
+      titre: 'Revue du patrimoine, de la liquidité et des contraintes du mandat',
+      duree: 20,
+      nature: 'analyse',
+      statut: 'À traiter',
+      compteRendu: '',
+      conclusion: '',
+      demarreAt: null,
+      termineAt: null,
+    },
+    {
+      id: 'agenda-3',
+      titre: 'Opportunités d’investissement et propositions d’allocation',
+      duree: 30,
+      nature: 'decision',
+      statut: 'À traiter',
+      compteRendu: '',
+      conclusion: '',
+      demarreAt: null,
+      termineAt: null,
+    },
+    {
+      id: 'agenda-4',
+      titre: 'Arbitrages, désinvestissements et politique de réinvestissement',
+      duree: 20,
+      nature: 'decision',
+      statut: 'À traiter',
+      compteRendu: '',
+      conclusion: '',
+      demarreAt: null,
+      termineAt: null,
+    },
+    {
+      id: 'agenda-5',
+      titre: 'Synthèse des décisions, responsables et prochaines étapes',
+      duree: 15,
+      nature: 'synthese',
+      statut: 'À traiter',
+      compteRendu: '',
+      conclusion: '',
+      demarreAt: null,
+      termineAt: null,
+    },
+  ]);
+
+  const [nouveauPoint, setNouveauPoint] = useState({
+    titre: '',
+    duree: 15,
+    nature: 'analyse',
+  });
+
+  const [pointOuvert, setPointOuvert] = useState('agenda-1');
+  const [horlogeSeance, setHorlogeSeance] = useState(Date.now());
+
+  const [proposition, setProposition] = useState({
+    action: 'Investir',
+    classeActif: 'Obligations cotées',
+    instrument: '',
+    portefeuilleId: 'consolide',
+    montant: '',
+    devise,
+    horizon: 'Moyen terme',
+    execution: 'Progressive',
+    justification: '',
+  });
+
+  useEffect(() => {
+    setProposition((current) => ({ ...current, devise }));
+  }, [devise]);
+
+  const patrimoine = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientPortfolioValueIn(portefeuille, devise),
+    0
+  );
+
+  const liquiditeTotale = portefeuilles.reduce(
+    (somme, portefeuille) => somme + clientCashIn(portefeuille, devise),
+    0
+  );
+
+  const liquiditeDisponible = portefeuilles.reduce(
+    (somme, portefeuille) =>
+      somme + clientAvailableCashIn(portefeuille, orders, devise),
+    0
+  );
+
+  const allocationMontants = CLIENT_ASSET_CLASS_ORDER.reduce(
+    (acc, classe) => ({ ...acc, [classe]: 0 }),
+    {}
+  );
+
+  portefeuilles.forEach((portefeuille) => {
+    (portefeuille.lignes || []).forEach((ligne) => {
+      const classe = clientDetailedAssetClass(ligne.instrument);
+      if (!(classe in allocationMontants)) return;
+      allocationMontants[classe] += convertCurrency(
+        clientLineValue(ligne),
+        portefeuille.devise,
+        devise
+      );
+    });
+  });
+
+  allocationMontants.Liquidité =
+    (allocationMontants.Liquidité || 0) + liquiditeTotale;
+
+  const allocationActuelle = CLIENT_ASSET_CLASS_ORDER.map((classe) => ({
+    classe,
+    montant: allocationMontants[classe] || 0,
+    poids:
+      patrimoine > 0
+        ? ((allocationMontants[classe] || 0) / patrimoine) * 100
+        : 0,
+  }));
+
+  const presents = participants.filter((item) => item.present).length;
+  const quorumAtteint = presents >= Math.ceil(participants.length / 2);
+
+  const propositions = stockage.propositions || [];
+  const adoptees = propositions.filter((item) => item.statut === 'Adoptée');
+  const aVoter = propositions.filter((item) => item.statut === 'À voter');
+  const rejetees = propositions.filter((item) => item.statut === 'Rejetée');
+
+  let minutesPlanifiees = comiteMinutes(seance.heure);
+  const agendaPlanifie = agenda.map((point, index) => {
+    const debut = comiteHeure(minutesPlanifiees);
+    const duree = Math.min(240, Math.max(5, Number(point.duree || 10)));
+    minutesPlanifiees += duree;
+    return {
+      ...point,
+      index,
+      debut,
+      fin: comiteHeure(minutesPlanifiees),
+      duree,
+      statut: point.termineAt
+        ? 'Traité'
+        : point.demarreAt
+        ? 'En cours'
+        : 'À traiter',
+    };
+  });
+  const dureePrevue = agendaPlanifie.reduce(
+    (somme, point) => somme + point.duree,
+    0
+  );
+  const pointsTermines = agendaPlanifie.filter((point) => point.termineAt).length;
+  const pointEnCours = agendaPlanifie.find(
+    (point) => point.demarreAt && !point.termineAt
+  );
+  const agendaTermine =
+    agendaPlanifie.length > 0 && pointsTermines === agendaPlanifie.length;
+  const decisionsSoldees = aVoter.length === 0;
+  const pvDisponible = quorumAtteint && agendaTermine && decisionsSoldees;
+
+  useEffect(() => {
+    if (!pointEnCours) return undefined;
+    const timer = window.setInterval(() => setHorlogeSeance(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [pointEnCours?.id]);
+
+  useEffect(() => {
+    if (!agendaPlanifie.length) return;
+    if (!agendaPlanifie.some((point) => point.id === pointOuvert)) {
+      setPointOuvert(agendaPlanifie[0].id);
+    }
+  }, [agenda.length, pointOuvert]);
+
+  const resultatVotePoint = (point) => {
+    const presentsIds = participants
+      .filter((participant) => participant.present)
+      .map((participant) => participant.id);
+    const votes = point?.votes || {};
+    const pour = presentsIds.filter((id) => votes[id] === 'pour').length;
+    const contre = presentsIds.filter((id) => votes[id] === 'contre').length;
+    const abstention = presentsIds.filter((id) => votes[id] === 'abstention').length;
+    const exprimes = pour + contre;
+    let resultat = 'À voter';
+    if (!quorumAtteint) resultat = 'Quorum requis';
+    else if (exprimes === 0) resultat = 'À voter';
+    else if (pour > contre) resultat = 'Adopté';
+    else if (contre > pour) resultat = 'Rejeté';
+    else resultat = 'Égalité';
+    return { pour, contre, abstention, exprimes, resultat };
+  };
+
+  const changerVotePoint = (idPoint, idParticipant, vote) => {
+    setAgenda((current) =>
+      current.map((point) =>
+        point.id === idPoint
+          ? {
+              ...point,
+              votes: {
+                ...(point.votes || {}),
+                [idParticipant]: vote,
+              },
+            }
+          : point
+      )
+    );
+  };
+
+  const persist = (next) => {
+    setStockage(next);
+    clientPersistInvestmentCommittee(next);
+  };
+
+  const ajouterPointAgenda = () => {
+    const titre = nouveauPoint.titre.trim();
+    if (!titre) {
+      setMessage("Renseignez l'intitulé du point à ajouter à l'ordre du jour.");
+      return;
+    }
+
+    const id = `agenda-${Date.now()}`;
+    setAgenda((current) => [
+      ...current,
+      {
+        id,
+        titre,
+        duree: Math.max(5, Number(nouveauPoint.duree || 15)),
+        nature: nouveauPoint.nature,
+        statut: 'À traiter',
+        rapporteur: seance.rapporteur || '',
+        documentsAssocies: [],
+        propositionIds: [],
+        votes: {},
+        compteRendu: '',
+        conclusion: '',
+        demarreAt: null,
+        termineAt: null,
+      },
+    ]);
+    setPointOuvert(id);
+    setNouveauPoint({ titre: '', duree: 15, nature: 'analyse' });
+    setMessage(`Le point « ${titre} » a été ajouté à l'ordre du jour.`);
+  };
+
+  const modifierPointAgenda = (id, patch) => {
+    setAgenda((current) =>
+      current.map((point) =>
+        point.id === id ? { ...point, ...patch } : point
+      )
+    );
+  };
+
+  const supprimerPointAgenda = (id) => {
+    setAgenda((current) =>
+      current.filter((point) => point.id !== id)
+    );
+  };
+
+  const demarrerPoint = (id) => {
+    setPointOuvert(id);
+    if (pointEnCours && pointEnCours.id !== id) {
+      setMessage(
+        `Terminez d'abord le point en cours « ${pointEnCours.titre} ».`
+      );
+      return;
+    }
+
+    setAgenda((current) =>
+      current.map((point) =>
+        point.id === id
+          ? {
+              ...point,
+              statut: 'En cours',
+              demarreAt: point.demarreAt || new Date().toISOString(),
+              termineAt: null,
+            }
+          : point
+      )
+    );
+  };
+
+  const terminerPoint = (id) => {
+    const point = agenda.find((item) => item.id === id);
+    if (!point?.demarreAt) {
+      setMessage("Démarrez d'abord ce point avant de le clôturer.");
+      return;
+    }
+    if (!String(point.conclusion || '').trim()) {
+      setMessage(
+        'Ajoutez une conclusion / décision avant de terminer ce point.'
+      );
+      return;
+    }
+
+    setAgenda((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              statut: 'Traité',
+              termineAt: new Date().toISOString(),
+            }
+          : item
+      )
+    );
+  };
+
+  const rouvrirPoint = (id) => {
+    setPointOuvert(id);
+    setAgenda((current) =>
+      current.map((point) =>
+        point.id === id
+          ? {
+              ...point,
+              statut: 'En cours',
+              demarreAt: point.demarreAt || new Date().toISOString(),
+              termineAt: null,
+            }
+          : point
+      )
+    );
+  };
+
+  const ajouterProposition = () => {
+    const montant = Number(proposition.montant || 0);
+
+    if (!proposition.justification.trim()) {
+      setMessage('Ajoutez une justification avant de soumettre la proposition.');
+      return;
+    }
+
+    if (
+      !['Conserver', 'Ne pas réinvestir'].includes(proposition.action) &&
+      montant <= 0
+    ) {
+      setMessage('Indiquez un montant strictement positif.');
+      return;
+    }
+
+    const now = new Date();
+    const nextItem = {
+      id: `CI-${now.getFullYear()}${String(now.getMonth() + 1).padStart(
+        2,
+        '0'
+      )}${String(now.getDate()).padStart(2, '0')}-${String(
+        now.getHours()
+      ).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(
+        now.getSeconds()
+      ).padStart(2, '0')}`,
+      creeLe: now.toISOString(),
+      ...proposition,
+      montant,
+      statut: 'À voter',
+      votePour: 0,
+      voteContre: 0,
+      abstention: 0,
+    };
+
+    persist({
+      ...stockage,
+      propositions: [nextItem, ...propositions],
+    });
+
+    setProposition((current) => ({
+      ...current,
+      instrument: '',
+      montant: '',
+      justification: '',
+    }));
+    setMessage(`${nextItem.id} a été ajoutée aux propositions du comité.`);
+    setOnglet('decisions');
+  };
+
+  const mettreAJourProposition = (id, patch) => {
+    const nextItems = propositions.map((item) =>
+      item.id === id ? { ...item, ...patch } : item
+    );
+    persist({ ...stockage, propositions: nextItems });
+  };
+
+  const voter = (item, decision) => {
+    if (!quorumAtteint) {
+      setMessage(
+        "Le quorum n'est pas atteint : aucune décision ne peut être adoptée."
+      );
+      return;
+    }
+
+    mettreAJourProposition(item.id, {
+      statut: decision,
+      votePour: decision === 'Adoptée' ? Math.max(1, presents - 1) : 0,
+      voteContre: decision === 'Rejetée' ? Math.max(1, presents - 1) : 0,
+      abstention: 1,
+      voteLe: new Date().toISOString(),
+    });
+    setMessage(`${item.id} : décision « ${decision} » enregistrée.`);
+  };
+
+  const supprimerProposition = (id) => {
+    persist({
+      ...stockage,
+      propositions: propositions.filter((item) => item.id !== id),
+    });
+    setMessage(`${id} a été retirée du comité.`);
+  };
+
+  const envoyerVersSimulation = (item) => {
+    goClient('client-investment-simulation', {
+      source: 'investment-committee',
+      committeeDecisionId: item.id,
+      classeActif: item.classeActif,
+      portefeuilleId:
+        item.portefeuilleId === 'consolide' ? null : item.portefeuilleId,
+      instrument: item.instrument || undefined,
+      sens:
+        ['Alléger', 'Céder'].includes(item.action) ? 'Vente' : 'Achat',
+      montantIndicatif: Number(item.montant || 0),
+      devise: item.devise,
+      justification: item.justification,
+    });
+  };
+
+  const formatPvDate = (value) => {
+    if (!value) return '—';
+    try {
+      return new Intl.DateTimeFormat('fr-FR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(new Date(`${value}T12:00:00`));
+    } catch {
+      return value;
+    }
+  };
+
+  const htmlEscape = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+  const genererPvComite = () => {
+    if (!quorumAtteint) {
+      setMessage(
+        "Le PV ne peut pas être finalisé : le quorum n'est pas atteint."
+      );
+      setOnglet('presence');
+      return;
+    }
+
+    if (!agendaTermine) {
+      setMessage(
+        `Le PV ne peut pas encore être finalisé : ${agenda.length - pointsTermines} point(s) de l'ordre du jour restent à traiter.`
+      );
+      setOnglet('agenda');
+      return;
+    }
+
+    if (!decisionsSoldees) {
+      setMessage(
+        `Le PV ne peut pas encore être finalisé : ${aVoter.length} proposition(s) restent à voter.`
+      );
+      setOnglet('decisions');
+      return;
+    }
+
+    const archive = {
+      id: `SEANCE-${Date.now()}`,
+      dateArchive: new Date().toISOString(),
+      seance: { ...seance },
+      participants: participants.map((item) => ({ ...item })),
+      quorumAtteint,
+      agenda: agenda.map((point) => ({ ...point })),
+      decisions: propositions
+        .filter((item) => item.statut !== 'À voter')
+        .map((item) => ({ ...item })),
+      patrimoine,
+      liquiditeTotale,
+      liquiditeDisponible,
+      devise,
+    };
+
+    const participantsRows = participants
+      .map(
+        (participant) => `
+          <tr>
+            <td>${htmlEscape(participant.nom)}</td>
+            <td>${htmlEscape(participant.fonction)}</td>
+            <td>${participant.present ? 'Présent' : 'Absent'}</td>
+          </tr>`
+      )
+      .join('');
+
+    const agendaHtml = agendaPlanifie
+      .map((point) => {
+        const vote = resultatVotePoint(point);
+        return `
+          <section>
+            <h3>${point.index + 1}. ${htmlEscape(point.titre)}</h3>
+            <p><b>Horaire prévu :</b> ${htmlEscape(point.debut)}–${htmlEscape(point.fin)} · <b>Durée :</b> ${htmlEscape(point.duree)} min · <b>Rapporteur :</b> ${htmlEscape(point.rapporteur || seance.rapporteur || '—')}</p>
+            <p><b>Nature :</b> ${htmlEscape(point.nature)} · <b>Statut :</b> ${htmlEscape(point.statut)}</p>
+            <p><b>Vote du point :</b> ${vote.pour} pour / ${vote.contre} contre / ${vote.abstention} abstention — <b>${htmlEscape(vote.resultat)}</b></p>
+            <p><b>Compte rendu :</b><br/>${htmlEscape(point.compteRendu || 'Aucun commentaire complémentaire.').replace(/\n/g, '<br/>')}</p>
+            <p><b>Conclusion / décision :</b><br/>${htmlEscape(point.conclusion || '—').replace(/\n/g, '<br/>')}</p>
+          </section>`;
+      })
+      .join('');
+
+    const decisionsRows = propositions.length
+      ? propositions
+          .map((decision) => {
+            const portefeuille =
+              decision.portefeuilleId === 'consolide'
+                ? null
+                : portefeuilles.find(
+                    (pf) => pf.id === decision.portefeuilleId
+                  );
+            return `
+              <tr>
+                <td>${htmlEscape(decision.id)}</td>
+                <td>${htmlEscape(decision.action)}</td>
+                <td>${htmlEscape(decision.classeActif)}</td>
+                <td>${htmlEscape(decision.instrument || '—')}</td>
+                <td>${htmlEscape(
+                  portefeuille
+                    ? `${portefeuille.sgi} · ${portefeuille.nom}`
+                    : 'Patrimoine consolidé'
+                )}</td>
+                <td>${Number(decision.montant || 0) > 0 ? `${htmlEscape(fmt(Math.round(decision.montant)))} ${htmlEscape(decision.devise)}` : '—'}</td>
+                <td>${htmlEscape(decision.horizon)}</td>
+                <td>${htmlEscape(decision.statut)}</td>
+                <td>${htmlEscape(decision.justification)}</td>
+              </tr>`;
+          })
+          .join('')
+      : '<tr><td colspan="9">Aucune proposition d’investissement enregistrée.</td></tr>';
+
+    const allocationRows = allocationActuelle
+      .map(
+        (item) => `
+          <tr>
+            <td>${htmlEscape(item.classe)}</td>
+            <td>${htmlEscape(item.poids.toFixed(1))}%</td>
+            <td>${htmlEscape(fmt(Math.round(item.montant)))} ${htmlEscape(devise)}</td>
+          </tr>`
+      )
+      .join('');
+
+    const contenu = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>PV Comité d'investissement</title>
+<style>
+body{font:12px Arial,sans-serif;color:#182235;margin:36px;line-height:1.45}
+h1{font-size:22px;color:#0f1b33;margin-bottom:4px}
+h2{font-size:15px;border-bottom:2px solid #0f1b33;padding-bottom:5px;margin-top:24px}
+h3{font-size:13px;margin:16px 0 6px;color:#0f1b33}
+table{border-collapse:collapse;width:100%;margin:10px 0 18px}
+td,th{border:1px solid #d1d5db;padding:6px;vertical-align:top;text-align:left}
+th{background:#eef2f7}
+section{page-break-inside:avoid;border-bottom:1px solid #e5e7eb;padding-bottom:9px}
+.resume{background:#f5f6f9;padding:12px;border-left:4px solid #c9962f}
+.avertissement{background:#fff8e7;padding:12px;font-size:11px;margin-top:24px}
+.signature{margin-top:30px}
+</style>
+</head>
+<body>
+  <h1>PROCÈS-VERBAL — COMITÉ D'INVESTISSEMENT</h1>
+  <p><b>Gestion libre · Institutionnel</b></p>
+  <p>
+    <b>Séance :</b> ${htmlEscape(seance.titre)}<br/>
+    <b>Date :</b> ${htmlEscape(formatPvDate(seance.date))} ·
+    <b>Heure :</b> ${htmlEscape(seance.heure)}<br/>
+    <b>Président :</b> ${htmlEscape(seance.president)} ·
+    <b>Rapporteur :</b> ${htmlEscape(seance.rapporteur)}
+  </p>
+
+  <div class="resume">
+    <b>Objet :</b> ${htmlEscape(seance.objet)}<br/>
+    <b>Quorum :</b> ${presents} présent(s) sur ${participants.length} — atteint<br/>
+    <b>Patrimoine consolidé :</b> ${htmlEscape(fmt(Math.round(patrimoine)))} ${htmlEscape(devise)}<br/>
+    <b>Liquidité disponible :</b> ${htmlEscape(fmt(Math.round(liquiditeDisponible)))} ${htmlEscape(devise)}
+  </div>
+
+  <h2>1. Feuille de présence et quorum</h2>
+  <table>
+    <tr><th>Nom / qualité</th><th>Fonction</th><th>Présence</th></tr>
+    ${participantsRows}
+  </table>
+
+  <h2>2. Ordre du jour suivi et conclusions</h2>
+  ${agendaHtml}
+
+  <h2>3. Situation du patrimoine examinée</h2>
+  <table>
+    <tr><th>Classe d'actifs</th><th>Allocation actuelle</th><th>Montant indicatif</th></tr>
+    ${allocationRows}
+  </table>
+
+  <h2>4. Propositions, votes et décisions d'investissement</h2>
+  <table>
+    <tr>
+      <th>Référence</th><th>Action</th><th>Classe</th><th>Instrument</th>
+      <th>Portefeuille / SGI</th><th>Montant</th><th>Horizon</th>
+      <th>Décision</th><th>Justification</th>
+    </tr>
+    ${decisionsRows}
+  </table>
+
+  <h2>5. Observations générales et suites</h2>
+  <p>${htmlEscape(seance.commentaires || 'Aucune observation générale complémentaire.').replace(/\n/g, '<br/>')}</p>
+
+  <div class="signature">
+    <p><b>Président du comité :</b> ________________________________</p>
+    <p><b>Rapporteur :</b> _______________________________________</p>
+  </div>
+
+  <p class="avertissement">
+    <b>Document généré depuis la maquette de Gestion libre.</b>
+    Le PV formalise les décisions du comité mais ne vaut pas ordre de marché.
+    Les décisions adoptées doivent encore suivre le circuit de simulation,
+    de contrôle des limites et de validation avant transmission aux SGI.
+  </p>
+</body>
+</html>`;
+
+    exportDownloadBlob(
+      new Blob(['\ufeff', contenu], {
+        type: 'application/msword;charset=utf-8',
+      }),
+      `PV-comite-investissement-${seance.date || 'seance'}.doc`
+    );
+
+    persist({
+      ...stockage,
+      seances: [
+        archive,
+        ...(stockage.seances || []).filter(
+          (item) => item.id !== archive.id
+        ),
+      ].slice(0, 30),
+    });
+
+    setMessage(
+      "PV du Comité d'investissement généré et séance archivée."
+    );
+    setOnglet('historique');
+  };
+
+  const tabs = [
+    ['presence', 'Présences & quorum'],
+    ['agenda', 'Ordre du jour & votes'],
+    ['allocation', 'Situation du patrimoine'],
+    ['preparation', 'Nouvelle proposition'],
+    ['decisions', 'Propositions & votes'],
+    ['historique', 'Historique & PV'],
+  ];
+
+  return (
+    <div className="space-y-5">
+      <ClientBreadcrumb
+        items={['Espace Client', 'Gestion libre', "Comité d'investissement"]}
+      />
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Eyebrow>Gestion libre · gouvernance d&apos;investissement</Eyebrow>
+          <h2
+            className="text-xl font-bold"
+            style={{ ...F_DISPLAY, color: C.ink }}
+          >
+            Comité d&apos;investissement
+          </h2>
+          <div className="text-xs mt-1 max-w-4xl" style={{ color: C.sub }}>
+            Le comité suit un ordre du jour formel, documente chaque point,
+            vote les propositions et génère à la fin un procès-verbal de séance.
+            Les décisions adoptées restent soumises à simulation et contrôle
+            avant toute transmission d&apos;ordre.
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge tone={quorumAtteint ? 'teal' : 'coral'}>
+            {quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}
+          </Badge>
+          <Badge tone={agendaTermine ? 'teal' : 'gold'}>
+            {pointsTermines}/{agenda.length} point(s) traité(s)
+          </Badge>
+          <Badge tone={decisionsSoldees ? 'teal' : 'gold'}>
+            {aVoter.length} vote(s) restant(s)
+          </Badge>
+          <Btn
+            tone={pvDisponible ? 'navy' : 'ghost'}
+            onClick={genererPvComite}
+          >
+            Générer le PV du comité
+          </Btn>
+        </div>
+      </div>
+
+      {message && (
+        <Card
+          className="p-3"
+          style={{
+            borderColor: C.gold,
+            background: '#FBF7EE',
+          }}
+        >
+          <div className="text-xs font-semibold" style={{ color: C.ink }}>
+            {message}
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          [
+            'Patrimoine consolidé',
+            `${fmt(Math.round(patrimoine))} ${devise}`,
+            `${portefeuilles.length} portefeuille(s)`,
+          ],
+          [
+            'Liquidité disponible',
+            `${fmt(Math.round(liquiditeDisponible))} ${devise}`,
+            'mobilisable pour décision',
+          ],
+          [
+            'Progression ordre du jour',
+            `${pointsTermines} / ${agenda.length}`,
+            pointEnCours ? `En cours : ${pointEnCours.titre}` : agendaTermine ? 'Tous les points sont traités' : 'Aucun point en cours',
+          ],
+          [
+            'Propositions à voter',
+            `${aVoter.length}`,
+            `${adoptees.length} adoptée(s) · ${rejetees.length} rejetée(s)`,
+          ],
+          [
+            'PV de séance',
+            pvDisponible ? 'Prêt' : 'En préparation',
+            !quorumAtteint
+              ? 'Quorum requis'
+              : !agendaTermine
+              ? 'Ordre du jour à terminer'
+              : !decisionsSoldees
+              ? 'Votes à finaliser'
+              : 'Toutes les conditions sont remplies',
+          ],
+        ].map(([label, value, detail]) => (
+          <Card key={label} className="p-4">
+            <div
+              className="text-[9px] uppercase font-semibold"
+              style={{ color: C.sub }}
+            >
+              {label}
+            </div>
+            <div
+              className="text-lg font-bold mt-1"
+              style={{ color: C.navy, ...F_MONO }}
+            >
+              {value}
+            </div>
+            <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+              {detail}
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="p-0 overflow-hidden">
+        <div
+          className="flex items-center gap-1 px-3 pt-3 overflow-x-auto"
+          style={{ borderBottom: `1px solid ${C.line}` }}
+        >
+          {tabs.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setOnglet(id)}
+              className="px-3 py-2.5 text-xs font-semibold whitespace-nowrap"
+              style={{
+                color: onglet === id ? C.navy : C.sub,
+                borderBottom:
+                  onglet === id
+                    ? `2px solid ${C.gold}`
+                    : '2px solid transparent',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {onglet === 'presence' && (
+          <div className="p-5 space-y-5">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Intitulé
+                </span>
+                <input
+                  value={seance.titre}
+                  onChange={(event) =>
+                    setSeance((current) => ({
+                      ...current,
+                      titre: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Date
+                </span>
+                <input
+                  type="date"
+                  value={seance.date}
+                  onChange={(event) =>
+                    setSeance((current) => ({
+                      ...current,
+                      date: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Heure
+                </span>
+                <input
+                  type="time"
+                  value={seance.heure}
+                  onChange={(event) =>
+                    setSeance((current) => ({
+                      ...current,
+                      heure: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Président
+                </span>
+                <input
+                  value={seance.president}
+                  onChange={(event) =>
+                    setSeance((current) => ({
+                      ...current,
+                      president: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Rapporteur
+                </span>
+                <input
+                  value={seance.rapporteur}
+                  onChange={(event) =>
+                    setSeance((current) => ({
+                      ...current,
+                      rapporteur: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div>
+                  <div className="text-sm font-bold" style={{ color: C.ink }}>
+                    Participants & quorum
+                  </div>
+                  <div className="text-[10px]" style={{ color: C.sub }}>
+                    {presents} présent(s) sur {participants.length}. La majorité
+                    simple est requise dans cette maquette.
+                  </div>
+                </div>
+                <Badge tone={quorumAtteint ? 'teal' : 'coral'}>
+                  {presents} / {participants.length}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {participants.map((participant) => (
+                  <label
+                    key={participant.id}
+                    className="flex items-center gap-3 p-3 rounded-xl border"
+                    style={{
+                      borderColor: participant.present ? '#BFE6D9' : C.line,
+                      background: participant.present ? '#F2FBF7' : '#fff',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={participant.present}
+                      onChange={() =>
+                        setParticipants((current) =>
+                          current.map((item) =>
+                            item.id === participant.id
+                              ? { ...item, present: !item.present }
+                              : item
+                          )
+                        )
+                      }
+                    />
+                    <div>
+                      <div className="text-xs font-semibold" style={{ color: C.ink }}>
+                        {participant.nom}
+                      </div>
+                      <div className="text-[9px]" style={{ color: C.sub }}>
+                        {participant.fonction}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                Objet général du comité
+              </span>
+              <textarea
+                rows={3}
+                value={seance.objet}
+                onChange={(event) =>
+                  setSeance((current) => ({
+                    ...current,
+                    objet: event.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{ borderColor: C.line }}
+              />
+            </label>
+          </div>
+        )}
+
+        {onglet === 'agenda' && (
+          <div className="space-y-4 p-4 md:p-5" id="client-investment-committee-cockpit">
+            <Card className="p-4 md:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <Eyebrow>Pilotage du comité · séance interactive</Eyebrow>
+                  <h3 className="text-lg font-bold" style={{ color: C.ink, ...F_DISPLAY }}>
+                    Tableau de bord de séance
+                  </h3>
+                  <p className="text-xs mt-1 max-w-3xl" style={{ color: C.sub }}>
+                    Sélectionnez un point à gauche pour retrouver son dossier central :
+                    commentaires, propositions d&apos;investissement rattachées,
+                    documents, rapporteur et vote des membres présents.
+                    Les créneaux s&apos;ajustent aux durées prévues et les horodatages réels sont conservés.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge tone={quorumAtteint ? 'teal' : 'coral'}>
+                    {quorumAtteint ? 'Quorum atteint' : 'Quorum non atteint'}
+                  </Badge>
+                  <Badge tone={pointEnCours ? 'gold' : 'slate'}>
+                    {pointEnCours ? 'Séance active' : 'Séance à piloter'}
+                  </Badge>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                    Date du comité
+                  </span>
+                  <input
+                    type="date"
+                    value={seance.date || ''}
+                    onChange={(event) =>
+                      setSeance((current) => ({
+                        ...current,
+                        date: event.target.value,
+                      }))
+                    }
+                    className="w-full border rounded-xl px-3 py-2 text-xs"
+                    style={{ borderColor: C.line, background: C.card, color: C.ink }}
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                    Heure de début prévue
+                  </span>
+                  <input
+                    type="time"
+                    value={seance.heure}
+                    onChange={(event) =>
+                      setSeance((current) => ({
+                        ...current,
+                        heure: event.target.value,
+                      }))
+                    }
+                    className="w-full border rounded-xl px-3 py-2 text-xs"
+                    style={{ borderColor: C.line, background: C.card, color: C.ink }}
+                  />
+                </label>
+
+                <div className="rounded-xl border px-3 py-2" style={{ borderColor: C.line, background: '#F6F8FC' }}>
+                  <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                    Horaire planifié
+                  </span>
+                  <div className="text-xs font-bold mt-1" style={{ color: C.navy, ...F_MONO }}>
+                    {seance.heure}–{comiteHeure(minutesPlanifiees)}
+                  </div>
+                  <div className="text-[10px]" style={{ color: C.sub }}>
+                    {dureePrevue} minutes
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setOnglet('presence')}
+                  className="rounded-xl border px-3 py-2 text-xs font-semibold flex justify-between items-center gap-2"
+                  style={{ borderColor: C.line, background: '#F6F8FC', color: C.navy }}
+                >
+                  <span>Faire l&apos;appel</span>
+                  <span>{presents} / {participants.length} →</span>
+                </button>
+              </div>
+            </Card>
+
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+              <aside className="xl:col-span-4 space-y-4 min-w-0">
+                <Card className="p-4 md:p-5">
+                  <div className="flex justify-between gap-3 items-start flex-wrap">
+                    <div>
+                      <Eyebrow>Programme de la réunion</Eyebrow>
+                      <h3 className="text-base font-bold" style={{ color: C.ink, ...F_DISPLAY }}>
+                        Ordre du jour
+                      </h3>
+                      <p className="text-[11px] mt-1" style={{ color: C.sub }}>
+                        {agendaPlanifie.length} points · {dureePrevue} min · fin estimée {comiteHeure(minutesPlanifiees)}
+                      </p>
+                    </div>
+                    <Badge tone="navy">
+                      {pointsTermines}/{agendaPlanifie.length} traités
+                    </Badge>
+                  </div>
+
+                  <div
+                    className="mt-4 h-1.5 w-full overflow-hidden rounded-full"
+                    style={{ background: '#E8EBF2' }}
+                  >
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        background: C.teal,
+                        width: `${
+                          agendaPlanifie.length
+                            ? (pointsTermines / agendaPlanifie.length) * 100
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {agendaPlanifie.map((point) => {
+                      const selectionne = pointOuvert === point.id;
+                      const vote = resultatVotePoint(point);
+                      return (
+                        <button
+                          key={point.id}
+                          type="button"
+                          onClick={() => setPointOuvert(point.id)}
+                          className="w-full text-left rounded-xl border p-3 transition-colors"
+                          style={{
+                            borderColor: selectionne ? C.navy : C.line,
+                            background: selectionne ? '#F3F6FB' : '#fff',
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white shrink-0"
+                              style={{
+                                background: point.termineAt
+                                  ? C.teal
+                                  : point.demarreAt
+                                  ? C.gold
+                                  : C.navy,
+                              }}
+                            >
+                              {point.index + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-xs font-bold" style={{ color: C.ink }}>
+                                {point.titre}
+                              </div>
+                              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                                {point.debut}–{point.fin} · {point.duree} min
+                              </div>
+                              <div className="flex gap-1.5 mt-2 flex-wrap">
+                                <Badge tone={point.termineAt ? 'teal' : point.demarreAt ? 'gold' : 'slate'}>
+                                  {point.statut}
+                                </Badge>
+                                <Badge tone={vote.resultat === 'Adopté' ? 'teal' : vote.resultat === 'Rejeté' ? 'coral' : 'slate'}>
+                                  {vote.resultat}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    className="mt-4 pt-4 border-t space-y-2"
+                    style={{ borderColor: C.line }}
+                  >
+                    <div className="text-[11px] font-bold" style={{ color: C.ink }}>
+                      Ajouter un point
+                    </div>
+                    <input
+                      value={nouveauPoint.titre}
+                      onChange={(event) =>
+                        setNouveauPoint((current) => ({
+                          ...current,
+                          titre: event.target.value,
+                        }))
+                      }
+                      placeholder="Intitulé du nouveau point"
+                      className="w-full px-3 py-2 rounded-xl border text-xs"
+                      style={{ borderColor: C.line }}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <select
+                        value={nouveauPoint.nature}
+                        onChange={(event) =>
+                          setNouveauPoint((current) => ({
+                            ...current,
+                            nature: event.target.value,
+                          }))
+                        }
+                        className="px-3 py-2 rounded-xl border text-xs"
+                        style={{ borderColor: C.line, background: '#fff' }}
+                      >
+                        <option value="gouvernance">Gouvernance</option>
+                        <option value="analyse">Analyse</option>
+                        <option value="decision">Décision</option>
+                        <option value="synthese">Synthèse</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="5"
+                        step="5"
+                        value={nouveauPoint.duree}
+                        onChange={(event) =>
+                          setNouveauPoint((current) => ({
+                            ...current,
+                            duree: event.target.value,
+                          }))
+                        }
+                        className="px-3 py-2 rounded-xl border text-xs"
+                        style={{ borderColor: C.line }}
+                      />
+                    </div>
+                    <Btn onClick={ajouterPointAgenda}>Ajouter à l&apos;ordre du jour</Btn>
+                  </div>
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <Eyebrow>Présences</Eyebrow>
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold" style={{ color: C.ink }}>
+                      Quorum du comité
+                    </h4>
+                    <Badge tone={quorumAtteint ? 'teal' : 'coral'}>
+                      {quorumAtteint ? 'Atteint' : 'Non atteint'}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {participants.map((participant) => (
+                      <div key={participant.id} className="flex justify-between gap-2 text-[11px]">
+                        <span>{participant.nom}</span>
+                        <span style={{ color: participant.present ? C.teal : C.sub }}>
+                          {participant.present ? 'Présent' : 'Absent'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs font-bold mt-3"
+                    style={{ color: C.indigo }}
+                    onClick={() => setOnglet('presence')}
+                  >
+                    Feuille de présence complète →
+                  </button>
+                </Card>
+
+                <Card className="p-4 md:p-5">
+                  <Eyebrow>Préparation des décisions</Eyebrow>
+                  <h4 className="text-sm font-bold" style={{ color: C.ink }}>
+                    Situation du patrimoine
+                  </h4>
+                  <p className="text-xs mt-2" style={{ color: C.sub }}>
+                    Patrimoine {fmt(Math.round(patrimoine))} {devise} · {portefeuilles.length} portefeuille(s)
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {allocationActuelle.slice(0, 5).map((part) => (
+                      <div key={part.classe}>
+                        <div className="flex justify-between gap-2 text-[11px]">
+                          <span>{part.classe}</span>
+                          <b>{part.poids.toFixed(1)} %</b>
+                        </div>
+                        <div
+                          className="w-full h-1.5 rounded-full overflow-hidden mt-1"
+                          style={{ background: '#E8EBF2' }}
+                        >
+                          <div
+                            className="h-full"
+                            style={{
+                              background:
+                                part.classe === 'Liquidité'
+                                  ? C.teal
+                                  : part.classe.includes('Actions')
+                                  ? C.navy
+                                  : C.gold,
+                              width: `${Math.min(100, Math.max(0, part.poids))}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOnglet('allocation')}
+                    className="mt-4 text-xs font-bold"
+                    style={{ color: C.indigo }}
+                  >
+                    Présentation détaillée du patrimoine →
+                  </button>
+                </Card>
+              </aside>
+
+              <section
+                className="xl:col-span-8 min-w-0 space-y-4"
+                aria-label="Dossier du point sélectionné"
+              >
+                {agendaPlanifie
+                  .filter(
+                    (point) =>
+                      point.id ===
+                      (agendaPlanifie.find((item) => item.id === pointOuvert) ||
+                        agendaPlanifie[0])?.id
+                  )
+                  .map((point) => {
+                    const vote = resultatVotePoint(point);
+                    const dureeReelle = point.demarreAt
+                      ? Math.max(
+                          0,
+                          Math.floor(
+                            ((point.termineAt
+                              ? new Date(point.termineAt).getTime()
+                              : horlogeSeance) -
+                              new Date(point.demarreAt).getTime()) /
+                              60000
+                          )
+                        )
+                      : null;
+                    const propositionsLiees = propositions.filter((item) =>
+                      (point.propositionIds || []).includes(String(item.id))
+                    );
+
+                    return (
+                      <Card key={point.id} className="p-4 md:p-5 min-w-0">
+                        <div className="flex items-start gap-3 flex-wrap">
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold text-white"
+                            style={{
+                              background:
+                                pointEnCours?.id === point.id ? C.teal : C.navy,
+                            }}
+                          >
+                            {point.index + 1}
+                          </div>
+                          <div className="flex-1 min-w-[210px]">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span
+                                className="text-sm font-bold"
+                                style={{ color: C.ink, ...F_DISPLAY }}
+                              >
+                                {point.titre}
+                              </span>
+                              {(point.documentsAssocies || []).length > 0 && (
+                                <Badge tone="navy">
+                                  {(point.documentsAssocies || []).length} pièce(s)
+                                </Badge>
+                              )}
+                              <Badge
+                                tone={
+                                  point.termineAt
+                                    ? 'teal'
+                                    : point.demarreAt
+                                    ? 'gold'
+                                    : 'slate'
+                                }
+                              >
+                                {point.statut}
+                              </Badge>
+                            </div>
+                            <div className="text-xs mt-1" style={{ color: C.sub }}>
+                              {point.debut}–{point.fin} · {point.duree} min prévues ·{' '}
+                              {dureeReelle === null
+                                ? 'Non démarré'
+                                : `${dureeReelle} min réelles`}
+                            </div>
+                          </div>
+                          <Badge
+                            tone={
+                              vote.resultat === 'Adopté'
+                                ? 'teal'
+                                : vote.resultat === 'Rejeté'
+                                ? 'coral'
+                                : 'slate'
+                            }
+                          >
+                            {vote.resultat}
+                          </Badge>
+                        </div>
+
+                        <div
+                          className="mt-4 space-y-4 border-t pt-4"
+                          style={{ borderColor: C.line }}
+                        >
+                          <div className="flex gap-2 flex-wrap items-center">
+                            {!point.demarreAt && (
+                              <Btn onClick={() => demarrerPoint(point.id)}>
+                                Démarrer le point
+                              </Btn>
+                            )}
+                            {point.demarreAt && !point.termineAt && (
+                              <Btn onClick={() => terminerPoint(point.id)}>
+                                Terminer le point
+                              </Btn>
+                            )}
+                            {point.termineAt && (
+                              <Btn tone="ghost" onClick={() => rouvrirPoint(point.id)}>
+                                Rouvrir
+                              </Btn>
+                            )}
+                            {!point.demarreAt && (
+                              <button
+                                type="button"
+                                onClick={() => supprimerPointAgenda(point.id)}
+                                className="text-[10px] font-semibold"
+                                style={{ color: C.coral }}
+                              >
+                                Retirer de l&apos;ordre du jour
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <label className="space-y-1">
+                              <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                                Rapporteur
+                              </span>
+                              <input
+                                value={point.rapporteur || seance.rapporteur || ''}
+                                onChange={(event) =>
+                                  modifierPointAgenda(point.id, {
+                                    rapporteur: event.target.value,
+                                  })
+                                }
+                                className="w-full border rounded-xl px-3 py-2 text-xs"
+                                style={{ borderColor: C.line }}
+                              />
+                            </label>
+                            <label className="space-y-1">
+                              <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                                Nature
+                              </span>
+                              <select
+                                value={point.nature}
+                                onChange={(event) =>
+                                  modifierPointAgenda(point.id, {
+                                    nature: event.target.value,
+                                  })
+                                }
+                                className="w-full border rounded-xl px-3 py-2 text-xs"
+                                style={{ borderColor: C.line, background: '#fff' }}
+                              >
+                                <option value="gouvernance">Gouvernance</option>
+                                <option value="analyse">Analyse</option>
+                                <option value="decision">Décision</option>
+                                <option value="synthese">Synthèse</option>
+                              </select>
+                            </label>
+                            <label className="space-y-1">
+                              <span className="block text-[11px] font-semibold" style={{ color: C.sub }}>
+                                Durée prévue
+                              </span>
+                              <input
+                                type="number"
+                                min="5"
+                                step="5"
+                                value={point.duree}
+                                onChange={(event) =>
+                                  modifierPointAgenda(point.id, {
+                                    duree: Number(event.target.value || 10),
+                                  })
+                                }
+                                className="w-full border rounded-xl px-3 py-2 text-xs"
+                                style={{ borderColor: C.line }}
+                              />
+                            </label>
+                          </div>
+
+                          <ComiteDocumentsAssociesEditor
+                            documents={point.documentsAssocies || []}
+                            onChange={(documentsAssocies) =>
+                              modifierPointAgenda(point.id, { documentsAssocies })
+                            }
+                            titre="Documents associés à ce point"
+                          />
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
+                              <p className="text-xs font-bold">
+                                Propositions d&apos;investissement associées à ce point
+                              </p>
+                              <p className="text-[11px] mt-1 mb-3" style={{ color: C.sub }}>
+                                Cochez les propositions préparées qui sont discutées dans ce point.
+                              </p>
+
+                              {propositions.length ? (
+                                propositions.map((item) => (
+                                  <label
+                                    key={item.id}
+                                    className="flex gap-2 items-start text-xs py-1"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5"
+                                      checked={(point.propositionIds || []).includes(String(item.id))}
+                                      onChange={(event) =>
+                                        modifierPointAgenda(point.id, {
+                                          propositionIds: event.target.checked
+                                            ? [
+                                                ...new Set([
+                                                  ...(point.propositionIds || []),
+                                                  String(item.id),
+                                                ]),
+                                              ]
+                                            : (point.propositionIds || []).filter(
+                                                (id) => id !== String(item.id)
+                                              ),
+                                        })
+                                      }
+                                    />
+                                    <span>
+                                      {item.id} — {item.action} {item.classeActif}
+                                      {item.instrument ? ` · ${item.instrument}` : ''}
+                                    </span>
+                                  </label>
+                                ))
+                              ) : (
+                                <p className="text-xs" style={{ color: C.sub }}>
+                                  Aucune proposition préparée.
+                                </p>
+                              )}
+
+                              <div className="flex flex-wrap gap-2 mt-3">
+                                <Btn tone="ghost" onClick={() => setOnglet('preparation')}>
+                                  Créer une proposition
+                                </Btn>
+                                <Btn tone="ghost" onClick={() => setOnglet('decisions')}>
+                                  Voir les propositions
+                                </Btn>
+                              </div>
+
+                              {propositionsLiees.length > 0 && (
+                                <p className="text-[11px] mt-2" style={{ color: C.teal }}>
+                                  {propositionsLiees.length} proposition(s) rattachée(s) à ce point.
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="rounded-xl border p-4" style={{ borderColor: C.line }}>
+                              <p className="text-xs font-bold">Vote du point</p>
+                              <p className="text-[11px] mt-1 mb-3" style={{ color: C.sub }}>
+                                Le vote est nominatif pour les membres présents.
+                              </p>
+
+                              <div className="space-y-2">
+                                {participants
+                                  .filter((participant) => participant.present)
+                                  .map((participant) => (
+                                    <div
+                                      key={participant.id}
+                                      className="flex items-center justify-between gap-3"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="text-xs font-semibold" style={{ color: C.ink }}>
+                                          {participant.nom}
+                                        </div>
+                                        <div className="text-[9px]" style={{ color: C.sub }}>
+                                          {participant.fonction}
+                                        </div>
+                                      </div>
+                                      <select
+                                        value={point.votes?.[participant.id] || ''}
+                                        disabled={!quorumAtteint}
+                                        onChange={(event) =>
+                                          changerVotePoint(
+                                            point.id,
+                                            participant.id,
+                                            event.target.value
+                                          )
+                                        }
+                                        className="border rounded-lg px-2 py-1.5 text-xs"
+                                        style={{ borderColor: C.line, background: '#fff' }}
+                                      >
+                                        <option value="">À voter</option>
+                                        <option value="pour">Pour</option>
+                                        <option value="contre">Contre</option>
+                                        <option value="abstention">Abstention</option>
+                                      </select>
+                                    </div>
+                                  ))}
+                              </div>
+
+                              <div
+                                className="mt-3 p-3 rounded-xl"
+                                style={{ background: '#F6F8FC' }}
+                              >
+                                <div className="flex justify-between gap-3 text-[11px]">
+                                  <span>Pour</span><b>{vote.pour}</b>
+                                </div>
+                                <div className="flex justify-between gap-3 text-[11px]">
+                                  <span>Contre</span><b>{vote.contre}</b>
+                                </div>
+                                <div className="flex justify-between gap-3 text-[11px]">
+                                  <span>Abstention</span><b>{vote.abstention}</b>
+                                </div>
+                                <div
+                                  className="flex justify-between gap-3 text-xs font-bold mt-2 pt-2 border-t"
+                                  style={{ borderColor: C.line }}
+                                >
+                                  <span>Conclusion du vote</span>
+                                  <span>{vote.resultat}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <label>
+                              <span className="block text-[11px] font-semibold mb-1" style={{ color: C.sub }}>
+                                Compte rendu / éléments discutés
+                              </span>
+                              <textarea
+                                rows={5}
+                                value={point.compteRendu || ''}
+                                onChange={(event) =>
+                                  modifierPointAgenda(point.id, {
+                                    compteRendu: event.target.value,
+                                  })
+                                }
+                                className="w-full px-3 py-2 rounded-xl border text-xs"
+                                style={{ borderColor: C.line }}
+                                placeholder="Analyses, arguments, réserves, informations présentées..."
+                              />
+                            </label>
+
+                            <label>
+                              <span className="block text-[11px] font-semibold mb-1" style={{ color: C.sub }}>
+                                Décision / conclusion du point
+                              </span>
+                              <textarea
+                                rows={5}
+                                value={point.conclusion || ''}
+                                onChange={(event) =>
+                                  modifierPointAgenda(point.id, {
+                                    conclusion: event.target.value,
+                                  })
+                                }
+                                className="w-full px-3 py-2 rounded-xl border text-xs"
+                                style={{ borderColor: C.line }}
+                                placeholder="Décision retenue, instruction, responsable, échéance..."
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+              </section>
+            </div>
+          </div>
+        )}
+
+        {onglet === 'allocation' && (
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
+              <div>
+                <div className="text-sm font-bold" style={{ color: C.ink }}>
+                  Situation à examiner avant décision
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                  Répartition consolidée du patrimoine servant de base de
+                  discussion au comité.
+                </div>
+              </div>
+              <Btn
+                tone="ghost"
+                onClick={() => goClient('client-dashboard')}
+              >
+                Ouvrir la vue consolidée
+              </Btn>
+            </div>
+
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: C.line }}>
+              <table className="w-full">
+                <thead style={{ background: '#FAFAFC' }}>
+                  <tr>
+                    <Th>Classe d&apos;actifs</Th>
+                    <Th>Allocation actuelle</Th>
+                    <Th>Montant indicatif</Th>
+                    <Th>Lecture comité</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationActuelle.map((item) => (
+                    <tr key={item.classe} style={{ borderTop: `1px solid ${C.line}` }}>
+                      <Td className="font-semibold">{item.classe}</Td>
+                      <Td mono>{item.poids.toFixed(1)}%</Td>
+                      <Td mono>
+                        {fmt(Math.round(item.montant))} {devise}
+                      </Td>
+                      <Td>
+                        {item.classe === 'Liquidité'
+                          ? 'Réserve mobilisable et besoins de trésorerie à examiner.'
+                          : 'À confronter aux limites, au risque, aux opportunités et aux objectifs du comité.'}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {onglet === 'preparation' && (
+          <div className="p-5 space-y-4">
+            <div>
+              <div className="text-sm font-bold" style={{ color: C.ink }}>
+                Préparer une proposition à soumettre au vote
+              </div>
+              <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                Une proposition formalise l&apos;action souhaitée, la classe
+                d&apos;actifs, le montant, le portefeuille / SGI, l&apos;horizon
+                et la justification économique.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Action
+                </span>
+                <select
+                  value={proposition.action}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      action: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  {[
+                    'Investir',
+                    'Renforcer',
+                    'Alléger',
+                    'Céder',
+                    'Conserver',
+                    'Ne pas réinvestir',
+                  ].map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Classe d&apos;actifs
+                </span>
+                <select
+                  value={proposition.classeActif}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      classeActif: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  {CLIENT_ASSET_CLASS_ORDER.map((classe) => (
+                    <option key={classe}>{classe}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Portefeuille / SGI
+                </span>
+                <select
+                  value={proposition.portefeuilleId}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      portefeuilleId: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  <option value="consolide">Patrimoine consolidé</option>
+                  {portefeuilles.map((portefeuille) => (
+                    <option key={portefeuille.id} value={portefeuille.id}>
+                      {portefeuille.sgi} · {portefeuille.nom}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Instrument / support
+                </span>
+                <input
+                  value={proposition.instrument}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      instrument: event.target.value,
+                    }))
+                  }
+                  placeholder="Ex. SONATEL, OAT, FCP..."
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Montant indicatif
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  value={proposition.montant}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      montant: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line }}
+                />
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Devise
+                </span>
+                <select
+                  value={proposition.devise}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      devise: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  {Object.keys(FX).map((code) => (
+                    <option key={code}>{code}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Horizon
+                </span>
+                <select
+                  value={proposition.horizon}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      horizon: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  {['Court terme', 'Moyen terme', 'Long terme'].map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                  Mode d&apos;exécution souhaité
+                </span>
+                <select
+                  value={proposition.execution}
+                  onChange={(event) =>
+                    setProposition((current) => ({
+                      ...current,
+                      execution: event.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border text-xs"
+                  style={{ borderColor: C.line, background: '#fff' }}
+                >
+                  {[
+                    'Immédiate',
+                    'Progressive',
+                    'Par paliers',
+                    'À opportunité de marché',
+                  ].map((value) => (
+                    <option key={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                Justification / thèse du comité
+              </span>
+              <textarea
+                rows={4}
+                value={proposition.justification}
+                onChange={(event) =>
+                  setProposition((current) => ({
+                    ...current,
+                    justification: event.target.value,
+                  }))
+                }
+                placeholder="Rendement attendu, risque, diversification, liquidité, valorisation, objectif stratégique..."
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{ borderColor: C.line }}
+              />
+            </label>
+
+            <div className="flex justify-end">
+              <Btn onClick={ajouterProposition}>
+                Ajouter aux propositions →
+              </Btn>
+            </div>
+          </div>
+        )}
+
+        {onglet === 'decisions' && (
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
+              <div>
+                <div className="text-sm font-bold" style={{ color: C.ink }}>
+                  Propositions, votes et décisions
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                  Le comité peut adopter, rejeter ou ajourner chaque proposition.
+                  Seules les décisions adoptées peuvent être envoyées vers la simulation.
+                </div>
+              </div>
+              <Badge tone={quorumAtteint ? 'teal' : 'coral'}>
+                {quorumAtteint ? 'Vote autorisé' : 'Vote bloqué · quorum'}
+              </Badge>
+            </div>
+
+            {propositions.length === 0 ? (
+              <div
+                className="p-6 rounded-xl text-center text-xs"
+                style={{ background: '#FAFAFC', color: C.sub }}
+              >
+                Aucune proposition pour le moment.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {propositions.map((item) => {
+                  const portefeuille =
+                    item.portefeuilleId === 'consolide'
+                      ? null
+                      : portefeuilles.find(
+                          (pf) => pf.id === item.portefeuilleId
+                        );
+
+                  return (
+                    <Card key={item.id} className="p-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge
+                              tone={
+                                item.statut === 'Adoptée'
+                                  ? 'teal'
+                                  : item.statut === 'Rejetée'
+                                  ? 'coral'
+                                  : item.statut === 'Ajournée'
+                                  ? 'gold'
+                                  : 'slate'
+                              }
+                            >
+                              {item.statut}
+                            </Badge>
+                            <span
+                              className="text-[10px]"
+                              style={{ color: C.sub, ...F_MONO }}
+                            >
+                              {item.id}
+                            </span>
+                          </div>
+                          <div
+                            className="text-sm font-bold mt-2"
+                            style={{ color: C.ink }}
+                          >
+                            {item.action} · {item.classeActif}
+                            {item.instrument ? ` · ${item.instrument}` : ''}
+                          </div>
+                          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                            {portefeuille
+                              ? `${portefeuille.sgi} · ${portefeuille.nom}`
+                              : 'Patrimoine consolidé'}{' '}
+                            · {item.horizon} · {item.execution}
+                          </div>
+                          <div className="text-xs mt-2" style={{ color: C.ink }}>
+                            {item.justification}
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-lg font-bold" style={{ ...F_MONO, color: C.navy }}>
+                            {Number(item.montant || 0) > 0
+                              ? `${fmt(Math.round(item.montant))} ${item.devise}`
+                              : '—'}
+                          </div>
+                          <div className="text-[9px] mt-1" style={{ color: C.sub }}>
+                            Pour {item.votePour || 0} · Contre {item.voteContre || 0} ·
+                            Abst. {item.abstention || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div
+                        className="mt-3 pt-3 flex items-center justify-between gap-3 flex-wrap"
+                        style={{ borderTop: `1px solid ${C.line}` }}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {item.statut === 'À voter' && (
+                            <>
+                              <Btn onClick={() => voter(item, 'Adoptée')}>
+                                Adopter
+                              </Btn>
+                              <Btn tone="ghost" onClick={() => voter(item, 'Ajournée')}>
+                                Ajourner
+                              </Btn>
+                              <button
+                                type="button"
+                                onClick={() => voter(item, 'Rejetée')}
+                                className="px-3 py-2 rounded-xl text-xs font-semibold border"
+                                style={{
+                                  borderColor: '#F1C5BF',
+                                  color: C.coral,
+                                  background: '#FFF7F5',
+                                }}
+                              >
+                                Rejeter
+                              </button>
+                            </>
+                          )}
+
+                          {item.statut === 'Adoptée' && (
+                            <Btn onClick={() => envoyerVersSimulation(item)}>
+                              Simuler la décision →
+                            </Btn>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => supprimerProposition(item.id)}
+                          className="text-[10px] font-semibold"
+                          style={{ color: C.coral }}
+                        >
+                          Supprimer
+                        </button>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {onglet === 'historique' && (
+          <div className="p-5 space-y-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-sm font-bold" style={{ color: C.ink }}>
+                  Finalisation du comité & historique des PV
+                </div>
+                <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                  Le PV devient finalisable lorsque le quorum est atteint, tous
+                  les points de l&apos;ordre du jour sont clôturés et toutes les
+                  propositions ont reçu une décision.
+                </div>
+              </div>
+              <Btn
+                tone={pvDisponible ? 'navy' : 'ghost'}
+                onClick={genererPvComite}
+              >
+                Générer le PV du comité
+              </Btn>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <Card className="p-4">
+                <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                  Quorum
+                </div>
+                <div className="text-sm font-bold mt-1" style={{ color: quorumAtteint ? C.teal : C.coral }}>
+                  {quorumAtteint ? 'Validé' : 'Non atteint'}
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                  Ordre du jour
+                </div>
+                <div className="text-sm font-bold mt-1" style={{ color: agendaTermine ? C.teal : C.gold }}>
+                  {pointsTermines} / {agenda.length} point(s) clôturé(s)
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-[9px] uppercase font-semibold" style={{ color: C.sub }}>
+                  Votes
+                </div>
+                <div className="text-sm font-bold mt-1" style={{ color: decisionsSoldees ? C.teal : C.gold }}>
+                  {decisionsSoldees ? 'Tous finalisés' : `${aVoter.length} restant(s)`}
+                </div>
+              </Card>
+            </div>
+
+            <label className="block">
+              <span className="block text-[9px] font-semibold mb-1" style={{ color: C.sub }}>
+                Observations générales du PV
+              </span>
+              <textarea
+                rows={4}
+                value={seance.commentaires}
+                onChange={(event) =>
+                  setSeance((current) => ({
+                    ...current,
+                    commentaires: event.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 rounded-xl border text-xs"
+                style={{ borderColor: C.line }}
+                placeholder="Synthèse générale, réserves, actions de suivi, prochaine date de comité..."
+              />
+            </label>
+
+            <div>
+              <div className="text-sm font-bold" style={{ color: C.ink }}>
+                Séances archivées
+              </div>
+              <div className="text-[10px] mt-1 mb-3" style={{ color: C.sub }}>
+                Chaque génération de PV archive une photographie de la séance,
+                de son ordre du jour et des décisions prises.
+              </div>
+
+              {(stockage.seances || []).length === 0 ? (
+                <div
+                  className="p-6 rounded-xl text-center text-xs"
+                  style={{ background: '#FAFAFC', color: C.sub }}
+                >
+                  Aucun PV de comité archivé.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(stockage.seances || []).map((archive) => (
+                    <Card key={archive.id} className="p-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                          <div className="text-sm font-bold" style={{ color: C.ink }}>
+                            {archive.seance?.titre || "Comité d'investissement"}
+                          </div>
+                          <div className="text-[10px] mt-1" style={{ color: C.sub }}>
+                            {archive.seance?.date || '—'} · {archive.seance?.heure || '—'}
+                            {' · '}
+                            {(archive.participants || []).filter((p) => p.present).length}
+                            {' '}présent(s)
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge tone={archive.quorumAtteint ? 'teal' : 'coral'}>
+                            {archive.agenda?.length || 0} point(s)
+                          </Badge>
+                          <Badge tone="navy">
+                            {archive.decisions?.length || 0} décision(s)
+                          </Badge>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <div
+        className="p-3 rounded-xl text-[10px]"
+        style={{ background: '#FBF7EE', color: C.sub }}
+      >
+        <b style={{ color: C.ink }}>Circuit du comité :</b> présence et quorum
+        → ordre du jour suivi point par point → analyse du patrimoine →
+        propositions d&apos;investissement → votes → conclusions → génération
+        du PV. Le PV formalise la décision institutionnelle mais ne transmet
+        aucun ordre automatiquement.
+      </div>
     </div>
   );
 }
@@ -44511,9 +47358,9 @@ function ClientPortfolios({ devise, orders }) {
             Une fiche par compte-titres afin de conserver la vision de
             l'intermédiaire, de la devise et du marché d'origine, avec distinction
             entre espèces disponibles et espèces déjà mobilisées par des achats
-            non exécutés. Le CMP correspond au coût moyen pondéré de la ligne et
-            la Plus/Moins-value est affichée en montant dans la devise native du
-            portefeuille.
+            non exécutés. Le CMP correspond au coût moyen pondéré de la ligne,
+            la Plus/Moins-value mesure l'écart au coût d'acquisition et la Variation
+            YTD mesure l'évolution de l'actif depuis le début de l'année.
           </div>
         </div>
         <Btn onClick={() => setAjoutSgiOuvert(true)}>
@@ -44749,6 +47596,26 @@ function ClientPortfolios({ devise, orders }) {
                 <div className="text-lg font-bold" style={F_DISPLAY}>
                   {fmt(Math.round(total))} {portefeuille.devise}
                 </div>
+                <div
+                  className="mt-1 inline-flex items-center justify-end gap-1 text-xs font-semibold"
+                  style={{
+                    color:
+                      Number(portefeuille.perfYtd || 0) >= 0
+                        ? C.teal
+                        : C.coral,
+                    ...F_MONO,
+                  }}
+                  title="Performance YTD du portefeuille communiquée par la SGI ou renseignée dans les données du portefeuille"
+                >
+                  {Number(portefeuille.perfYtd || 0) >= 0 ? (
+                    <ArrowUpRight size={13} />
+                  ) : (
+                    <ArrowDownRight size={13} />
+                  )}
+                  Variation YTD :{' '}
+                  {Number(portefeuille.perfYtd || 0) >= 0 ? '+' : ''}
+                  {Number(portefeuille.perfYtd || 0).toFixed(1)}%
+                </div>
                 {portefeuille.devise !== devise && (
                   <div className="text-[10px]" style={{ color: C.sub }}>
                     ≈{' '}
@@ -44762,7 +47629,7 @@ function ClientPortfolios({ devise, orders }) {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full" style={{ minWidth: 1060 }}>
+              <table className="w-full" style={{ minWidth: 1180 }}>
                 <thead style={{ background: '#FAFAFC' }}>
                   <tr>
                     <Th>Instrument</Th>
@@ -44772,6 +47639,7 @@ function ClientPortfolios({ devise, orders }) {
                     <Th>Cours</Th>
                     <Th>Valeur</Th>
                     <Th>Plus/Moins-value</Th>
+                    <Th>Variation YTD</Th>
                     <Th>Poids</Th>
                   </tr>
                 </thead>
@@ -44783,6 +47651,9 @@ function ClientPortfolios({ devise, orders }) {
                     const cmp = clientLineCmp(ligne);
                     const plusMoinsValue = clientLinePlusMoinsValue(ligne);
                     const plusMoinsPositive = plusMoinsValue >= 0;
+                    const variationYtd = clientLineVariationYtd(ligne);
+                    const variationYtdPositive =
+                      variationYtd === null ? null : variationYtd >= 0;
 
                     return (
                       <tr
@@ -44823,6 +47694,34 @@ function ClientPortfolios({ devise, orders }) {
                             {fmt(Math.round(Math.abs(plusMoinsValue)))}{' '}
                             {portefeuille.devise}
                           </div>
+                        </Td>
+                        <Td>
+                          {variationYtd === null ? (
+                            <span
+                              className="text-[10px]"
+                              style={{ color: C.sub }}
+                              title="Variation YTD non communiquée pour cette position"
+                            >
+                              Non disponible
+                            </span>
+                          ) : (
+                            <div
+                              className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold"
+                              style={{
+                                color: variationYtdPositive ? C.teal : C.coral,
+                                ...F_MONO,
+                              }}
+                              title="Variation YTD = évolution de l'actif depuis le début de l'année"
+                            >
+                              {variationYtdPositive ? (
+                                <ArrowUpRight size={13} />
+                              ) : (
+                                <ArrowDownRight size={13} />
+                              )}
+                              {variationYtd >= 0 ? '+' : ''}
+                              {variationYtd.toFixed(1)}%
+                            </div>
+                          )}
                         </Td>
                         <Td mono>
                           {total > 0
@@ -55043,6 +57942,13 @@ export default function App() {
                   <ClientDisinvestmentPlan
                     goClient={goClient}
                     devise={siteDevise}
+                  />
+                )}
+                {clientScreen === 'client-investment-committee' && (
+                  <ClientInvestmentCommittee
+                    goClient={goClient}
+                    devise={siteDevise}
+                    orders={clientOrders}
                   />
                 )}
                 {clientScreen === 'client-exchanges' && (
